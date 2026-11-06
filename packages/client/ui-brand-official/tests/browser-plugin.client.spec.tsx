@@ -46,12 +46,12 @@ describe('official browser-brand plugin', () => {
     expect(inject).toEqual(['slots'])
   })
 
-  it('keeps local sidebar branding and provides the same blank-home feedback', async () => {
+  it('brands the sidebar and the blank home in every build profile', async () => {
     vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', 'local')
     const subject = await bench()
     await subject.ctx.plugin({ inject: [...inject], apply }).await()
-    expect(subject.slots.entries('sidebar.brand.mark')).toHaveLength(0)
-    expect(subject.slots.entries('sidebar.brand.name')).toHaveLength(0)
+    expect(subject.slots.entries('sidebar.brand.mark')).toHaveLength(1)
+    expect(subject.slots.entries('sidebar.brand.name')).toHaveLength(1)
     expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(1)
   })
 
@@ -101,9 +101,10 @@ describe('official browser-brand plugin', () => {
     }
   })
 
-  it('renders the official name independently from both requested mark sizes', () => {
+  it('renders the product name independently from both requested mark sizes', () => {
+    vi.stubEnv('DSH_CLIENT_TITLE', 'Aurora')
     const name = render(<OfficialBrandName />)
-    expect(name.container.querySelector('svg')?.getAttribute('viewBox')).toBe('26 0 156 24')
+    expect(name.container.textContent).toBe('Aurora')
     name.unmount()
 
     const mark = render(<OfficialBrandMark size={34} />)

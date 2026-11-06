@@ -16,10 +16,15 @@ const CLIENT_BUILD_ENV_PREFIX = 'DSH_CLIENT_'
 /** Non-public selector used by build orchestration to request a named client profile. */
 export const CLIENT_BUILD_PROFILE_SELECTOR = 'DSH_BUILD_CLIENT_PROFILE'
 
-/** Public client environment required by official DSH artifacts. */
+/** Product identity shared by the client bundle and the Desktop shell. */
+const BRAND = JSON.parse(
+  readFileSync(new URL('../brand.json', import.meta.url), 'utf8'),
+) as { productName: string }
+
+/** Public client environment required by release artifacts of this fork. */
 const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'official',
-  DSH_CLIENT_TITLE: 'DeepSeek Harness',
+  DSH_CLIENT_TITLE: BRAND.productName,
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
