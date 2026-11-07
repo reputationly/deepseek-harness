@@ -7,6 +7,7 @@ import type { DesktopLocale } from './locale.ts'
 /** Private native welcome channels, installed only while its window exists. */
 export const WELCOME_IPC = {
   saveApiKey: 'dsh-welcome:save-api-key',
+  quit: 'dsh-welcome:quit',
   analytics: 'dsh-welcome:analytics',
   analyticsEnabled: 'dsh-welcome:analytics-enabled',
   skip: 'dsh-welcome:skip',
@@ -17,8 +18,11 @@ export const WELCOME_IPC = {
   takeNotice: 'dsh-welcome:take-notice',
 } as const
 
-/** Credential writes return a safe outcome without exposing Host diagnostics. */
-export type WelcomeSaveResult = { readonly ok: true } | { readonly ok: false }
+/** Why a key was rejected: the gateway refused it, or it could not be reached at all. */
+export type WelcomeKeyFailure = 'invalid' | 'unreachable'
+
+/** Outcome of storing a gateway key. */
+export type WelcomeSaveResult = { readonly ok: true } | { readonly ok: false; readonly reason: WelcomeKeyFailure }
 
 /** One-time notification retained by the main process until Welcome receives it. */
 export type WelcomeNotice = 'session-expired'
@@ -27,6 +31,8 @@ type WelcomeEventName = 'auth_page_view' | 'auth_page_click' | 'api_key_save_cli
 
 /** Host-owned operations used by the welcome window. */
 export interface WelcomeOperations {
+  /** Quit the application; the key gate offers no other way out. */
+  quit(): void
   /** @param eventName - allowed welcome event. @param attributes - approved fields without credentials. */
   analytics?<K extends WelcomeEventName>(eventName: K, attributes: ProductEventMap[K]): Promise<void>
   /** @returns the Host's current effective collection policy. */

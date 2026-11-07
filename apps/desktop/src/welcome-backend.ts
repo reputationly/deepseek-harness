@@ -3,6 +3,9 @@ import type { ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/typ
 
 import { randomUUID } from 'node:crypto'
 import { desktopAccountBackend, type DesktopAccountBackend } from './account-backend.ts'
+import { brandGateway } from './brand-gateway.ts'
+import { probeGatewayKey } from './gateway-probe.ts'
+import type { WelcomeSaveResult } from './welcome-api.ts'
 
 /** Metadata needed before the native entry or workspace becomes visible. */
 export interface WelcomeState {
@@ -24,10 +27,10 @@ export interface DesktopWelcomeBackend {
   /** @returns The saved UI language without account or provider requests. */
   readLocalePreference(): Promise<string | null>
   /**
-   * @param apiKey - User-entered official provider key.
+   * @param apiKey - User-entered gateway key; checked against the gateway before it is stored.
    * @returns A safe write outcome without provider diagnostics.
    */
-  save(apiKey: string): Promise<{ ok: boolean }>
+  save(apiKey: string): Promise<WelcomeSaveResult>
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -133,15 +136,20 @@ export function connectDesktopWelcome(
       return localePreference(settings.namespaces)
     },
     async save(apiKey) {
-      if (!/^[\x21-\x7e]+$/.test(apiKey)) return { ok: false }
+      if (!/^[\x21-\x7e]+$/.test(apiKey)) return { ok: false, reason: 'invalid' }
+      const gateway = brandGateway()
+      if (gateway !== undefined) {
+        const verdict = await probeGatewayKey(gateway.baseURL, apiKey)
+        if (verdict !== 'ok') return { ok: false, reason: verdict }
+      }
       try {
         const { ref } = await settingsAndReference()
-        if (ref === undefined) return { ok: false }
+        if (ref === undefined) return { ok: false, reason: 'unreachable' }
         await invoke({ namespace: 'credentials', method: 'set', args: { ref, value: apiKey } })
         return { ok: true }
       } catch {
         // Provider diagnostics may contain credentials; the native form owns failure copy.
-        return { ok: false }
+        return { ok: false, reason: 'unreachable' }
       }
     },
   }

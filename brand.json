@@ -1,4 +1,15 @@
 {
   "productName": "Aurora",
-  "bundleId": "com.aurora.agent"
+  "bundleId": "com.aurora.agent",
+  "gateway": {
+    "baseURL": "https://maas.ovaijisuan.com/v1",
+    "apiKeyEnv": "DSH_MAAS_API_KEY",
+    "defaultModel": "deepseek-v4-1-flash",
+    "models": [
+      { "id": "deepseek-v4-1-flash", "contextWindow": 1048576 },
+      { "id": "glm-5.3-flash-w4a8", "contextWindow": 900000 },
+      { "id": "minimax-m3.1-flash", "contextWindow": 1048576 },
+      { "id": "qwen3.8-flash-fp8", "contextWindow": 1048576 }
+    ]
+  }
 }

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { repositoryClientBuildEnvironment, resolveClientBuildEnvironment } from '../../scripts/client-build-environment.ts'
 import { packagedImportsPlugin } from './scripts/desktop-bundle-imports.mjs'
+import { GATEWAY } from './scripts/desktop-brand.mjs'
 
 // This config runs after the workspace tsdown pass, not inside it: the main bundle inlines
 // workspace devDependencies from their lib/ output, which the concurrent workspace pass does
@@ -32,6 +33,9 @@ if (clientVersion === undefined) throw new Error('desktop build: the client envi
 /** Inline the one public build value the Node entry reads; every other variable stays a runtime lookup. */
 const clientVersionDefine = { 'process.env.DSH_CLIENT_VERSION': JSON.stringify(clientVersion) }
 
+/** Inline the product gateway so the packaged shell can write it into the profile without shipping brand.json. */
+const brandGatewayDefine = { 'process.env.DSH_BRAND_GATEWAY': JSON.stringify(JSON.stringify(GATEWAY)) }
+
 export default defineConfig([
   {
     entry: ['lib/types/operation-report-worker.js'],
@@ -55,7 +59,7 @@ export default defineConfig([
   {
     entry: ['lib/types/main.js'],
     plugins: [packagedImportsPlugin(mainProcessImports)],
-    define: clientVersionDefine,
+    define: { ...clientVersionDefine, ...brandGatewayDefine },
     onSuccess: async () => {
       await build({
         configFile: false,

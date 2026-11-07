@@ -25,5 +25,6 @@ const api: WelcomeApi = {
   },
   saveApiKey: (value: string) => ipcRenderer.invoke(WELCOME_IPC.saveApiKey, value) as Promise<WelcomeSaveResult>,
   skip: () => ipcRenderer.invoke(WELCOME_IPC.skip) as Promise<void>,
+  quit: () => { void ipcRenderer.invoke(WELCOME_IPC.quit) },
 }
 contextBridge.exposeInMainWorld('dshWelcome', api)

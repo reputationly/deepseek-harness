@@ -72,7 +72,7 @@ describe('desktop welcome Web operations', () => {
     expect(await backend.read()).toMatchObject({ hasApiKey: false, writable: false })
     host.keys.set('EXAMPLE_API_KEY', 'custom-key')
     expect(await backend.read()).toMatchObject({ hasApiKey: true, writable: false })
-    expect(await backend.save('official-key')).toEqual({ ok: false })
+    expect(await backend.save('official-key')).toEqual({ ok: false, reason: 'unreachable' })
     expect(host.keys.has('undefined')).toBe(false)
   })
 
@@ -80,7 +80,7 @@ describe('desktop welcome Web operations', () => {
     const host = transport()
     const backend = connectDesktopWelcome(url, cookie, host.send)
     host.send.mockClear()
-    expect(await backend.save(value)).toEqual({ ok: false })
+    expect(await backend.save(value)).toEqual({ ok: false, reason: 'invalid' })
     expect(host.send).not.toHaveBeenCalled()
   })
 
@@ -88,7 +88,7 @@ describe('desktop welcome Web operations', () => {
     const host = transport()
     const backend = connectDesktopWelcome(url, cookie, host.send)
     host.send.mockRejectedValueOnce(new Error('private credential sk-must-not-leak'))
-    expect(await backend.save('sk-example')).toEqual({ ok: false })
+    expect(await backend.save('sk-example')).toEqual({ ok: false, reason: 'unreachable' })
     host.send.mockResolvedValueOnce(Response.json({ type: 'server-response', rpcId: 'other', result: { ok: true } }))
     await expect(backend.read()).rejects.toThrow('Web RPC failed')
   })

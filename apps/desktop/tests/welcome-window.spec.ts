@@ -128,7 +128,7 @@ describe('desktop welcome window', () => {
     const save = electron.handlers.get(WELCOME_IPC.saveApiKey)!
     await expect(save({ sender: {}, senderFrame: {} }, 'sk-test')).rejects.toThrow('unowned frame')
     await expect(save({ ...own, senderFrame: {} }, 'sk-test')).rejects.toThrow('unowned frame')
-    expect(await save(own, 'bad key')).toEqual({ ok: false })
+    expect(await save(own, 'bad key')).toEqual({ ok: false, reason: 'invalid' })
     expect(saveApiKey).not.toHaveBeenCalled()
     expect(await save(own, 'sk-test')).toEqual({ ok: true })
     await electron.handlers.get(WELCOME_IPC.skip)!(own)

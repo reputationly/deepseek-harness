@@ -66,7 +66,7 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
     active = false
     for (const channel of [
       WELCOME_IPC.analyticsEnabled, WELCOME_IPC.analytics, WELCOME_IPC.takeNotice, WELCOME_IPC.saveApiKey,
-      WELCOME_IPC.skip, WELCOME_IPC.start, WELCOME_IPC.cancel, WELCOME_IPC.copyLink,
+      WELCOME_IPC.skip, WELCOME_IPC.start, WELCOME_IPC.cancel, WELCOME_IPC.copyLink, WELCOME_IPC.quit,
     ]) {
       ipcMain.removeHandler(channel)
     }
@@ -95,12 +95,16 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
   ipcMain.handle(WELCOME_IPC.takeNotice, async (event) => { assertSender(event); return operations.takeNotice() })
   ipcMain.handle(WELCOME_IPC.saveApiKey, async (event, value: unknown) => {
     assertSender(event)
-    if (typeof value !== 'string' || !/^[\x21-\x7e]+$/.test(value)) return { ok: false }
+    if (typeof value !== 'string' || !/^[\x21-\x7e]+$/.test(value)) return { ok: false, reason: 'invalid' }
     return operations.saveApiKey(value)
   })
   ipcMain.handle(WELCOME_IPC.skip, async (event) => {
     assertSender(event)
     await operations.skip()
+  })
+  ipcMain.handle(WELCOME_IPC.quit, (event) => {
+    assertSender(event)
+    operations.quit()
   })
   ipcMain.handle(WELCOME_IPC.start, async (event) => { assertSender(event); return operations.startSignIn() })
   ipcMain.handle(WELCOME_IPC.cancel, async (event, id: unknown) => {

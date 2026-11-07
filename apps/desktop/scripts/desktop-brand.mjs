@@ -10,3 +10,6 @@ export const PRODUCT_NAME = BRAND.productName
 
 /** Reverse-DNS application identifier used by unsigned local builds. */
 export const BUNDLE_ID = BRAND.bundleId
+
+/** Product model gateway: endpoint, credential reference, and the catalog the shell pins. */
+export const GATEWAY = BRAND.gateway
