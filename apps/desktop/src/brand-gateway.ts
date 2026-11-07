@@ -80,6 +80,13 @@ export function gatewayProfilePatch(gateway: BrandGateway): string {
     '    models:',
     models,
     '',
+    '# Media tools over the same gateway; the base bundle ships this row disabled.',
+    '- id: tool-media',
+    '  disabled: false',
+    '  config:',
+    `    baseURL: ${scalar(gateway.baseURL)}`,
+    `    apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
+    '',
   ].join('\n')
 }
 

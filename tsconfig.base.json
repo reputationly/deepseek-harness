@@ -597,6 +597,7 @@
       "@deepseek-ai/dsh-tool-terminal": ["./packages/experimental/tool-terminal/src"],
       "@deepseek-ai/dsh-tool-todo": ["./packages/todo/tool-todo/src"],
       "@deepseek-ai/dsh-tool-web": ["./packages/web/tool-web/src"],
+      "@deepseek-ai/dsh-tool-media": ["./packages/media/tool-media/src"],
       "@deepseek-ai/dsh-tool-workflow": ["./packages/workflow/tool-workflow/src"],
       "@deepseek-ai/dsh-tool-working-directory": ["./packages/session/tool-working-directory/src"],
       "@deepseek-ai/dsh-tool-workspace-dependencies": ["./packages/skill/tool-workspace-dependencies/src"],

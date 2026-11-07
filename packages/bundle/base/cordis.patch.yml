@@ -502,6 +502,12 @@
         fetch: true
         searchTimeoutMs: 60000
 
+    # Product media tools over one gateway. Disabled here: a deployment that has a media
+    # gateway enables this row and supplies its endpoint through its own patch layer.
+    - id: tool-media
+      name: '@deepseek-ai/dsh-tool-media'
+      disabled: true
+
     - id: mcp-resources
       name: '@deepseek-ai/dsh-mcp-resources'
 
