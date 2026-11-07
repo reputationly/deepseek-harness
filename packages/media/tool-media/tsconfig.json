@@ -9,6 +9,7 @@
     { "path": "../../../vendor/cordis" },
     { "path": "../../../vendor/schemastery" },
     { "path": "../../core/tools" },
+    { "path": "../../util/launch-environment" },
     { "path": "../../credentials/credentials" },
     { "path": "../../util/values" }
   ]

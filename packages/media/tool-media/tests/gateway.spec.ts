@@ -114,6 +114,17 @@ describe('asynchronous tasks', () => {
     }
   })
 
+  it('reads the media URL from task metadata', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({
+      status: 'completed', metadata: { url: 'https://cdn.example/m.wav' },
+    }))
+    try {
+      await expect(readTask(credential, 't')).resolves.toEqual({ status: 'done', url: 'https://cdn.example/m.wav' })
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
   it('reports a finished task without media as an error', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ status: 'succeeded' }))
     try {

@@ -199,11 +199,15 @@ export async function readTask(request: GatewayRequest, id: string): Promise<Tas
     progress?: number
     url?: string
     content_url?: string
+    result_url?: string
+    metadata?: { url?: string }
+    data?: { url?: string; result_url?: string }
     error?: { message?: string }
   }
   const status = body.status ?? 'pending'
   if (status === 'succeeded' || status === 'success' || status === 'completed' || status === 'done') {
-    const url = body.url ?? body.content_url
+    const url = body.url ?? body.content_url ?? body.result_url
+      ?? body.metadata?.url ?? body.data?.url ?? body.data?.result_url
     if (url === undefined) throw new MediaGatewayError('gateway finished without a media URL')
     return { status: 'done', url }
   }

@@ -15,6 +15,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
+import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { awaitTask, downloadMedia, editImage, generateImage, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
 
 export { MediaGatewayError } from './gateway.ts'
@@ -56,7 +57,7 @@ export const Config: z<Config> = z.object({
   musicModel: z.string().default('minimax-music3'),
   videoModel: z.string().default('minimax-h3-fl2va'),
   outputDir: z.string().default('media-output'),
-  taskTimeoutMs: z.number().default(300_000),
+  taskTimeoutMs: z.number().default(900_000),
   pollIntervalMs: z.number().default(3_000),
 })
 
@@ -83,10 +84,31 @@ function extensionFor(contentType: string): string {
 async function resolveKey(ctx: Context, ref: CredentialRef): Promise<string> {
   const credentials = ctx.get('credentials')
   const hit = credentials === undefined ? undefined : await credentials.resolve(ref)
-  if (hit === undefined) {
+  if (hit !== undefined) return hit.value
+  const ambient = launchEnvironmentOf(ctx).get(ref)?.value ?? process.env[ref]
+  if (ambient === undefined || ambient === '') {
     throw new Error(`tool-media: no API key for ${ref}; store it through the credentials service or export it in the launching environment`)
   }
-  return hit.value
+  return ambient
+}
+
+/** MIME type for a local reference-audio file. */
+function audioMimeType(path: string): string {
+  if (path.endsWith('.mp3')) return 'audio/mpeg'
+  if (path.endsWith('.m4a')) return 'audio/mp4'
+  if (path.endsWith('.flac')) return 'audio/flac'
+  return 'audio/wav'
+}
+
+/**
+ * Turn a reference voice argument into something the gateway can fetch.
+ * @param voice - HTTP(S) URL, data URI, or a local audio file path.
+ * @returns the argument unchanged for URLs, or a data URI for a local file.
+ */
+async function voiceReference(voice: string): Promise<string> {
+  if (/^[a-z][a-z0-9+.-]*:/iu.test(voice)) return voice
+  const bytes = await readFile(voice)
+  return `data:${audioMimeType(voice)};base64,${bytes.toString('base64')}`
 }
 
 /**
@@ -164,7 +186,7 @@ export function apply(ctx: Context, config: Config): void {
     description: 'Synthesize speech from text with a reference voice sample.',
     parameters: {
       text: { type: 'string', required: true, description: 'Text to speak.' },
-      voice: { type: 'string', required: true, description: 'Reference audio URL or data URI that defines the voice.' },
+      voice: { type: 'string', required: true, description: 'Reference voice: an audio file path, HTTP(S) URL, or data URI. The clip must be 30 seconds or shorter.' },
     },
     output: {
       schema: {
@@ -180,7 +202,11 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args, exec) {
       const input = args as { text: string; voice: string }
       const gateway = await request(exec.signal)
-      const audio = await generateSpeech(gateway, { model: resolved.speechModel, text: input.text, voice: input.voice })
+      const audio = await generateSpeech(gateway, {
+        model: resolved.speechModel,
+        text: input.text,
+        voice: await voiceReference(input.voice),
+      })
       return { path: await writeArtifact(resolved.outputDir, 'speech', audio.contentType, audio.bytes), model: resolved.speechModel }
     },
   }))
@@ -206,8 +232,15 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args: unknown, exec: { signal: AbortSignal }) {
       const input = args as { prompt: string; lyrics?: string }
       const gateway = await request(exec.signal)
+      // Music3 reads the arrangement description from request metadata and the lyrics from the prompt.
       const body: Record<string, unknown> = toolName === 'generate_music'
-        ? { instructions: input.prompt, ...(input.lyrics === undefined ? {} : { lyrics: input.lyrics }) }
+        ? {
+          prompt: input.prompt,
+          metadata: {
+            instructions: input.prompt,
+            ...(input.lyrics === undefined ? {} : { lyrics: input.lyrics }),
+          },
+        }
         : { prompt: input.prompt }
       const id = await submitTask(gateway, model, body)
       const url = await awaitTask(gateway, id, { timeoutMs: resolved.taskTimeoutMs, intervalMs: resolved.pollIntervalMs })
