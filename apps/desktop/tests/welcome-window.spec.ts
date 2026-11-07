@@ -47,6 +47,7 @@ const operations = {
   copySignInLink: async () => undefined,
   saveApiKey: () => Promise.resolve({ ok: true as const }),
   skip: () => Promise.resolve(),
+  quit: () => {},
 }
 
 describe('desktop welcome window', () => {
