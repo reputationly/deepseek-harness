@@ -2,7 +2,6 @@
   "name": "@deepseek-ai/dsh-tool-media",
   "description": "Model-facing image, speech, music, and video generation tools over an OpenAI-compatible media gateway",
   "version": "0.2.2-rc.1",
-  "private": true,
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -29,5 +28,17 @@
   "scripts": {
     "bundle": "tsdown"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/media/tool-media"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts"
+  ]
 }
