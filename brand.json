@@ -1,6 +1,6 @@
 {
-  "productName": "Aurora",
-  "bundleId": "com.aurora.agent",
+  "productName": "蒜狸小助手",
+  "bundleId": "com.ovaijisuan.jianli.office",
   "gateway": {
     "baseURL": "https://maas.ovaijisuan.com/v1",
     "apiKeyEnv": "AURORA_API_KEY",
