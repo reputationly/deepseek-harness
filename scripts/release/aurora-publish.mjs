@@ -177,23 +177,31 @@ function zipApplication(artifacts, targetDirectory, zipName) {
  * @param options - artifact directory, target, version, and the installers already collected.
  * @returns the feed text, with the ZIP appended to the caller's file list.
  */
-function synthesizeMacFeed({ artifacts, target, version, files }) {
-  const diskImage = files.find(name => name.endsWith('.dmg'))
-  if (diskImage === undefined) throw new Error(`aurora publish: ${target} produced no disk image to pair with a ZIP`)
-  const zipName = `${diskImage.replace(/\.dmg$/u, '')}.zip`
-  const zipPath = join(artifacts, zipName)
-  if (!existsSync(zipPath)) zipApplication(artifacts, target === 'darwin-arm64' ? 'mac-arm64' : 'mac', zipName)
-  if (!files.includes(zipName)) files.push(zipName)
-  const bytes = readFileSync(zipPath)
+function synthesizeFeed({ artifacts, target, version, files }) {
+  let payload
+  if (target.startsWith('darwin')) {
+    const diskImage = files.find(name => name.endsWith('.dmg'))
+    if (diskImage === undefined) throw new Error(`aurora publish: ${target} produced no disk image to pair with a ZIP`)
+    const zipName = `${diskImage.replace(/\.dmg$/u, '')}.zip`
+    const zipPath = join(artifacts, zipName)
+    if (!existsSync(zipPath)) zipApplication(artifacts, target === 'darwin-arm64' ? 'mac-arm64' : 'mac', zipName)
+    if (!files.includes(zipName)) files.push(zipName)
+    payload = zipName
+  } else {
+    const installer = files.find(name => name.endsWith('.exe'))
+    if (installer === undefined) throw new Error(`aurora publish: ${target} produced no installer`)
+    payload = installer
+  }
+  const bytes = readFileSync(join(artifacts, payload))
   const sha512 = createHash('sha512').update(bytes).digest('base64')
   const size = bytes.length
   return [
     `version: ${version}`,
     'files:',
-    `  - url: ${zipName}`,
+    `  - url: ${payload}`,
     `    sha512: ${sha512}`,
     `    size: ${size}`,
-    `path: ${zipName}`,
+    `path: ${payload}`,
     `sha512: ${sha512}`,
     `releaseDate: '${new Date().toISOString()}'`,
     '',
@@ -250,9 +258,9 @@ function publish(options) {
       }
     }
     const feedPath = join(artifacts, feed)
-    if (!existsSync(feedPath) && target.startsWith('darwin')) {
-      // Unsigned builds stop at the disk image; the updater still needs a ZIP and a feed.
-      writeFileSync(feedPath, synthesizeMacFeed({ artifacts, target, version, files }))
+    if (!existsSync(feedPath)) {
+      // Unsigned builds stop at the installer; the updater still needs a feed (and a ZIP on macOS).
+      writeFileSync(feedPath, synthesizeFeed({ artifacts, target, version, files }))
       for (const file of files) {
         if (!entry.uploaded.has(file)) upload(objectKey(namespace, target, version, file), join(artifacts, file), contentTypeOf(file))
       }
@@ -321,8 +329,8 @@ function main() {
     const grouped = collect(values.artifacts)
     for (const [target, entry] of grouped) {
       const feedPath = join(values.artifacts, entry.feed)
-      if (existsSync(feedPath) || !target.startsWith('darwin')) continue
-      writeFileSync(feedPath, synthesizeMacFeed({ artifacts: values.artifacts, target, version: values.version, files: entry.files }))
+      if (existsSync(feedPath)) continue
+      writeFileSync(feedPath, synthesizeFeed({ artifacts: values.artifacts, target, version: values.version, files: entry.files }))
       console.log(`prepared ${entry.feed} with ${entry.files.length} file(s)`)
     }
     return

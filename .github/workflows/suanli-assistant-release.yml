@@ -83,7 +83,7 @@ jobs:
           # The installed application polls this origin; unsigned builds carry no other update config.
           DSH_BRAND_UPDATE_BASE: ${{ secrets.R2_PUBLIC_BASE }}
         run: pnpm --dir apps/desktop run ${{ matrix.script }} -- --build-version "${{ needs.prepare.outputs.version }}"
-      - name: Prepare the macOS update payload
+      - name: Prepare the update payload
         if: matrix.target == 'mac-arm64'
         env:
           R2_ACCOUNT_ID: unused
