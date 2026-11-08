@@ -15,10 +15,6 @@ on:
         default: '2'
         type: string
 
-concurrency:
-  group: suanli-assistant-release
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
