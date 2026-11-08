@@ -71,3 +71,50 @@ jobs:
           echo "$body" | grep -q "version: ${{ steps.version.outputs.version }}" \
             || { echo "::error::published pointer does not name ${{ steps.version.outputs.version }}"; exit 1; }
           echo "::notice::$url"
+
+  win-x64:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve the publish version
+        id: version
+        run: |
+          $version = "${{ inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($version)) { $version = node scripts/release/aurora-version.mjs }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "publishing $version"
+
+      - name: Build the installer
+        run: pnpm --dir apps/desktop run package:win:x64:unsigned -- --build-version "${{ steps.version.outputs.version }}"
+
+      - name: Publish to R2
+        run: pnpm exec node scripts/release/aurora-publish.mjs --artifacts apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts --version "${{ steps.version.outputs.version }}" --keep "${{ inputs.keep }}"
+
+      - name: Verify the floating pointer
+        run: |
+          $url = "$env:R2_PUBLIC_BASE/suanli-assistant/win32-x64/latest.yml"
+          $body = (Invoke-WebRequest -Uri $url -UseBasicParsing).Content
+          Write-Host $body
+          if (-not $body.Contains("version: ${{ steps.version.outputs.version }}")) { throw "published pointer does not name the new version" }
+          Write-Host "::notice::$url"
