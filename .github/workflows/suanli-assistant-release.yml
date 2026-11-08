@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   mac-arm64:
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 90
     env:
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
