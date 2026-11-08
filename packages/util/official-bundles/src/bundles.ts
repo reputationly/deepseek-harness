@@ -12,7 +12,14 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
   },
   web: {
-    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
+    // The product composition adds the plugin market and voice input so a fresh install can browse
+    // community plugins and dictate without a second setup step.
+    bundles: [
+      '@deepseek-ai/dsh-base',
+      '@deepseek-ai/dsh-web-app',
+      '@deepseek-ai/dsh-experimental-plugin-market-bundle',
+      '@deepseek-ai/dsh-experimental-voice-input-bundle',
+    ],
   },
   headless: {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'],
@@ -31,6 +38,8 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
  */
 export const INSTALLATION_OWNED_PROFILE_TUPLES: Readonly<Record<string, readonly string[]>> = {
   headless: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'],
+  // Profiles created before the market and voice bundles joined the Web composition.
+  web: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
 }
 
 /** Bundles an earlier release shipped and the installation no longer carries; app-boot removes them from profiles. */
