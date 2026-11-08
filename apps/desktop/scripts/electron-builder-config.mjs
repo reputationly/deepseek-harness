@@ -282,3 +282,21 @@ export function createElectronBuilderConfig(
     publish: update === undefined ? null : [{ provider: 'generic', url: update.publicUrl, channel: update.channel }],
   }
 }
+
+/**
+ * Write the generic update feed an unsigned build would otherwise omit.
+ * @param {NodeJS.ProcessEnv} env - packaging environment; `DSH_BRAND_UPDATE_BASE` names the public origin.
+ * @param {NodeJS.Platform} platform - target platform.
+ * @param {string} arch - target architecture.
+ * @returns {string | undefined} path of the generated `app-update.yml`, or undefined when unset.
+ */
+function productUpdateFeed(env, platform, arch) {
+  const base = env.DSH_BRAND_UPDATE_BASE?.trim()
+  if (base === undefined || base === '') return undefined
+  const target = `${platform === 'darwin' ? 'darwin' : 'win32'}-${arch}`
+  const directory = join(env.DSH_DESKTOP_PACKAGING_RUN_DIR ?? tmpdir(), 'brand-update')
+  mkdirSync(directory, { recursive: true })
+  const path = join(directory, `app-update-${target}.yml`)
+  writeFileSync(path, `provider: generic\nurl: ${base.replace(/\/+$/u, '')}/suanli-assistant/${target}\nchannel: latest\n`)
+  return path
+}
