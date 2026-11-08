@@ -24,6 +24,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -143,11 +144,60 @@ export function collect(directory) {
     if (!statSync(path).isFile()) continue
     const target = TARGETS.find(entry => entry.match.test(name))
     if (target === undefined) continue
-    const files = grouped.get(target.target) ?? { feed: target.feed, files: [] }
+    const files = grouped.get(target.target) ?? { feed: target.feed, files: [], uploaded: new Set() }
     files.files.push(name)
     grouped.set(target.target, files)
   }
   return grouped
+}
+
+/**
+ * Zip the packaged application so electron-updater has a differential-update payload.
+ *
+ * Unsigned local builds emit only the disk image; the updater downloads a ZIP and applies a block
+ * map against it, so a feed without one would advertise an update no client can install.
+ *
+ * @param artifacts - electron-builder output directory.
+ * @param targetDirectory - per-target directory holding the application bundle.
+ * @param zipName - artifact file name to write.
+ * @returns the written ZIP path.
+ */
+function zipApplication(artifacts, targetDirectory, zipName) {
+  const directory = join(artifacts, targetDirectory)
+  const bundle = readdirSync(directory).find(name => name.endsWith('.app'))
+  if (bundle === undefined) throw new Error(`aurora publish: ${directory} holds no .app bundle to zip`)
+  const destination = join(artifacts, zipName)
+  // ditto preserves the bundle metadata and resource forks that a plain zip loses.
+  execFileSync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', join(directory, bundle), destination])
+  return destination
+}
+
+/**
+ * Build the macOS feed electron-updater reads when the build produced none.
+ * @param options - artifact directory, target, version, and the installers already collected.
+ * @returns the feed text, with the ZIP appended to the caller's file list.
+ */
+function synthesizeMacFeed({ artifacts, target, version, files }) {
+  const diskImage = files.find(name => name.endsWith('.dmg'))
+  if (diskImage === undefined) throw new Error(`aurora publish: ${target} produced no disk image to pair with a ZIP`)
+  const zipName = `${diskImage.replace(/\.dmg$/u, '')}.zip`
+  const zipPath = join(artifacts, zipName)
+  if (!existsSync(zipPath)) zipApplication(artifacts, target === 'darwin-arm64' ? 'mac-arm64' : 'mac', zipName)
+  if (!files.includes(zipName)) files.push(zipName)
+  const bytes = readFileSync(zipPath)
+  const sha512 = createHash('sha512').update(bytes).digest('base64')
+  const size = bytes.length
+  return [
+    `version: ${version}`,
+    'files:',
+    `  - url: ${zipName}`,
+    `    sha512: ${sha512}`,
+    `    size: ${size}`,
+    `path: ${zipName}`,
+    `sha512: ${sha512}`,
+    `releaseDate: '${new Date().toISOString()}'`,
+    '',
+  ].join('\n')
 }
 
 /**
@@ -188,16 +238,25 @@ function publish(options) {
     s3('PUT', `/${key}`, { endpoint: endpointUrl, bucket, upload: path, contentType })
     console.log(`  uploaded ${key}`)
   }
-  for (const [target, { feed, files }] of grouped) {
+  for (const [target, entry] of grouped) {
+    const { feed, files } = entry
     console.log(`aurora publish: ${target}`)
     for (const file of files) {
       upload(objectKey(namespace, target, version, file), join(artifacts, file), contentTypeOf(file))
+      entry.uploaded.add(file)
       // A fixed path so a download page never has to know the current version.
       if (!file.endsWith('.blockmap')) {
         upload(`${namespace}/${target}/${LATEST_DIRECTORY}/${file}`, join(artifacts, file), contentTypeOf(file))
       }
     }
     const feedPath = join(artifacts, feed)
+    if (!existsSync(feedPath) && target.startsWith('darwin')) {
+      // Unsigned builds stop at the disk image; the updater still needs a ZIP and a feed.
+      writeFileSync(feedPath, synthesizeMacFeed({ artifacts, target, version, files }))
+      for (const file of files) {
+        if (!entry.uploaded.has(file)) upload(objectKey(namespace, target, version, file), join(artifacts, file), contentTypeOf(file))
+      }
+    }
     if (!existsSync(feedPath)) throw new Error(`aurora publish: ${target} has no ${feed}`)
     const rewritten = rewriteFeed(readFileSync(feedPath, 'utf8'), publicBase, namespace, target, version)
     const staged = join(artifacts, `${target}-${feed}`)
@@ -247,6 +306,7 @@ function main() {
       namespace: { type: 'string', default: DEFAULT_NAMESPACE },
       keep: { type: 'string', default: String(DEFAULT_KEEP) },
       'dry-run': { type: 'boolean', default: false },
+      'feed-only': { type: 'boolean', default: false },
     },
     allowPositionals: false,
   })
@@ -255,6 +315,18 @@ function main() {
   }
   const keep = Number(values.keep)
   if (!Number.isInteger(keep) || keep < 1) throw new Error('aurora publish: --keep must be a positive integer')
+  if (values['feed-only']) {
+    // Runs on the build machine: only macOS can zip an application bundle faithfully, while the
+    // publish step may run anywhere once the ZIP and feed exist.
+    const grouped = collect(values.artifacts)
+    for (const [target, entry] of grouped) {
+      const feedPath = join(values.artifacts, entry.feed)
+      if (existsSync(feedPath) || !target.startsWith('darwin')) continue
+      writeFileSync(feedPath, synthesizeMacFeed({ artifacts: values.artifacts, target, version: values.version, files: entry.files }))
+      console.log(`prepared ${entry.feed} with ${entry.files.length} file(s)`)
+    }
+    return
+  }
   publish({
     artifacts: values.artifacts,
     version: values.version,

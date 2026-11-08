@@ -1,7 +1,11 @@
 name: Release 蒜狸小助手
 
-# Manual release: build the macOS arm64 installer, publish it to the R2 bucket, then read the
-# floating pointer back so a broken upload fails here instead of at a customer's update check.
+# Manual release: one version, every platform, one publish.
+#
+# The version is resolved once so the artifact names, the feed's `version:`, and the installed
+# `app.getVersion()` all come from the same release. Each platform only builds; a single publish job
+# uploads every target after all of them succeeded, so a failed platform can never leave the others
+# pointing at a version that does not exist for it.
 on:
   workflow_dispatch:
     inputs:
@@ -19,65 +23,71 @@ permissions:
   contents: read
 
 jobs:
-  mac-arm64:
-    runs-on: macos-latest
-    timeout-minutes: 90
-    env:
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      R2_BUCKET: ${{ secrets.R2_BUCKET }}
-      R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-
-      - name: Enable pnpm
-        run: corepack enable
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Resolve the publish version
-        id: version
+      - id: v
         run: |
           version="${{ inputs.version }}"
-          if [ -z "$version" ]; then
-            version="$(node scripts/release/aurora-version.mjs)"
-          fi
+          if [ -z "$version" ]; then version="$(node scripts/release/aurora-version.mjs)"; fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "publishing $version"
 
-      - name: Build the installer
-        run: |
-          pnpm --dir apps/desktop run package:mac:arm64:unsigned \
-            -- --build-version "${{ steps.version.outputs.version }}"
-
-      - name: Publish to R2
-        run: |
-          pnpm exec node scripts/release/aurora-publish.mjs \
-            --artifacts apps/desktop/.desktop-build/targets/mac-arm64/unsigned-artifacts \
-            --version "${{ steps.version.outputs.version }}" \
-            --keep "${{ inputs.keep }}"
-
-      - name: Verify the floating pointer
-        run: |
-          url="$R2_PUBLIC_BASE/suanli-assistant/darwin-arm64/latest-mac.yml"
-          body="$(curl -fsS "$url")"
-          echo "$body"
-          echo "$body" | grep -q "version: ${{ steps.version.outputs.version }}" \
-            || { echo "::error::published pointer does not name ${{ steps.version.outputs.version }}"; exit 1; }
-          echo "::notice::$url"
-
-  win-x64:
-    runs-on: windows-latest
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: package:mac:arm64:unsigned
+            target: mac-arm64
+            artifact: mac-arm64
+          - os: windows-latest
+            script: package:win:x64:unsigned
+            target: win-x64
+            artifact: win-x64
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
-    defaults:
-      run:
-        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the installer
+        run: pnpm --dir apps/desktop run ${{ matrix.script }} -- --build-version "${{ needs.prepare.outputs.version }}"
+      - name: Prepare the macOS update payload
+        if: matrix.target == 'mac-arm64'
+        env:
+          R2_ACCOUNT_ID: unused
+          R2_BUCKET: unused
+          R2_PUBLIC_BASE: unused
+          R2_ACCESS_KEY_ID: unused
+          R2_SECRET_ACCESS_KEY: unused
+        run: |
+          node scripts/release/aurora-publish.mjs             --artifacts apps/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts             --version "${{ needs.prepare.outputs.version }}" --feed-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.artifact }}
+          path: |
+            apps/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts/*
+            !apps/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts/**/*.app/**
+          retention-days: 7
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
@@ -86,35 +96,24 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-
-      - name: Enable pnpm
-        run: corepack enable
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Resolve the publish version
-        id: version
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          path: artifacts
+          merge-multiple: true
+      - name: Publish every target
         run: |
-          $version = "${{ inputs.version }}"
-          if ([string]::IsNullOrWhiteSpace($version)) { $version = node scripts/release/aurora-version.mjs }
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          Write-Host "publishing $version"
-
-      - name: Build the installer
-        run: pnpm --dir apps/desktop run package:win:x64:unsigned -- --build-version "${{ steps.version.outputs.version }}"
-
-      - name: Publish to R2
-        run: pnpm exec node scripts/release/aurora-publish.mjs --artifacts apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts --version "${{ steps.version.outputs.version }}" --keep "${{ inputs.keep }}"
-
-      - name: Verify the floating pointer
+          node scripts/release/aurora-publish.mjs             --artifacts artifacts             --version "${{ needs.prepare.outputs.version }}"             --keep "${{ inputs.keep }}"
+      - name: Verify both pointers
         run: |
-          $url = "$env:R2_PUBLIC_BASE/suanli-assistant/win32-x64/latest.yml"
-          $body = (Invoke-WebRequest -Uri $url -UseBasicParsing).Content
-          Write-Host $body
-          if (-not $body.Contains("version: ${{ steps.version.outputs.version }}")) { throw "published pointer does not name the new version" }
-          Write-Host "::notice::$url"
+          for target in darwin-arm64:latest-mac.yml win32-x64:latest.yml; do
+            dir="${target%%:*}"; feed="${target##*:}"
+            url="$R2_PUBLIC_BASE/suanli-assistant/$dir/$feed"
+            body="$(curl -fsS "$url")"
+            echo "$body"
+            echo "$body" | grep -q "version: ${{ needs.prepare.outputs.version }}"               || { echo "::error::$url does not name the new version"; exit 1; }
+            echo "::notice::$url"
+          done
