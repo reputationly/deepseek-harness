@@ -76,6 +76,7 @@ jobs:
           DOWNLOAD_TEST_ORIGIN=${{ secrets.R2_PUBLIC_BASE }}
           DOWNLOAD_TEST_RELEASE_ID=0123456789abcdef0123456789abcdef
           DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=${{ secrets.R2_PUBLIC_BASE }}
+          DSH_DESKTOP_MANDATORY_UPDATE_CONFIG={"allowedAuthOrigins":["${{ secrets.R2_PUBLIC_BASE }}"]}
           "@ | Out-File -FilePath apps/desktop/.env.windows -Encoding utf8
       - name: Build the installer
         env:
