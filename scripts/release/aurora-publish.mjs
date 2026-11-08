@@ -78,30 +78,40 @@ function endpoint() {
 }
 
 /**
- * Environment for the S3 client: R2 tokens under the names that client reads, plus the R2-required
- * checksum posture (R2 rejects the client's default trailing-checksum headers on some operations).
- * @returns the child environment.
+ * Sign and run one R2 request through curl's built-in SigV4 support.
+ *
+ * R2 speaks only the S3 API, but that does not require the AWS CLI: curl signs the request itself,
+ * so publishing has no client dependency beyond what the build machine already has.
+ *
+ * @param method - HTTP method.
+ * @param path - object path below the endpoint, already URL-encoded.
+ * @param options - extra headers, upload file, or query string.
+ * @returns the response body.
  */
-function s3Environment() {
-  return {
-    ...process.env,
-    AWS_ACCESS_KEY_ID: required(CONNECTION.keyId),
-    AWS_SECRET_ACCESS_KEY: required(CONNECTION.secret),
-    AWS_DEFAULT_REGION: 'auto',
-    AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required',
-    AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required',
-  }
+function s3(method, path, options = {}) {
+  const args = [
+    '--silent', '--show-error', '--fail-with-body', '--max-time', String(options.timeoutMs ?? 600),
+    '--request', method,
+    '--aws-sigv4', 'aws:amz:auto:s3',
+    '--user', `${required(CONNECTION.keyId)}:${required(CONNECTION.secret)}`,
+    '--header', 'x-amz-content-sha256: UNSIGNED-PAYLOAD',
+    // R2 closes the connection on the client's `Expect: 100-continue` probe; drop it.
+    '--header', 'Expect:',
+    '--retry', '3', '--retry-delay', '2', '--retry-all-errors',
+    ...(options.contentType === undefined ? [] : ['--header', `content-type: ${options.contentType}`]),
+    ...(options.upload === undefined ? [] : ['--upload-file', options.upload]),
+    `${options.endpoint}/${options.bucket}${path}${options.query ?? ''}`,
+  ]
+  return execFileSync('curl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
-/**
- * Run one command and return its stdout.
- * @param command - executable.
- * @param args - arguments.
- * @param environment - optional child environment.
- * @returns trimmed stdout.
- */
-function run(command, args, environment = process.env) {
-  return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], env: environment }).trim()
+/** Content type for one artifact, so a browser or CDN does not guess. */
+function contentTypeOf(file) {
+  if (file.endsWith('.dmg')) return 'application/x-apple-diskimage'
+  if (file.endsWith('.zip')) return 'application/zip'
+  if (file.endsWith('.exe')) return 'application/vnd.microsoft.portable-executable'
+  if (file.endsWith('.blockmap')) return 'application/octet-stream'
+  return 'application/octet-stream'
 }
 
 /**
@@ -160,31 +170,32 @@ export function rewriteFeed(source, publicBase, namespace, target, version) {
  * @param options - parsed command line.
  */
 function publish(options) {
-  const target = endpoint()
+  const endpointUrl = endpoint()
   const bucket = required(CONNECTION.bucket)
   const publicBase = required(CONNECTION.publicBase).replace(/\/+$/u, '')
   const { artifacts, version, namespace, keep, dryRun } = options
   const grouped = collect(artifacts)
   if (grouped.size === 0) throw new Error(`aurora publish: no installers in ${artifacts}`)
-  const environment = dryRun ? process.env : s3Environment()
-  const upload = (key, path) => {
+  const upload = (key, path, contentType) => {
     if (dryRun) {
       console.log(`  would upload ${key}`)
       return
     }
-    run('aws', ['s3', 'cp', path, `s3://${bucket}/${key}`, '--endpoint-url', target], environment)
+    s3('PUT', `/${key}`, { endpoint: endpointUrl, bucket, upload: path, contentType })
     console.log(`  uploaded ${key}`)
   }
   for (const [target, { feed, files }] of grouped) {
     console.log(`aurora publish: ${target}`)
-    for (const file of files) upload(objectKey(namespace, target, version, file), join(artifacts, file))
+    for (const file of files) {
+      upload(objectKey(namespace, target, version, file), join(artifacts, file), contentTypeOf(file))
+    }
     const feedPath = join(artifacts, feed)
     if (!existsSync(feedPath)) throw new Error(`aurora publish: ${target} has no ${feed}`)
     const rewritten = rewriteFeed(readFileSync(feedPath, 'utf8'), publicBase, namespace, target, version)
     const staged = join(artifacts, `${target}-${feed}`)
     writeFileSync(staged, rewritten)
-    upload(`${namespace}/${target}/${feed}`, staged)
-    prune({ bucket, endpoint: target, namespace, target, keep, current: version, dryRun, environment })
+    upload(`${namespace}/${target}/${feed}`, staged, 'text/yaml; charset=utf-8')
+    prune({ bucket, endpoint: endpointUrl, namespace, target, keep, current: version, dryRun })
   }
 }
 
@@ -192,30 +203,31 @@ function publish(options) {
  * Delete version directories beyond the retention budget.
  * @param options - bucket connection and retention inputs.
  */
-function prune({ bucket, endpoint, namespace, target, keep, current, dryRun, environment }) {
+function prune({ bucket, endpoint, namespace, target, keep, current, dryRun }) {
   const prefix = `${namespace}/${target}/versions/`
   let listing
   try {
-    listing = run('aws', ['s3', 'ls', `s3://${bucket}/${prefix}`, '--endpoint-url', endpoint], environment)
-  } catch (_listingFailed) {
-    console.log(`  (no existing versions under ${prefix})`)
+    // The bucket root takes no path segment; a trailing slash would list a `//` prefix.
+    listing = s3('GET', '', { endpoint, bucket, query: `?list-type=2&prefix=${encodeURIComponent(prefix)}` })
+  } catch (error) {
+    // An unreadable listing must not fail the release, but it must not look like "no old versions".
+    console.log(`  (could not list ${prefix}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)})`)
     return
   }
-  const versions = listing.split('\n')
-    .map(line => line.trim().split(/\s+/u).pop())
-    .filter(value => value !== undefined && value.startsWith(prefix))
-    .map(value => value.slice(prefix.length).replace(/\/$/u, ''))
-    .filter(value => value !== '')
-  const sorted = [...new Set(versions)].sort()
+  const keys = [...listing.matchAll(/<Key>([^<]+)<\/Key>/gu)].map(match => match[1])
+  const versions = [...new Set(keys
+    .map(key => key.slice(prefix.length).split('/')[0])
+    .filter(value => value !== undefined && value !== ''))]
+  const sorted = versions.sort()
   const doomed = sorted.slice(0, Math.max(0, sorted.length - keep)).filter(value => value !== current)
   for (const version of doomed) {
-    const key = `s3://${bucket}/${prefix}${version}/`
+    const stale = keys.filter(key => key.startsWith(`${prefix}${version}/`))
     if (dryRun) {
-      console.log(`  would delete ${prefix}${version}/`)
+      console.log(`  would delete ${String(stale.length)} object(s) under ${prefix}${version}/`)
       continue
     }
-    run('aws', ['s3', 'rm', key, '--recursive', '--endpoint-url', endpoint], environment)
-    console.log(`  deleted ${prefix}${version}/`)
+    for (const key of stale) s3('DELETE', `/${key}`, { endpoint, bucket })
+    console.log(`  deleted ${prefix}${version}/ (${String(stale.length)} object(s))`)
   }
 }
 
