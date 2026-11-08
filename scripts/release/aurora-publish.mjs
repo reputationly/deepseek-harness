@@ -269,8 +269,40 @@ function publish(options) {
     const rewritten = rewriteFeed(readFileSync(feedPath, 'utf8'), publicBase, namespace, target, version)
     const staged = join(artifacts, `${target}-${feed}`)
     writeFileSync(staged, rewritten)
+    pruneFloating({ bucket, endpoint: endpointUrl, namespace, target, keep: new Set(files), dryRun })
     upload(`${namespace}/${target}/${feed}`, staged, 'text/yaml; charset=utf-8')
     prune({ bucket, endpoint: endpointUrl, namespace, target, keep, current: version, dryRun })
+  }
+}
+
+/**
+ * Remove floating copies left by earlier releases.
+ *
+ * The floating path keeps its versioned file name so a download always names what it installs, which
+ * means every release adds a file there; without this the directory grows without bound and a stale
+ * entry can be served long after its version directory is gone.
+ *
+ * @param options - bucket connection, target, the current release's file names, and the dry-run flag.
+ */
+function pruneFloating({ bucket, endpoint, namespace, target, keep, dryRun }) {
+  const prefix = `${namespace}/${target}/${LATEST_DIRECTORY}/`
+  let listing
+  try {
+    listing = s3('GET', '', { endpoint, bucket, query: `?list-type=2&prefix=${encodeURIComponent(prefix)}` })
+  } catch (error) {
+    console.log(`  (could not list ${prefix}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)})`)
+    return
+  }
+  const stale = [...listing.matchAll(/<Key>([^<]+)<\/Key>/gu)]
+    .map(match => match[1])
+    .filter(key => !keep.has(key.slice(prefix.length)))
+  for (const key of stale) {
+    if (dryRun) {
+      console.log(`  would delete ${key}`)
+      continue
+    }
+    s3('DELETE', `/${key}`, { endpoint, bucket })
+    console.log(`  deleted ${key}`)
   }
 }
 
