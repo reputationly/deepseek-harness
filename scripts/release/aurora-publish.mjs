@@ -3,10 +3,11 @@
  *
  * Layout: every target keeps a mutable pointer beside immutable version directories.
  *
- *   aurora/darwin-arm64/latest-mac.yml                     <- pointer, rewritten per release
- *   aurora/darwin-arm64/versions/<version>/Aurora-...dmg   <- immutable, one directory per build
- *   aurora/win32-x64/latest.yml
- *   aurora/win32-x64/versions/<version>/Aurora-...exe
+ *   suanli-assistant/darwin-arm64/latest-mac.yml                     <- update pointer, rewritten per release
+ *   suanli-assistant/darwin-arm64/latest/<installer>                 <- floating download, overwritten
+ *   suanli-assistant/darwin-arm64/versions/<version>/<installer>     <- immutable, one directory per build
+ *   suanli-assistant/win32-x64/latest.yml
+ *   suanli-assistant/win32-x64/versions/<version>/<installer>
  *
  * The pointer is rewritten only after every package of that target has uploaded, so a client never
  * reads a feed whose file is not there yet. Version directories are never overwritten: a release
@@ -44,7 +45,10 @@ const CONNECTION = {
 }
 
 /** Product namespace inside the bucket; every key lives under it. */
-const DEFAULT_NAMESPACE = 'aurora'
+const DEFAULT_NAMESPACE = 'suanli-assistant'
+
+/** Directory holding the floating copy of each installer, overwritten by every release. */
+const LATEST_DIRECTORY = 'latest'
 
 /** Version directories kept per target, including the one being published. */
 const DEFAULT_KEEP = 2
@@ -188,6 +192,10 @@ function publish(options) {
     console.log(`aurora publish: ${target}`)
     for (const file of files) {
       upload(objectKey(namespace, target, version, file), join(artifacts, file), contentTypeOf(file))
+      // A fixed path so a download page never has to know the current version.
+      if (!file.endsWith('.blockmap')) {
+        upload(`${namespace}/${target}/${LATEST_DIRECTORY}/${file}`, join(artifacts, file), contentTypeOf(file))
+      }
     }
     const feedPath = join(artifacts, feed)
     if (!existsSync(feedPath)) throw new Error(`aurora publish: ${target} has no ${feed}`)

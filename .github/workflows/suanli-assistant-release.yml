@@ -1,0 +1,77 @@
+name: Release 蒜狸小助手
+
+# Manual release: build the macOS arm64 installer, publish it to the R2 bucket, then read the
+# floating pointer back so a broken upload fails here instead of at a customer's update check.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本（留空则按 harness 版本 + UTC 分钟自动生成）'
+        required: false
+        type: string
+      keep:
+        description: '每个平台保留的版本目录数'
+        required: false
+        default: '2'
+        type: string
+
+concurrency:
+  group: suanli-assistant-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mac-arm64:
+    runs-on: macos-14
+    timeout-minutes: 90
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve the publish version
+        id: version
+        run: |
+          version="${{ inputs.version }}"
+          if [ -z "$version" ]; then
+            version="$(node scripts/release/aurora-version.mjs)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publishing $version"
+
+      - name: Build the installer
+        run: |
+          pnpm --dir apps/desktop run package:mac:arm64:unsigned \
+            -- --build-version "${{ steps.version.outputs.version }}"
+
+      - name: Publish to R2
+        run: |
+          pnpm exec node scripts/release/aurora-publish.mjs \
+            --artifacts apps/desktop/.desktop-build/targets/mac-arm64/unsigned-artifacts \
+            --version "${{ steps.version.outputs.version }}" \
+            --keep "${{ inputs.keep }}"
+
+      - name: Verify the floating pointer
+        run: |
+          url="$R2_PUBLIC_BASE/suanli-assistant/darwin-arm64/latest-mac.yml"
+          body="$(curl -fsS "$url")"
+          echo "$body"
+          echo "$body" | grep -q "version: ${{ steps.version.outputs.version }}" \
+            || { echo "::error::published pointer does not name ${{ steps.version.outputs.version }}"; exit 1; }
+          echo "::notice::$url"
