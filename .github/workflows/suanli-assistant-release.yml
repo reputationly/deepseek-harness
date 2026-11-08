@@ -78,6 +78,9 @@ jobs:
           DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=${{ secrets.R2_PUBLIC_BASE }}
           "@ | Out-File -FilePath apps/desktop/.env.windows -Encoding utf8
       - name: Build the installer
+        env:
+          # The installed application polls this origin; unsigned builds carry no other update config.
+          DSH_BRAND_UPDATE_BASE: ${{ secrets.R2_PUBLIC_BASE }}
         run: pnpm --dir apps/desktop run ${{ matrix.script }} -- --build-version "${{ needs.prepare.outputs.version }}"
       - name: Prepare the macOS update payload
         if: matrix.target == 'mac-arm64'
