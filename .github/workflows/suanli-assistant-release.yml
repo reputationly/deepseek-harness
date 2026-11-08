@@ -64,6 +64,19 @@ jobs:
         run: corepack enable
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Write the Windows release settings
+        if: matrix.target == 'win-x64'
+        shell: pwsh
+        run: |
+          # Unsigned Windows builds still read the release settings file; it also carries the update
+          # origin the installed application later polls.
+          @"
+          DSH_DESKTOP_APP_ID=com.ovaijisuan.jianli.office
+          DSH_DESKTOP_AUTO_UPDATE_ENV=test
+          DOWNLOAD_TEST_ORIGIN=${{ secrets.R2_PUBLIC_BASE }}
+          DOWNLOAD_TEST_RELEASE_ID=0123456789abcdef0123456789abcdef
+          DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=${{ secrets.R2_PUBLIC_BASE }}
+          "@ | Out-File -FilePath apps/desktop/.env.windows -Encoding utf8
       - name: Build the installer
         run: pnpm --dir apps/desktop run ${{ matrix.script }} -- --build-version "${{ needs.prepare.outputs.version }}"
       - name: Prepare the macOS update payload
