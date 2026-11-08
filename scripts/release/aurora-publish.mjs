@@ -16,6 +16,8 @@
  * being published. Rollback is republishing an older pointer, which only works while that directory
  * still exists — that is what the retention budget buys.
  *
+ *     R2_ACCOUNT_ID=… R2_BUCKET=… R2_PUBLIC_BASE=… \
+ *     R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=… \
  *     node scripts/release/aurora-publish.mjs --artifacts <dir> --version <version> [--keep 2]
  *     node scripts/release/aurora-publish.mjs --artifacts <dir> --version <v> --dry-run
  */
@@ -25,11 +27,20 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 
-/** Environment variables the bucket connection reads. Credentials never appear in arguments. */
+/**
+ * Cloudflare R2 connection read from the environment.
+ *
+ * R2 speaks the S3 API and nothing else, so the upload below runs the S3 client against R2's
+ * endpoint. The credentials are R2 API tokens; the `AWS_*` names only exist inside the child
+ * process, because that is what the S3 client reads.
+ */
 const CONNECTION = {
-  endpoint: 'AURORA_S3_ENDPOINT',
-  bucket: 'AURORA_S3_BUCKET',
-  publicBase: 'AURORA_PUBLIC_BASE',
+  account: 'R2_ACCOUNT_ID',
+  endpoint: 'R2_ENDPOINT',
+  bucket: 'R2_BUCKET',
+  publicBase: 'R2_PUBLIC_BASE',
+  keyId: 'R2_ACCESS_KEY_ID',
+  secret: 'R2_SECRET_ACCESS_KEY',
 }
 
 /** Product namespace inside the bucket; every key lives under it. */
@@ -40,9 +51,9 @@ const DEFAULT_KEEP = 2
 
 /** Artifact suffix to target directory. */
 const TARGETS = [
-  { match: /-mac-arm64-unsigned\.(?:dmg|zip)$/u, target: 'darwin-arm64', feed: 'latest-mac.yml' },
-  { match: /-mac-x64-unsigned\.(?:dmg|zip)$/u, target: 'darwin-x64', feed: 'latest-mac.yml' },
-  { match: /-win-x64-unsigned\.exe$/u, target: 'win32-x64', feed: 'latest.yml' },
+  { match: /-mac-arm64-unsigned\.(?:dmg|zip)(?:\.blockmap)?$/u, target: 'darwin-arm64', feed: 'latest-mac.yml' },
+  { match: /-mac-x64-unsigned\.(?:dmg|zip)(?:\.blockmap)?$/u, target: 'darwin-x64', feed: 'latest-mac.yml' },
+  { match: /-win-x64-unsigned\.exe(?:\.blockmap)?$/u, target: 'win32-x64', feed: 'latest.yml' },
 ]
 
 /**
@@ -57,13 +68,40 @@ function required(name) {
 }
 
 /**
+ * Resolve the R2 endpoint from an explicit URL or the account id.
+ * @returns the S3-compatible endpoint.
+ */
+function endpoint() {
+  const explicit = process.env[CONNECTION.endpoint]?.trim()
+  if (explicit !== undefined && explicit !== '') return explicit
+  return `https://${required(CONNECTION.account)}.r2.cloudflarestorage.com`
+}
+
+/**
+ * Environment for the S3 client: R2 tokens under the names that client reads, plus the R2-required
+ * checksum posture (R2 rejects the client's default trailing-checksum headers on some operations).
+ * @returns the child environment.
+ */
+function s3Environment() {
+  return {
+    ...process.env,
+    AWS_ACCESS_KEY_ID: required(CONNECTION.keyId),
+    AWS_SECRET_ACCESS_KEY: required(CONNECTION.secret),
+    AWS_DEFAULT_REGION: 'auto',
+    AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required',
+    AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required',
+  }
+}
+
+/**
  * Run one command and return its stdout.
  * @param command - executable.
  * @param args - arguments.
+ * @param environment - optional child environment.
  * @returns trimmed stdout.
  */
-function run(command, args) {
-  return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim()
+function run(command, args, environment = process.env) {
+  return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], env: environment }).trim()
 }
 
 /**
@@ -101,7 +139,7 @@ export function collect(directory) {
 /**
  * Rewrite one electron-builder feed so its URLs point at the versioned directory.
  * @param source - original feed text.
- * @param publicBase - public bucket base URL without a trailing slash.
+ * @param publicBase - public origin serving the bucket, without a trailing slash or namespace.
  * @param namespace - product namespace.
  * @param target - target directory.
  * @param version - publish version.
@@ -109,7 +147,7 @@ export function collect(directory) {
  */
 export function rewriteFeed(source, publicBase, namespace, target, version) {
   return source.replace(
-    /^(\s*(?:url|path):\s*)(.+)$/gmu,
+    /^(\s*(?:-\s+)?(?:url|path):\s*)(.+)$/gmu,
     (_line, prefix, value) => {
       const file = value.includes('/') ? value.slice(value.lastIndexOf('/') + 1) : value
       return `${prefix}${publicBase}/${objectKey(namespace, target, version, file)}`
@@ -122,18 +160,19 @@ export function rewriteFeed(source, publicBase, namespace, target, version) {
  * @param options - parsed command line.
  */
 function publish(options) {
-  const endpoint = required(CONNECTION.endpoint)
+  const target = endpoint()
   const bucket = required(CONNECTION.bucket)
   const publicBase = required(CONNECTION.publicBase).replace(/\/+$/u, '')
   const { artifacts, version, namespace, keep, dryRun } = options
   const grouped = collect(artifacts)
   if (grouped.size === 0) throw new Error(`aurora publish: no installers in ${artifacts}`)
+  const environment = dryRun ? process.env : s3Environment()
   const upload = (key, path) => {
     if (dryRun) {
       console.log(`  would upload ${key}`)
       return
     }
-    run('aws', ['s3', 'cp', path, `s3://${bucket}/${key}`, '--endpoint-url', endpoint])
+    run('aws', ['s3', 'cp', path, `s3://${bucket}/${key}`, '--endpoint-url', target], environment)
     console.log(`  uploaded ${key}`)
   }
   for (const [target, { feed, files }] of grouped) {
@@ -145,7 +184,7 @@ function publish(options) {
     const staged = join(artifacts, `${target}-${feed}`)
     writeFileSync(staged, rewritten)
     upload(`${namespace}/${target}/${feed}`, staged)
-    prune({ bucket, endpoint, namespace, target, keep, current: version, dryRun })
+    prune({ bucket, endpoint: target, namespace, target, keep, current: version, dryRun, environment })
   }
 }
 
@@ -153,11 +192,11 @@ function publish(options) {
  * Delete version directories beyond the retention budget.
  * @param options - bucket connection and retention inputs.
  */
-function prune({ bucket, endpoint, namespace, target, keep, current, dryRun }) {
+function prune({ bucket, endpoint, namespace, target, keep, current, dryRun, environment }) {
   const prefix = `${namespace}/${target}/versions/`
   let listing
   try {
-    listing = run('aws', ['s3', 'ls', `s3://${bucket}/${prefix}`, '--endpoint-url', endpoint])
+    listing = run('aws', ['s3', 'ls', `s3://${bucket}/${prefix}`, '--endpoint-url', endpoint], environment)
   } catch (_listingFailed) {
     console.log(`  (no existing versions under ${prefix})`)
     return
@@ -175,7 +214,7 @@ function prune({ bucket, endpoint, namespace, target, keep, current, dryRun }) {
       console.log(`  would delete ${prefix}${version}/`)
       continue
     }
-    run('aws', ['s3', 'rm', key, '--recursive', '--endpoint-url', endpoint])
+    run('aws', ['s3', 'rm', key, '--recursive', '--endpoint-url', endpoint], environment)
     console.log(`  deleted ${prefix}${version}/`)
   }
 }
