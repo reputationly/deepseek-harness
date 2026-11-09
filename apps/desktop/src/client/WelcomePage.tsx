@@ -60,7 +60,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
       <form id="key-form" className="key-form" noValidate onSubmit={(event) => { void saveKey(event) }} aria-busy={busy}>
         <header className="key-heading"><h1 id="key-title">{m.welcomeKeyTitle}</h1><p id="key-description">{m.welcomeKeyDescription}</p></header>
         {steps.length === 0 ? null : <div className="key-guide">
-          <ol id="key-steps" className="key-steps">{steps.map(step => <li key={step}>{step}</li>)}</ol>
+          <ol id="key-steps" className="key-steps">{steps.map((step, index) => <li key={step}>{step}<img className="key-step-shot" src={`assets/key-step-${String(index + 1)}.png`} alt="" /></li>)}</ol>
           {api.openKeyPortal === undefined ? null
             : <button id="open-key-portal" className="link" type="button" onClick={() => { void api.openKeyPortal?.() }}>{m.welcomeKeyOpenPortal}</button>}
         </div>}

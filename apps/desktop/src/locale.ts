@@ -116,7 +116,7 @@ export const en = {
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Configure official DeepSeek models to start using Harness'
     : `Enter your official ${PRODUCT_NAME} API key. Get one at ${KEY_PORTAL}:`,
-  welcomeKeySteps: keySteps(['Open the token page and sign in.', 'Click “添加令牌” (Add token).', `Name it “${PRODUCT_NAME}”, choose “默认分组” (default group), and click Submit.`, 'Copy the key that starts with sk- and paste it below.']),
+  welcomeKeySteps: keySteps(['Open Token management.', 'Create a token.']),
   welcomeKeyOpenPortal: 'Open Token page',
   welcomeKeyPlaceholder: 'Enter API key',
   welcomeKeySave: 'Save and continue',
@@ -314,7 +314,7 @@ export const zh = {
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? '配置 DeepSeek 官方模型，即可开始使用'
     : `请填写${PRODUCT_NAME}官方 API Key，可按以下步骤在 ${KEY_PORTAL} 获取：`,
-  welcomeKeySteps: keySteps(['打开令牌页并登录。', '点击「添加令牌」。', `令牌名称填「${PRODUCT_NAME}」，令牌分组选「默认分组」，点击「提交」。`, '复制 sk- 开头的密钥，粘贴到下方。']),
+  welcomeKeySteps: keySteps(['打开令牌管理', '创建令牌']),
   welcomeKeyOpenPortal: '打开令牌页',
   welcomeKeyPlaceholder: '输入 API 密钥',
   welcomeKeySave: '保存并继续',
@@ -510,7 +510,7 @@ export const ja = {
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? '公式のDeepSeekモデルを設定してHarnessを使い始めましょう'
     : `${PRODUCT_NAME}の公式 API キーを入力してください。${KEY_PORTAL} で取得できます`,
-  welcomeKeySteps: keySteps(['トークンページを開いてログインします。', '「添加令牌」(トークンを追加) をクリックします。', `名前に「${PRODUCT_NAME}」と入力し、「默认分组」(デフォルトグループ) を選んで送信します。`, 'sk- で始まるキーをコピーして下に貼り付けます。']),
+  welcomeKeySteps: keySteps(['トークン管理を開く', 'トークンを作成']),
   welcomeKeyOpenPortal: 'トークンページを開く',
   welcomeKeyPlaceholder: 'APIキーを入力',
   welcomeKeySave: '保存して続行',
@@ -706,7 +706,7 @@ export const es = {
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Configura los modelos oficiales DeepSeek para empezar a utilizar Harness'
     : `Introduce tu clave de API oficial de ${PRODUCT_NAME}. Obtenla en ${KEY_PORTAL}`,
-  welcomeKeySteps: keySteps(['Abre la página de tokens e inicia sesión.', 'Haz clic en “添加令牌” (Añadir token).', `Llámalo “${PRODUCT_NAME}”, elige “默认分组” (grupo predeterminado) y envía.`, 'Copia la clave que empieza por sk- y pégala abajo.']),
+  welcomeKeySteps: keySteps(['Abre la gestión de tokens.', 'Crea un token.']),
   welcomeKeyOpenPortal: 'Abrir página de tokens',
   welcomeKeyPlaceholder: 'Ingrese la clave API',
   welcomeKeySave: 'Guardar y continuar',
@@ -902,7 +902,7 @@ export const fr = {
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Configurez les modèles DeepSeek officiels pour commencer à utiliser Harness'
     : `Saisissez votre clé API officielle ${PRODUCT_NAME}. Obtenez-la sur ${KEY_PORTAL}`,
-  welcomeKeySteps: keySteps(['Ouvrez la page des jetons et connectez-vous.', 'Cliquez sur « 添加令牌 » (Ajouter un jeton).', `Nommez-le « ${PRODUCT_NAME} », choisissez « 默认分组 » (groupe par défaut) et validez.`, 'Copiez la clé qui commence par sk- et collez-la ci-dessous.']),
+  welcomeKeySteps: keySteps(['Ouvrez la gestion des jetons.', 'Créez un jeton.']),
   welcomeKeyOpenPortal: 'Ouvrir la page des jetons',
   welcomeKeyPlaceholder: 'Entrez la clé API',
   welcomeKeySave: 'Enregistrer et continuer',
@@ -1098,7 +1098,7 @@ export const de = {
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Konfigurieren Sie offizielle DeepSeek-Modelle für die Verwendung von Harness'
     : `Geben Sie Ihren offiziellen ${PRODUCT_NAME}-API-Schlüssel ein. Erhältlich unter ${KEY_PORTAL}`,
-  welcomeKeySteps: keySteps(['Öffnen Sie die Token-Seite und melden Sie sich an.', 'Klicken Sie auf „添加令牌“ (Token hinzufügen).', `Nennen Sie ihn „${PRODUCT_NAME}“, wählen Sie „默认分组“ (Standardgruppe) und senden Sie ab.`, 'Kopieren Sie den Schlüssel, der mit sk- beginnt, und fügen Sie ihn unten ein.']),
+  welcomeKeySteps: keySteps(['Öffnen Sie die Token-Verwaltung.', 'Erstellen Sie einen Token.']),
   welcomeKeyOpenPortal: 'Token-Seite öffnen',
   welcomeKeyPlaceholder: 'API-Schlüssel eingeben',
   welcomeKeySave: 'Speichern und fortfahren',
@@ -1294,7 +1294,7 @@ export const ru = {
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Настройте официальные модели DeepSeek, чтобы начать использовать Harness.'
     : `Введите официальный API-ключ ${PRODUCT_NAME}. Получить его можно на ${KEY_PORTAL}`,
-  welcomeKeySteps: keySteps(['Откройте страницу токенов и войдите.', 'Нажмите «添加令牌» (Добавить токен).', `Назовите его «${PRODUCT_NAME}», выберите «默认分组» (группа по умолчанию) и отправьте.`, 'Скопируйте ключ, начинающийся с sk-, и вставьте его ниже.']),
+  welcomeKeySteps: keySteps(['Откройте управление токенами.', 'Создайте токен.']),
   welcomeKeyOpenPortal: 'Открыть страницу токенов',
   welcomeKeyPlaceholder: 'Введите ключ API',
   welcomeKeySave: 'Сохранить и продолжить',
@@ -1490,7 +1490,7 @@ export const pt = {
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Configure modelos DeepSeek oficiais para começar a usar o Harness'
     : `Insira sua chave de API oficial do ${PRODUCT_NAME}. Obtenha-a em ${KEY_PORTAL}`,
-  welcomeKeySteps: keySteps(['Abra a página de tokens e faça login.', 'Clique em “添加令牌” (Adicionar token).', `Dê o nome “${PRODUCT_NAME}”, escolha “默认分组” (grupo padrão) e envie.`, 'Copie a chave que começa com sk- e cole abaixo.']),
+  welcomeKeySteps: keySteps(['Abra o gerenciamento de tokens.', 'Crie um token.']),
   welcomeKeyOpenPortal: 'Abrir página de tokens',
   welcomeKeyPlaceholder: 'Insira a chave de API',
   welcomeKeySave: 'Salvar e continuar',
