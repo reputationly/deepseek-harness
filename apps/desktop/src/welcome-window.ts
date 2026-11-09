@@ -16,7 +16,7 @@ import { WELCOME_IPC, type WelcomeOperations } from './welcome-api.ts'
 export function welcomeWindowOptions(platform: NodeJS.Platform, locale: DesktopLocale, dark = false): BrowserWindowConstructorOptions {
   return {
     width: 600,
-    height: 880,
+    height: 920,
     useContentSize: true,
     center: true,
     resizable: false,
