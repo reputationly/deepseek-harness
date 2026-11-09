@@ -20,3 +20,12 @@ export interface BrandGateway {
 
 /** Product model gateway: endpoint, credential reference, and the catalog the shell pins. */
 export declare const GATEWAY: BrandGateway
+
+/** Directory name of the product-owned Harness home under the OS home. */
+export declare const HOME_DIR_NAME: string
+
+/** URL scheme the product registers with the operating system. */
+export declare const URL_SCHEME: string
+
+/** Packaged application manifest name; Electron derives the userData directory from it. */
+export declare const PACKAGE_NAME: string

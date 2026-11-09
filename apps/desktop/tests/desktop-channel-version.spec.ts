@@ -1,8 +1,11 @@
-import { readFileSync } from 'node:fs'
-import { expect, it } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { expect, it, onTestFinished } from 'vitest'
 import { desktopCiVersion } from '../scripts/desktop-ci-version.mjs'
 import { desktopBuildVersionPrefix } from '../scripts/desktop-build-version.mjs'
 import { createElectronBuilderConfig } from '../scripts/electron-builder-config.mjs'
+import { PACKAGE_NAME } from '../scripts/desktop-brand.mjs'
 
 it.each(['nightly', 'stable'] as const)('resolves every CI version mode independently of %s', (channel) => {
   const now = new Date('2026-11-03T00:00:00Z')
@@ -35,13 +38,15 @@ it.each(['arm64', 'x64'] as const)('embeds stable in a prerelease macOS %s packa
     DSH_DESKTOP_MACOS_TEAM_ID: 'TEAMID1234',
     APPLE_KEYCHAIN_PROFILE: 'channel-test',
   }, 'darwin', arch)
-  expect(config.extraMetadata).toMatchObject({ version, dshDesktopUpdateChannel: 'stable' })
+  expect(config.extraMetadata).toMatchObject({ name: PACKAGE_NAME, version, dshDesktopUpdateChannel: 'stable' })
   expect(config.publish).toEqual([{ provider: 'generic', url: `https://download.deepseek.com/dsh-desk/feeds/mac-${arch}/`, channel: 'stable' }])
 })
 
 it('accepts a stable prerelease in an unsigned Windows x64 configuration', () => {
   const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
   const version = `${desktopBuildVersionPrefix(manifest.version)}20261103.1`
+  const run = mkdtempSync(join(tmpdir(), 'dsh-desktop-channel-'))
+  onTestFinished(() => { rmSync(run, { recursive: true, force: true }) })
   const config = createElectronBuilderConfig({
     DSH_DESKTOP_APP_ID: 'com.example.channel-test',
     DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
@@ -49,7 +54,11 @@ it('accepts a stable prerelease in an unsigned Windows x64 configuration', () =>
     DSH_DESKTOP_BUILD_VERSION: version,
     DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://policy.example.com',
     DSH_DESKTOP_UNSIGNED: '1',
+    DSH_DESKTOP_PACKAGING_RUN_DIR: run,
+    DSH_BRAND_UPDATE_BASE: 'https://updates.example.com',
   }, 'win32', 'x64')
-  expect(config.extraMetadata).toMatchObject({ version })
+  expect(config.extraMetadata).toMatchObject({ name: PACKAGE_NAME, version })
   expect(config.publish).toBeNull()
+  expect(readFileSync(join(run, 'brand-update', 'app-update-win32-x64.yml'), 'utf8'))
+    .toBe('provider: generic\nurl: https://updates.example.com/suanli-assistant/win32-x64\nchannel: nightly\n')
 })

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { repositoryClientBuildEnvironment, resolveClientBuildEnvironment } from '../../scripts/client-build-environment.ts'
 import { packagedImportsPlugin } from './scripts/desktop-bundle-imports.mjs'
-import { GATEWAY, PRODUCT_NAME } from './scripts/desktop-brand.mjs'
+import { GATEWAY, HOME_DIR_NAME, PRODUCT_NAME, URL_SCHEME } from './scripts/desktop-brand.mjs'
 
 // This config runs after the workspace tsdown pass, not inside it: the main bundle inlines
 // workspace devDependencies from their lib/ output, which the concurrent workspace pass does
@@ -39,6 +39,12 @@ const brandGatewayDefine = { 'process.env.DSH_BRAND_GATEWAY': JSON.stringify(JSO
 /** Inline the product name used by shell menus, dialogs, and the welcome window. */
 const brandNameDefine = { 'process.env.DSH_DESKTOP_PRODUCT_NAME': JSON.stringify(PRODUCT_NAME) }
 
+/** Inline the product-owned Harness home directory name so the packaged shell stays out of the user's own dsh home. */
+const brandHomeDefine = { 'process.env.DSH_BRAND_HOME_DIR': JSON.stringify(HOME_DIR_NAME) }
+
+/** Inline the URL scheme the product registers with the operating system. */
+const brandSchemeDefine = { 'process.env.DSH_BRAND_URL_SCHEME': JSON.stringify(URL_SCHEME) }
+
 export default defineConfig([
   {
     entry: ['lib/types/operation-report-worker.js'],
@@ -62,7 +68,7 @@ export default defineConfig([
   {
     entry: ['lib/types/main.js'],
     plugins: [packagedImportsPlugin(mainProcessImports)],
-    define: { ...clientVersionDefine, ...brandGatewayDefine, ...brandNameDefine },
+    define: { ...clientVersionDefine, ...brandGatewayDefine, ...brandNameDefine, ...brandHomeDefine, ...brandSchemeDefine },
     onSuccess: async () => {
       await build({
         configFile: false,

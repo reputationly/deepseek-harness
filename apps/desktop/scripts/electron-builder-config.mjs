@@ -36,7 +36,7 @@ import {
   verifyMacOSAppUpdateConfig,
   writeMacOSAppUpdateConfig,
 } from './macos-app-update-config.mjs'
-import { PRODUCT_NAME } from './desktop-brand.mjs'
+import { PACKAGE_NAME, PRODUCT_NAME, URL_SCHEME } from './desktop-brand.mjs'
 
 /**
  * Create electron-builder configuration from one release environment.
@@ -115,8 +115,11 @@ export function createElectronBuilderConfig(
   const packaged = resolveDesktopBuildCommit(env)
   return {
     appId,
-    protocols: [{ name: PRODUCT_NAME, schemes: ['dsh'] }],
+    protocols: [{ name: PRODUCT_NAME, schemes: [URL_SCHEME] }],
     extraMetadata: {
+      // Electron derives userData from the manifest name; a name shared with another installed
+      // application shares its data directory and its single-instance lock.
+      name: PACKAGE_NAME,
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
@@ -297,6 +300,6 @@ function productUpdateFeed(env, platform, arch) {
   const directory = join(env.DSH_DESKTOP_PACKAGING_RUN_DIR ?? tmpdir(), 'brand-update')
   mkdirSync(directory, { recursive: true })
   const path = join(directory, `app-update-${target}.yml`)
-  writeFileSync(path, `provider: generic\nurl: ${base.replace(/\/+$/u, '')}/suanli-assistant/${target}\nchannel: latest\n`)
+  writeFileSync(path, `provider: generic\nurl: ${base.replace(/\/+$/u, '')}/suanli-assistant/${target}\nchannel: nightly\n`)
   return path
 }

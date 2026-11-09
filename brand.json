@@ -1,6 +1,9 @@
 {
   "productName": "蒜狸小助手",
   "bundleId": "com.ovaijisuan.jianli.office",
+  "homeDirName": ".suanli-assistant",
+  "urlScheme": "suanli-assistant",
+  "packageName": "suanli-assistant",
   "gateway": {
     "baseURL": "https://maas.ovaijisuan.com/v1",
     "apiKeyEnv": "AURORA_API_KEY",
