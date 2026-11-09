@@ -25,6 +25,8 @@ const BRAND = JSON.parse(
 const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'official',
   DSH_CLIENT_TITLE: BRAND.productName,
+  // The product conversation hides the model; settings own the default model and effort.
+  DSH_CLIENT_MODEL_SEAT: 'hidden',
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
@@ -213,6 +215,7 @@ export function resolveClientBuildEnvironment(
         DSH_CLIENT_BUILD_PROFILE: 'local',
         // Unsigned product releases build with this profile, so it names the product too.
         DSH_CLIENT_TITLE: BRAND.productName,
+        DSH_CLIENT_MODEL_SEAT: 'hidden',
         ...(environment.DSH_CLIENT_GIT_DIRTY === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
       }),
     }

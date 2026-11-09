@@ -87,6 +87,7 @@ describe('client build environment', () => {
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_TITLE: BRAND.productName,
+      DSH_CLIENT_MODEL_SEAT: 'hidden',
       DSH_CLIENT_VERSION: '1.2.3',
     } as const
 
@@ -117,6 +118,7 @@ describe('client build environment', () => {
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_TITLE: BRAND.productName,
+      DSH_CLIENT_MODEL_SEAT: 'hidden',
       DSH_CLIENT_VERSION: '1.2.3',
     })
     expect(() => {
@@ -133,12 +135,14 @@ describe('client build environment', () => {
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_TITLE: BRAND.productName,
+      DSH_CLIENT_MODEL_SEAT: 'hidden',
       DSH_CLIENT_VERSION: '1.2.3',
     })).toEqual({
       PATH: '/bin',
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_TITLE: BRAND.productName,
+      DSH_CLIENT_MODEL_SEAT: 'hidden',
       DSH_CLIENT_VERSION: '1.2.3',
     })
     expect(repositoryCommitHash('/unused', { DSH_CLIENT_COMMIT_HASH: COMMIT_HASH })).toBe(COMMIT_HASH.slice(0, 7))
@@ -149,6 +153,7 @@ describe('client build environment', () => {
       DSH_BUILD_CLIENT_PROFILE: 'official',
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_TITLE: BRAND.productName,
+      DSH_CLIENT_MODEL_SEAT: 'hidden',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_VERSION: '1.2.3',
       DSH_CLIENT_GIT_DIRTY: dirty,
@@ -158,6 +163,7 @@ describe('client build environment', () => {
     expect(local).toEqual({
       DSH_CLIENT_BUILD_PROFILE: 'local',
       DSH_CLIENT_TITLE: BRAND.productName,
+      DSH_CLIENT_MODEL_SEAT: 'hidden',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_VERSION: '1.2.3',
       ...(dirty === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
@@ -168,6 +174,7 @@ describe('client build environment', () => {
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_TITLE: BRAND.productName,
+      DSH_CLIENT_MODEL_SEAT: 'hidden',
       DSH_CLIENT_VERSION: '1.2.3',
     })
   })
@@ -199,6 +206,7 @@ describe('client build environment', () => {
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: commit,
       DSH_CLIENT_TITLE: BRAND.productName,
+      DSH_CLIENT_MODEL_SEAT: 'hidden',
       DSH_CLIENT_VERSION: '1.2.3-rc.4',
     })
 
@@ -308,6 +316,7 @@ describe('client build environment', () => {
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_TITLE: BRAND.productName,
+      DSH_CLIENT_MODEL_SEAT: 'hidden',
       DSH_CLIENT_VERSION: '1.2.3',
     }
     const official = buildFixture(officialEnvironment)

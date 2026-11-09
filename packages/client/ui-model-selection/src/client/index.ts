@@ -108,7 +108,10 @@ const NS = 'model'
 
 /** Deployment options for the model surfaces. */
 export interface Config {
-  /** Show the model seat in the composer; off leaves model choice to the settings default. Defaults to true. */
+  /**
+   * Show the model seat in the composer; off leaves model choice to the settings default.
+   * Product builds hide it with `DSH_CLIENT_MODEL_SEAT=hidden`.
+   */
   composerSeat?: boolean
 }
 
@@ -191,7 +194,7 @@ export function apply(ctx: ClientContext, config: Config = {}): void {
     }),
   }, DefaultModelRow))
 
-  if (config.composerSeat === false) return
+  if (config.composerSeat === false || process.env.DSH_CLIENT_MODEL_SEAT === 'hidden') return
 
   // Entry 2: the composer's named model seat over the SAME directory.
   ctx.inject(['slots', 'modelDirectories'], (scope: ClientContext) => {

@@ -118,10 +118,9 @@ describe('brand gateway configuration', () => {
 describe('brand default selection', () => {
   const BRANDED = { ...GATEWAY, defaultReasoningEffort: 'high' }
 
-  it('writes the brand effort, hides the composer seat, and links the console token page', () => {
+  it('writes the brand effort and links the console token page', () => {
     const patch = gatewayProfilePatch(BRANDED)
     expect(patch).toContain('    model: "model-a"\n    reasoningEffort: "high"\n')
-    expect(patch).toContain('- id: ui-model-selection\n  config:\n    composerSeat: false\n')
     expect(gatewayTokenURL(BRANDED)).toBe('https://gateway.example/console/token')
   })
 
