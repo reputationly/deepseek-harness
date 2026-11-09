@@ -10,6 +10,7 @@ import type { WelcomeApi } from '../welcome-api.ts'
  */
 export function Welcome({ api }: { api: WelcomeApi }) {
   const { messages: m } = api
+  const steps = m.welcomeKeySteps === '' ? [] : m.welcomeKeySteps.split('\n')
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -58,6 +59,11 @@ export function Welcome({ api }: { api: WelcomeApi }) {
       <img className="brand" src="assets/welcome-brand.svg" alt={m.welcomeBrand} width="472" height="40" />
       <form id="key-form" className="key-form" noValidate onSubmit={(event) => { void saveKey(event) }} aria-busy={busy}>
         <header className="key-heading"><h1 id="key-title">{m.welcomeKeyTitle}</h1><p id="key-description">{m.welcomeKeyDescription}</p></header>
+        {steps.length === 0 ? null : <div className="key-guide">
+          <ol id="key-steps" className="key-steps">{steps.map(step => <li key={step}>{step}</li>)}</ol>
+          {api.openKeyPortal === undefined ? null
+            : <button id="open-key-portal" className="link" type="button" onClick={() => { void api.openKeyPortal?.() }}>{m.welcomeKeyOpenPortal}</button>}
+        </div>}
         <div className="key-field">
           <label className="visually-hidden" htmlFor="key-input">{m.welcomeKeyPlaceholder}</label>
           <input ref={input} id="key-input" type="password" autoComplete="new-password" autoCapitalize="off" spellCheck={false} required

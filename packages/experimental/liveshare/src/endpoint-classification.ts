@@ -99,6 +99,7 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'fileReferences/list': 'owner-only', // owner file references'
   'session/create': 'owner-only', // owner creates a Session
   'session/initializeDefaultModel': 'owner-only', // owner initializes a Session default model
+  'session/setDefaultModel': 'owner-only', // owner saves the default model for new Sessions
   'session/openWorkspacePath': 'owner-only', // owner opens a Workspace path
   'session/search': 'owner-only', // owner searches across Sessions
   'session/selectModel': 'owner-only', // owner selects a Session model

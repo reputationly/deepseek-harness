@@ -67,6 +67,7 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
     for (const channel of [
       WELCOME_IPC.analyticsEnabled, WELCOME_IPC.analytics, WELCOME_IPC.takeNotice, WELCOME_IPC.saveApiKey,
       WELCOME_IPC.skip, WELCOME_IPC.start, WELCOME_IPC.cancel, WELCOME_IPC.copyLink, WELCOME_IPC.quit,
+      WELCOME_IPC.openKeyPortal,
     ]) {
       ipcMain.removeHandler(channel)
     }
@@ -101,6 +102,10 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
   ipcMain.handle(WELCOME_IPC.skip, async (event) => {
     assertSender(event)
     await operations.skip()
+  })
+  ipcMain.handle(WELCOME_IPC.openKeyPortal, async (event) => {
+    assertSender(event)
+    await operations.openKeyPortal?.()
   })
   ipcMain.handle(WELCOME_IPC.quit, (event) => {
     assertSender(event)

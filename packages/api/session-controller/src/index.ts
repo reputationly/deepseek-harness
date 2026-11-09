@@ -32,6 +32,7 @@ import { SessionSkillCatalog } from './skill-catalog.ts'
 import { SessionMediaReferences } from './media-references.ts'
 import { ArchivedSessionGate } from './archived-session-gate.ts'
 import type {
+  ModelSelection,
   ModelCatalog,
   SessionWorkspacePathApplication,
   SessionAddress,
@@ -334,6 +335,31 @@ export class SessionController extends TypertRemoteService {
       ...model.reasoning?.defaultEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(model.reasoning.defaultEffort) },
     }
     await this.ctx.agentDefaultModel.saveSelection(selection)
+  }
+
+  /**
+   * Save the default model selection used by sessions created later.
+   * @param request - provider route, model, and optional reasoning effort.
+   * @returns the saved selection after the Host accepted it.
+   */
+  @Remote('setDefaultModel')
+  async setDefaultModel(request: ModelSelection): Promise<ModelSelection> {
+    const selected = {
+      provider: request.provider,
+      model: request.model,
+      ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(request.reasoningEffort) }),
+    }
+    try {
+      await this.ctx.llm.resolveCallConfig(selected)
+    } catch (error) {
+      throw new RemoteError(
+        'session/model-unavailable',
+        error instanceof Error ? error.message : String(error),
+        { provider: request.provider, model: request.model },
+      )
+    }
+    await this.ctx.agentDefaultModel.saveSelection(selected)
+    return { ...selected }
   }
 
   /**

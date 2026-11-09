@@ -16,6 +16,7 @@ export const WELCOME_IPC = {
   copyLink: 'dsh-welcome:copy-link',
   state: 'dsh-welcome:state',
   takeNotice: 'dsh-welcome:take-notice',
+  openKeyPortal: 'dsh-welcome:open-key-portal',
 } as const
 
 /** Why a key was rejected: the gateway refused it, or it could not be reached at all. */
@@ -52,6 +53,8 @@ export interface WelcomeOperations {
    * @returns whether the write completed, without private error details.
    */
   saveApiKey(value: string): Promise<WelcomeSaveResult>
+  /** Open the product gateway's token page in the browser; absent in upstream builds. */
+  openKeyPortal?(): Promise<void>
   /**
    * Enter the workspace without writing an onboarding-completion setting.
    * @returns completion after the workspace opens.

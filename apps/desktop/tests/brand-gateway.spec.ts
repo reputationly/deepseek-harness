@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { brandGateway, gatewayProfilePatch, storedGatewayKey, writeGatewayProfile } from '../src/brand-gateway.ts'
+import { brandGateway, gatewayProfilePatch, gatewayTokenURL, savedSelection, storedGatewayKey, writeGatewayProfile } from '../src/brand-gateway.ts'
 import { probeGatewayKey } from '../src/gateway-probe.ts'
 
 const GATEWAY = {
@@ -109,6 +109,33 @@ describe('brand gateway configuration', () => {
     try {
       writeGatewayProfile(root)
       expect(() => readFileSync(join(root, 'cordis.patch.yml'), 'utf8')).toThrow()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('brand default selection', () => {
+  const BRANDED = { ...GATEWAY, defaultReasoningEffort: 'high' }
+
+  it('writes the brand effort, hides the composer seat, and links the console token page', () => {
+    const patch = gatewayProfilePatch(BRANDED)
+    expect(patch).toContain('    model: "model-a"\n    reasoningEffort: "high"\n')
+    expect(patch).toContain('- id: ui-model-selection\n  config:\n    composerSeat: false\n')
+    expect(gatewayTokenURL(BRANDED)).toBe('https://gateway.example/console/token')
+  })
+
+  it('keeps a saved catalog selection over the brand default and drops one outside the catalog', () => {
+    const saved = gatewayProfilePatch(BRANDED, undefined, { model: 'model-b', reasoningEffort: 'low' })
+    expect(savedSelection(BRANDED, saved)).toEqual({ model: 'model-b', reasoningEffort: 'low' })
+    expect(savedSelection(BRANDED, saved.replace('"model-b"', '"model-z"'))).toBeUndefined()
+    expect(savedSelection(BRANDED, 'not: [yaml')).toBeUndefined()
+    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify(BRANDED))
+    const root = mkdtempSync(join(tmpdir(), 'dsh-gateway-'))
+    try {
+      writeFileSync(join(root, 'cordis.patch.yml'), saved)
+      writeGatewayProfile(root)
+      expect(readFileSync(join(root, 'cordis.patch.yml'), 'utf8')).toContain('    model: "model-b"\n    reasoningEffort: "low"\n')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

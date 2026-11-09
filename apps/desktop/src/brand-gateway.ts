@@ -16,7 +16,15 @@ export interface BrandGateway {
   readonly baseURL: string
   readonly apiKeyEnv: string
   readonly defaultModel: string
+  /** Reasoning effort of the default selection; the provider default when omitted. */
+  readonly defaultReasoningEffort?: string
   readonly models: readonly BrandGatewayModel[]
+}
+
+/** Default model selection a user saved over the brand default. */
+export interface SavedSelection {
+  readonly model: string
+  readonly reasoningEffort?: string
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -32,10 +40,13 @@ export function brandGateway(): BrandGateway | undefined {
   if (raw === undefined || raw === '') return undefined
   const parsed: unknown = JSON.parse(raw)
   if (!record(parsed)) throw new Error('desktop brand: gateway configuration must be an object')
-  const { baseURL, apiKeyEnv, defaultModel, models } = parsed
+  const { baseURL, apiKeyEnv, defaultModel, defaultReasoningEffort, models } = parsed
   if (typeof baseURL !== 'string' || !URL.canParse(baseURL)) throw new Error('desktop brand: gateway baseURL must be a URL')
   if (typeof apiKeyEnv !== 'string' || apiKeyEnv === '') throw new Error('desktop brand: gateway apiKeyEnv must be a credential reference')
   if (typeof defaultModel !== 'string' || defaultModel === '') throw new Error('desktop brand: gateway defaultModel must be non-empty')
+  if (defaultReasoningEffort !== undefined && (typeof defaultReasoningEffort !== 'string' || defaultReasoningEffort === '')) {
+    throw new Error('desktop brand: gateway defaultReasoningEffort must be a non-empty string')
+  }
   if (!Array.isArray(models) || models.length === 0) throw new Error('desktop brand: gateway models must be a non-empty array')
   const catalog = models.map((model: unknown) => {
     if (!record(model) || typeof model.id !== 'string' || model.id === '') {
@@ -50,7 +61,36 @@ export function brandGateway(): BrandGateway | undefined {
   if (!catalog.some(model => model.id === defaultModel)) {
     throw new Error('desktop brand: gateway defaultModel must appear in the catalog')
   }
-  return { baseURL, apiKeyEnv, defaultModel, models: catalog }
+  return { baseURL, apiKeyEnv, defaultModel, ...defaultReasoningEffort === undefined ? {} : { defaultReasoningEffort }, models: catalog }
+}
+
+/**
+ * Token page of the gateway's console, where users create API keys.
+ * @param gateway - configuration inlined by the build.
+ * @returns the absolute console URL on the gateway's origin.
+ */
+export function gatewayTokenURL(gateway: BrandGateway): string {
+  return new URL('/console/token', gateway.baseURL).toString()
+}
+
+/**
+ * Read the default selection a previous run saved into the profile patch.
+ * @param gateway - configuration inlined by the build.
+ * @param patchText - current profile patch document.
+ * @returns the saved model and effort when they still name a catalog model, otherwise undefined.
+ */
+export function savedSelection(gateway: BrandGateway, patchText: string): SavedSelection | undefined {
+  let rows: unknown
+  try { rows = parse(patchText) } catch { return undefined }
+  if (!Array.isArray(rows)) return undefined
+  const row: unknown = rows.find((entry: unknown) => record(entry) && entry.id === 'agent-default-model')
+  const config = record(row) && record(row.config) ? row.config : undefined
+  if (config === undefined || config.provider !== 'deepseek-official' || typeof config.model !== 'string') return undefined
+  const model = config.model
+  if (!gateway.models.some(entry => entry.id === model)) return undefined
+  return typeof config.reasoningEffort === 'string' && config.reasoningEffort !== ''
+    ? { model, reasoningEffort: config.reasoningEffort }
+    : { model }
 }
 
 /** Quote one YAML scalar from the build-owned configuration. */
@@ -62,9 +102,12 @@ function scalar(value: string): string {
  * Build the profile patch that points the bundled runtime at the product gateway.
  * @param gateway - configuration inlined by the build.
  * @param productName - provider name shown in model menus and settings; the provider's own default when omitted.
+ * @param saved - default selection the user saved, kept over the brand default.
  * @returns YAML patch entries replacing the provider endpoint, catalog, and default model.
  */
-export function gatewayProfilePatch(gateway: BrandGateway, productName?: string): string {
+export function gatewayProfilePatch(gateway: BrandGateway, productName?: string, saved?: SavedSelection): string {
+  const model = saved?.model ?? gateway.defaultModel
+  const reasoningEffort = saved === undefined ? gateway.defaultReasoningEffort : saved.reasoningEffort
   const models = gateway.models
     .map(model => `      - id: ${scalar(model.id)}${model.contextWindow === undefined ? '' : `\n        contextWindow: ${String(model.contextWindow)}`}`)
     .join('\n')
@@ -74,7 +117,8 @@ export function gatewayProfilePatch(gateway: BrandGateway, productName?: string)
     '- id: agent-default-model',
     '  config:',
     '    provider: deepseek-official',
-    `    model: ${scalar(gateway.defaultModel)}`,
+    `    model: ${scalar(model)}`,
+    ...reasoningEffort === undefined ? [] : [`    reasoningEffort: ${scalar(reasoningEffort)}`],
     '',
     '- id: llm-deepseek',
     '  config:',
@@ -83,6 +127,11 @@ export function gatewayProfilePatch(gateway: BrandGateway, productName?: string)
     ...productName === undefined || productName === '' ? [] : [`    displayName: ${scalar(productName)}`],
     '    models:',
     models,
+    '',
+    '# The conversation hides the model; the default model and effort are chosen in settings.',
+    '- id: ui-model-selection',
+    '  config:',
+    '    composerSeat: false',
     '',
     '# Media tools over the same gateway; the base bundle ships this row disabled.',
     '- id: tool-media',
@@ -95,13 +144,18 @@ export function gatewayProfilePatch(gateway: BrandGateway, productName?: string)
 }
 
 /**
- * Replace the profile's patch layer with the baked gateway configuration.
+ * Replace the profile's patch layer with the baked gateway configuration, keeping the default
+ * model selection the user saved from settings.
  * @param profileDir - Desktop profile directory created before the Host starts.
  */
 export function writeGatewayProfile(profileDir: string): void {
   const gateway = brandGateway()
   if (gateway === undefined) return
-  writeFileSync(join(profileDir, 'cordis.patch.yml'), gatewayProfilePatch(gateway, process.env.DSH_DESKTOP_PRODUCT_NAME), { encoding: 'utf8', mode: 0o600 })
+  const path = join(profileDir, 'cordis.patch.yml')
+  let previous = ''
+  try { previous = readFileSync(path, 'utf8') } catch { /* first start */ }
+  const patch = gatewayProfilePatch(gateway, process.env.DSH_DESKTOP_PRODUCT_NAME, savedSelection(gateway, previous))
+  writeFileSync(path, patch, { encoding: 'utf8', mode: 0o600 })
 }
 
 /**

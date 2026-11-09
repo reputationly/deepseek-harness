@@ -2718,6 +2718,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'after saving the first available model or retaining the existing default.',
       },
       {
+        signature: '@Remote(\'setDefaultModel\') async setDefaultModel(request: ModelSelection): Promise<ModelSelection>',
+        description: 'Save the default model selection used by sessions created later.',
+        parameters: [{ name: 'request', description: 'provider route, model, and optional reasoning effort.' }],
+        returns: 'the saved selection after the Host accepted it.',
+      },
+      {
         signature: '@Remote(\'modelCatalog\') modelCatalog(): Promise<ModelCatalog>',
         description: 'Describe every currently routable model for Host-generation selectors.',
         parameters: [],

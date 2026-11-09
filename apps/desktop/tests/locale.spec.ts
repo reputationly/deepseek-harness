@@ -10,7 +10,10 @@ describe('desktop locale dictionaries', () => {
     vi.resetModules()
     try {
       const branded = await import('../src/locale.ts')
-      expect(branded.zh.welcomeKeyDescription).toBe('请填写蒜狸小助手官方 API Key，可前往 maas.ovaijisuan.com 获取')
+      expect(branded.zh.welcomeKeyDescription).toBe('请填写蒜狸小助手官方 API Key，可按以下步骤在 maas.ovaijisuan.com 获取：')
+      expect(branded.zh.welcomeKeySteps.split(String.fromCharCode(10))).toHaveLength(4)
+      expect(branded.zh.welcomeKeySteps).toContain('「添加令牌」')
+      expect(zh.welcomeKeySteps).toBe('')
       for (const messages of [branded.en, branded.zh, branded.ja, branded.es, branded.fr, branded.de, branded.ru, branded.pt]) {
         expect(messages.welcomeKeyDescription).toContain('maas.ovaijisuan.com')
         expect(messages.welcomeKeyDescription).not.toMatch(/DeepSeek|Harness/)

@@ -905,6 +905,13 @@ resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>
 @Remote async initializeDefaultModel(): Promise<void>
 
 /**
+ * Save the default model selection used by sessions created later.
+ * @param request - provider route, model, and optional reasoning effort.
+ * @returns the saved selection after the Host accepted it.
+ */
+@Remote('setDefaultModel') async setDefaultModel(request: ModelSelection): Promise<ModelSelection>
+
+/**
  * Describe every currently routable model for Host-generation selectors.
  * @returns provider-grouped models, the deployment default, and isolated provider failures.
  */
@@ -1058,7 +1065,7 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
 @Remote({ mode: 'stream' }) async *control(signal: AbortSignal): AsyncIterable<SessionControlFrame>
 ```
 
-Types: [SessionId](core.zh.md) · [SessionSearchRequest](session-query.zh.md)
+Types: [ModelSelection](core.zh.md) · [SessionId](core.zh.md) · [SessionSearchRequest](session-query.zh.md)
 
 Source: [`packages/api/session-controller/src/index.ts`](../../packages/api/session-controller/src/index.ts)
 

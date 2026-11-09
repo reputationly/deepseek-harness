@@ -33,6 +33,10 @@ export const zh = {
   'search.empty': '没有匹配的模型。',
   'empty.models': '暂无可用模型',
   'empty.efforts': '当前模型未提供推理等级。',
+  'defaults.title': '默认模型',
+  'defaults.description': '新建对话默认使用的模型和推理强度。',
+  'defaults.effort': '推理强度',
+  'defaults.error': '保存失败：{message}',
 } satisfies Record<string, string>
 
 /** The model namespace key union. */
@@ -63,6 +67,10 @@ export const en = {
   'search.empty': 'No matching models.',
   'empty.models': 'No models available.',
   'empty.efforts': 'This model provides no reasoning effort levels.',
+  'defaults.title': 'Default model',
+  'defaults.description': 'Model and reasoning effort used by new conversations.',
+  'defaults.effort': 'Reasoning effort',
+  'defaults.error': 'Could not save: {message}',
 } satisfies Record<ModelKey, string>
 
 /** Japanese copy, checked against the English keys. */
@@ -90,6 +98,10 @@ export const ja = {
   'search.empty': '一致するモデルがありません。',
   'empty.models': '利用可能なモデルがありません。',
   'empty.efforts': 'このモデルには推論強度の設定がありません。',
+  'defaults.title': '既定のモデル',
+  'defaults.description': '新しい会話で使うモデルと推論レベル。',
+  'defaults.effort': '推論レベル',
+  'defaults.error': '保存できませんでした: {message}',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
@@ -117,6 +129,10 @@ export const es = {
   'search.empty': 'No hay modelos coincidentes.',
   'empty.models': 'No hay modelos disponibles.',
   'empty.efforts': 'Este modelo no proporciona niveles de esfuerzo de razonamiento.',
+  'defaults.title': 'Modelo predeterminado',
+  'defaults.description': 'Modelo y nivel de razonamiento de las nuevas conversaciones.',
+  'defaults.effort': 'Nivel de razonamiento',
+  'defaults.error': 'No se pudo guardar: {message}',
 } satisfies Record<keyof typeof en, string>
 
 /** French dictionary, checked against the English keys. */
@@ -144,6 +160,10 @@ export const fr = {
   'search.empty': 'Aucun modèle correspondant.',
   'empty.models': 'Aucun modèle disponible.',
   'empty.efforts': 'Ce modèle ne fournit aucun niveau d’effort de raisonnement.',
+  'defaults.title': 'Modèle par défaut',
+  'defaults.description': 'Modèle et niveau de raisonnement des nouvelles conversations.',
+  'defaults.effort': 'Niveau de raisonnement',
+  'defaults.error': 'Enregistrement impossible : {message}',
 } satisfies Record<keyof typeof en, string>
 
 /** German dictionary, checked against the English keys. */
@@ -171,6 +191,10 @@ export const de = {
   'search.empty': 'Keine passenden Modelle.',
   'empty.models': 'Keine Modelle verfügbar.',
   'empty.efforts': 'Dieses Modell liefert keine Argumentationsaufwandsstufen.',
+  'defaults.title': 'Standardmodell',
+  'defaults.description': 'Modell und Denkstufe für neue Unterhaltungen.',
+  'defaults.effort': 'Denkstufe',
+  'defaults.error': 'Speichern fehlgeschlagen: {message}',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian dictionary, checked against the English keys. */
@@ -198,6 +222,10 @@ export const ru = {
   'search.empty': 'Нет подходящих моделей.',
   'empty.models': 'Нет доступных моделей.',
   'empty.efforts': 'Эта модель не обеспечивает обоснования уровней усилий.',
+  'defaults.title': 'Модель по умолчанию',
+  'defaults.description': 'Модель и уровень рассуждений для новых бесед.',
+  'defaults.effort': 'Уровень рассуждений',
+  'defaults.error': 'Не удалось сохранить: {message}',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese dictionary, checked against the English keys. */
@@ -225,4 +253,8 @@ export const pt = {
   'search.empty': 'Não há modelos correspondentes.',
   'empty.models': 'Nenhum modelo disponível.',
   'empty.efforts': 'Este modelo não fornece níveis de esforço de raciocínio.',
+  'defaults.title': 'Modelo padrão',
+  'defaults.description': 'Modelo e nível de raciocínio das novas conversas.',
+  'defaults.effort': 'Nível de raciocínio',
+  'defaults.error': 'Não foi possível salvar: {message}',
 } satisfies Record<keyof typeof en, string>

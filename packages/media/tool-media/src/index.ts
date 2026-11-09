@@ -10,13 +10,16 @@
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { basename, extname, isAbsolute, join, relative, sep } from 'node:path'
+import { homedir } from 'node:os'
+import { extname, isAbsolute, join, relative, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import { awaitTask, downloadMedia, editImage, generateImage, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
+import { CatalogSource } from './catalog.ts'
+import { awaitTask, downloadMedia, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
+import { registerVisualTools } from './visual-tools.ts'
 
 export { MediaGatewayError } from './gateway.ts'
 export type { MediaArtifact } from './gateway.ts'
@@ -47,6 +50,12 @@ export interface Config {
   taskTimeoutMs?: number
   /** Delay between task polls. */
   pollIntervalMs?: number
+  /** Read models and parameter values from the gateway's capability catalog. */
+  catalog?: boolean
+  /** Disk mirror of the capability catalog; defaults under the Harness home. */
+  catalogCacheFile?: string
+  /** Video length recommended when the user names none, in seconds. */
+  videoDefaultDuration?: number
 }
 
 export const Config: z<Config> = z.object({
@@ -59,6 +68,9 @@ export const Config: z<Config> = z.object({
   outputDir: z.string().default('media-output'),
   taskTimeoutMs: z.number().default(900_000),
   pollIntervalMs: z.number().default(3_000),
+  catalog: z.boolean().default(true),
+  catalogCacheFile: z.string().default(''),
+  videoDefaultDuration: z.number().default(5),
 })
 
 /** Complete config after schemastery applies every field default. */
@@ -141,45 +153,19 @@ export function apply(ctx: Context, config: Config): void {
     signal,
   })
 
-  ctx.tools.register(defineTool({
-    name: 'generate_image',
-    description: 'Generate an image from a text prompt, or edit an existing image file when imagePath is given.',
-    parameters: {
-      prompt: { type: 'string', required: true, description: 'What the image should show, or how to change it.' },
-      imagePath: { type: 'string', description: 'Local image file to edit. Omit to generate from the prompt alone.' },
-      size: { type: 'string', description: 'Pixel size such as 1024x1024.' },
-    },
-    output: {
-      schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          path: { type: 'string', required: true },
-          model: { type: 'string', required: true },
-        },
-      },
-      render: (_args, value) => [{ type: 'text', text: `Wrote ${value.path} with ${value.model}.` }],
-    },
-    async execute(args, exec) {
-      const input = args as { prompt: string; imagePath?: string; size?: string }
-      const gateway = await request(exec.signal)
-      const url = input.imagePath === undefined
-        ? await generateImage(gateway, {
-          model: resolved.imageModel,
-          prompt: input.prompt,
-          ...(input.size === undefined ? {} : { size: input.size }),
-        })
-        : await editImage(gateway, {
-          model: resolved.imageModel,
-          prompt: input.prompt,
-          image: (await readFile(input.imagePath)).buffer as ArrayBuffer,
-          filename: basename(input.imagePath),
-          mimeType: 'image/png',
-        })
-      const media = await downloadMedia(gateway, url)
-      return { path: await writeArtifact(resolved.outputDir, 'image', media.contentType, media.bytes), model: resolved.imageModel }
-    },
-  }))
+  const cacheFile = resolved.catalogCacheFile !== ''
+    ? resolved.catalogCacheFile
+    : join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'cache', 'ov-catalog.json')
+  registerVisualTools(ctx, {
+    request,
+    catalog: resolved.catalog ? new CatalogSource({ baseURL: resolved.baseURL, cacheFile }) : undefined,
+    imageModel: resolved.imageModel,
+    videoModel: resolved.videoModel,
+    videoDefaultDuration: resolved.videoDefaultDuration,
+    taskTimeoutMs: resolved.taskTimeoutMs,
+    pollIntervalMs: resolved.pollIntervalMs,
+    write: (prefix, contentType, bytes) => writeArtifact(resolved.outputDir, prefix, contentType, bytes),
+  })
 
   ctx.tools.register(defineTool({
     name: 'generate_speech',
@@ -200,7 +186,7 @@ export function apply(ctx: Context, config: Config): void {
       render: (_args, value) => [{ type: 'text', text: `Wrote ${value.path} with ${value.model}.` }],
     },
     async execute(args, exec) {
-      const input = args as { text: string; voice: string }
+      const input = args
       const gateway = await request(exec.signal)
       const audio = await generateSpeech(gateway, {
         model: resolved.speechModel,
@@ -253,11 +239,6 @@ export function apply(ctx: Context, config: Config): void {
     'generate_music',
     resolved.musicModel,
     'Generate a music track. The prompt must describe genre, instrumentation, tempo, and mood.',
-  )))
-  ctx.tools.register(defineTool(taskTool(
-    'generate_video',
-    resolved.videoModel,
-    'Generate a short video from a text prompt.',
   )))
 }
 

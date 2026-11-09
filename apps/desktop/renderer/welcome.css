@@ -262,6 +262,39 @@ body {
   letter-spacing: 0.02em;
 }
 
+.key-guide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin-top: -24px;
+}
+
+.key-steps {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 22px;
+  text-align: left;
+}
+
+.key-guide .link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-brand-primary);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.key-guide .link:hover {
+  text-decoration: underline;
+}
+
 .key-field {
   position: relative;
   width: 100%;

@@ -50,7 +50,7 @@ import { OperationJournal } from './operation-journal.ts'
 import { runOperationReportJob, type OperationReportJobResult } from './operation-report-job.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
 import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
-import { brandGateway, storedGatewayKey } from './brand-gateway.ts'
+import { brandGateway, gatewayTokenURL, storedGatewayKey } from './brand-gateway.ts'
 import { probeGatewayKey } from './gateway-probe.ts'
 import { brandUrlScheme, isolateBrandHome } from './brand-identity.ts'
 import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
@@ -1366,6 +1366,8 @@ async function main(): Promise<void> {
     }
   }
   let openingWelcome: Promise<void> | undefined
+  const keyGateway = brandGateway()
+  const keyPortal = keyGateway === undefined ? undefined : gatewayTokenURL(keyGateway)
   const showWelcome = (): Promise<void> => {
     if (quitting) return Promise.resolve()
     if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) {
@@ -1407,6 +1409,7 @@ async function main(): Promise<void> {
         },
         skip: enterWorkspace,
         quit: () => { quitWithoutConfirmation() },
+        ...keyPortal === undefined ? {} : { openKeyPortal: async () => { await shell.openExternal(keyPortal) } },
       })
       const window = welcomeWindow
       window.once('closed', () => {

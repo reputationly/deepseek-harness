@@ -126,6 +126,25 @@ export async function editImage(
 }
 
 /**
+ * Edit or combine reference images through the JSON form of the edits endpoint.
+ * @param request - gateway credential and cancellation.
+ * @param input - model, instruction, and reference images as data URIs or URLs.
+ * @returns the first result URL or data URI.
+ */
+export async function editImages(
+  request: GatewayRequest,
+  input: { model: string; prompt: string; images: readonly string[] },
+): Promise<string> {
+  const response = await fetch(`${root(request.baseURL)}/images/edits`, {
+    method: 'POST',
+    headers: headers(request),
+    body: JSON.stringify({ model: input.model, prompt: input.prompt, images: [...input.images] }),
+    signal: request.signal,
+  })
+  return imageURL(response)
+}
+
+/**
  * Synthesize speech from text.
  * @param request - endpoint and credential.
  * @param input - model, text, and the reference voice source.

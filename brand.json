@@ -8,22 +8,23 @@
     "baseURL": "https://maas.ovaijisuan.com/v1",
     "apiKeyEnv": "AURORA_API_KEY",
     "defaultModel": "deepseek-v4-1-flash",
+    "defaultReasoningEffort": "high",
     "models": [
       {
         "id": "deepseek-v4-1-flash",
-        "contextWindow": 1048576
+        "contextWindow": 838860
       },
       {
         "id": "glm-5.3-flash-w4a8",
-        "contextWindow": 900000
+        "contextWindow": 720000
       },
       {
         "id": "minimax-m3.1-flash",
-        "contextWindow": 1048576
+        "contextWindow": 838860
       },
       {
         "id": "qwen3.8-flash-fp8",
-        "contextWindow": 1048576
+        "contextWindow": 838860
       }
     ]
   }

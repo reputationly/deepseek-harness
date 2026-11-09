@@ -27,6 +27,9 @@ import type { ModelDirectoryState } from './directory.ts'
 import { ModelDirectoryResolver } from './service.ts'
 import type { ModelSelectInjected } from './slots.ts'
 import { ModelSelect } from './ModelSelect.tsx'
+import { DefaultModelRow, type DefaultModelRowInjected } from './DefaultModelRow.tsx'
+// Type-only: pulls the settings shell's SlotMap merge (the 'settings.general.item' entry).
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { en, ja, es, fr, de, ru, pt, zh, type ModelKey } from './locales.ts'
 import { orderModelProviders } from './provider-order.ts'
 
@@ -103,6 +106,12 @@ function selectionOf(state: ModelDirectoryState, id: string): ModelSelection | u
 /** Dictionary namespace owned by this plugin. */
 const NS = 'model'
 
+/** Deployment options for the model surfaces. */
+export interface Config {
+  /** Show the model seat in the composer; off leaves model choice to the settings default. Defaults to true. */
+  composerSeat?: boolean
+}
+
 /** Required services: the contribution registry, the seat's slot registry, locale, and the service's own faces. */
 export const inject = ['commandUi', 'locale', 'sessions', 'slots', 'remote', 'remote.session']
 
@@ -112,7 +121,7 @@ export const inject = ['commandUi', 'locale', 'sessions', 'slots', 'remote', 're
  * over the service.
  * @param ctx - client root context.
  */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: ClientContext, config: Config = {}): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-model-selection: dictionaries')
 
   // Non-slot faces (the command description, the popup option builder) read
@@ -164,6 +173,25 @@ export function apply(ctx: ClientContext): void {
       },
     }), 'ui-model-selection: /model contribution')
   })
+
+  // Entry 3: the settings row owning the default for new conversations.
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item', id: 'default-model', order: 5, locale: NS,
+    inject: (): DefaultModelRowInjected => ({
+      load: async () => {
+        const response = await ctx.remote.session.modelCatalog()
+        if (!response.ok) throw new Error(response.error.message)
+        return response.value
+      },
+      save: async (selection) => {
+        const response = await ctx.remote.session.setDefaultModel(selection)
+        if (!response.ok) throw new Error(response.error.message)
+        return response.value
+      },
+    }),
+  }, DefaultModelRow))
+
+  if (config.composerSeat === false) return
 
   // Entry 2: the composer's named model seat over the SAME directory.
   ctx.inject(['slots', 'modelDirectories'], (scope: ClientContext) => {

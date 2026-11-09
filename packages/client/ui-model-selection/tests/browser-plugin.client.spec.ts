@@ -20,7 +20,7 @@ import type { ModelSelectionProjection } from '@deepseek-ai/dsh-agent/types'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 import type { CommandContribution, PopupSelectSpec, SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { ModelSelectInjected } from '../src/client/slots.ts'
-import { apply, inject } from '../src/client/index.ts'
+import { apply, inject, type Config } from '../src/client/index.ts'
 import { zh } from '../src/client/locales.ts'
 
 const sid = (k: string): SessionId => k as SessionId
@@ -67,7 +67,7 @@ const GROUPS = [{
 }]
 
 /** Boot the plugin over fake faces + a stateful fake host (current moves on selectModel). */
-async function bench(locale: 'zh' | 'en' = 'zh') {
+async function bench(locale: 'zh' | 'en' = 'zh', config: Config = {}) {
   const ctx = new Context()
   let defaultSelection: ModelSelection = { provider: 'deepseek-official', model: 'deepseek-v4-flash' }
   let selected = defaultSelection
@@ -157,7 +157,7 @@ async function bench(locale: 'zh' | 'en' = 'zh') {
   })
   const track = vi.fn()
   ctx.provide('productAnalytics', { enabled: true, track } as never)
-  const fiber = ctx.plugin({ inject: [...inject], apply })
+  const fiber = ctx.plugin({ inject: [...inject], apply: (scope: Context) => { apply(scope, config) } })
   await fiber.await()
   await ctx.plugin(function probe() {}).await()
   const mint = (key: string, blank = false) => {
@@ -189,6 +189,7 @@ async function bench(locale: 'zh' | 'en' = 'zh') {
       return ui
     },
     seat: () => seats.get('conversation.input.model')!,
+    hasSlot: (name: string) => seats.has(name),
     hostCurrent: () => selected,
     rejectSelection: () => {
       selectionFailure = new RemoteError('session/writer-held', 'writer held', { sessionId: sid('owned') })
@@ -216,6 +217,14 @@ describe('ui-model-selection dual entry', () => {
     expect(b.ctx.modelDirectories.directoryFor(sid('owned')).store.getSnapshot()).toMatchObject({
       status: 'error', pending: null, error: 'session/writer-held: writer held',
     })
+  })
+
+  it('registers the default model settings row, and leaves the composer seat out when configured', async () => {
+    expect((await bench()).hasSlot('settings.general.item')).toBe(true)
+    const hidden = await bench('zh', { composerSeat: false })
+    expect(hidden.hasSlot('conversation.input.model')).toBe(false)
+    expect(hidden.hasSlot('settings.general.item')).toBe(true)
+    expect(hidden.contribution().name).toBe('model')
   })
 
   it('registers the /model contribution and the composer model seat', async () => {
