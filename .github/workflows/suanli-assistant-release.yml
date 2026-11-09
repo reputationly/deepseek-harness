@@ -57,6 +57,26 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      # Hosted runners start empty, so every Electron, runtime, and electron-builder tool download
+      # would hit GitHub again; keep them in one directory the cache below carries between runs.
+      - name: Point downloads at the cache
+        shell: bash
+        run: |
+          root="${{ runner.temp }}/suanli-package-cache"
+          {
+            echo "DSH_DESKTOP_PACKAGE_CACHE_DIR=$root/desktop"
+            echo "ELECTRON_BUILDER_CACHE=$root/electron-builder"
+            echo "electron_config_cache=$root/electron"
+          } >> "$GITHUB_ENV"
+      - name: Restore the download cache
+        id: download-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/suanli-package-cache
+          key: suanli-downloads-${{ matrix.target }}-${{ hashFiles('pnpm-lock.yaml', 'scripts/primary-runtime/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            suanli-downloads-${{ matrix.target }}-${{ hashFiles('pnpm-lock.yaml', 'scripts/primary-runtime/**') }}-
+            suanli-downloads-${{ matrix.target }}-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -83,6 +103,14 @@ jobs:
           # The installed application polls this origin; unsigned builds carry no other update config.
           DSH_BRAND_UPDATE_BASE: ${{ secrets.R2_PUBLIC_BASE }}
         run: pnpm --dir apps/desktop run ${{ matrix.script }} -- --build-version "${{ needs.prepare.outputs.version }}"
+      # Every run saves its own entry, even when packaging fails, so a retry reuses whatever already
+      # downloaded and a later run picks up tools a partial entry was missing.
+      - name: Save the download cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/suanli-package-cache
+          key: ${{ steps.download-cache.outputs.cache-primary-key }}
       - name: Prepare the update payload
         if: matrix.target == 'mac-arm64'
         env:
