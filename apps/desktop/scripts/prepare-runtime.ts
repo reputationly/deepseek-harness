@@ -19,12 +19,27 @@ const RUNTIME_ROOT = BUILD_PATHS.runtime
 
 type DesktopTarget = ReturnType<typeof desktopTargetPlatform>
 
+/** GitHub release downloads intermittently answer 5xx; retry before failing the whole packaging run. */
+async function downloadElectron(options: Parameters<typeof downloadArtifact>[0], attempts = 4): Promise<string> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await downloadArtifact(options)
+    } catch (error) {
+      if (attempt >= attempts) throw error
+      console.warn(`desktop runtime: Electron download attempt ${String(attempt)} failed, retrying: ${error instanceof Error ? error.message : String(error)}`)
+      await new Promise(resolve => setTimeout(resolve, attempt * 15_000))
+    }
+  }
+}
+
 /** Extract the target Electron distribution and return its embedded Node version. */
 async function prepareElectron({ platform, arch }: DesktopTarget): Promise<string> {
   const require = createRequire(import.meta.url)
   const { version } = require('electron/package.json') as { version: string }
+  // The installed electron package pins every artifact hash, so a retried download is still verified against the lockfile.
+  const checksums = require('electron/checksums.json') as Record<string, string>
   const archive = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'download:electron',
-    () => downloadArtifact({ version, platform, arch, artifactName: 'electron', cacheRoot: BUILD_PATHS.downloads }))
+    () => downloadElectron({ version, platform, arch, artifactName: 'electron', cacheRoot: BUILD_PATHS.downloads, checksums }))
   rmSync(BUILD_PATHS.electron, { recursive: true, force: true })
   await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'extract:electron', () => extractZip(archive, { dir: BUILD_PATHS.electron }))
   const executable = join(BUILD_PATHS.electron, platform === 'win32' ? 'electron.exe' : 'Electron.app/Contents/MacOS/Electron')
