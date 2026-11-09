@@ -113,6 +113,8 @@ export default defineConfig([
     // Sandboxed Electron preloads run as CommonJS even though the application package is ESM.
     entry: { [name]: `lib/types/${name}.js` },
     plugins: [packagedImportsPlugin(preloadImports)],
+    // Preloads carry their own copy of the shell copy, so they need the same brand values as the main entry.
+    define: { ...brandNameDefine, ...brandGatewayDefine },
     outDir: 'lib',
     format: 'cjs' as const,
     codeSplitting: false,

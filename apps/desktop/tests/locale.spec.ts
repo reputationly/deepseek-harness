@@ -1,8 +1,26 @@
 import { SHIPPED_LOCALE_IDS } from '../../../scripts/shipped-locales.ts'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { en, formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale, ja, zh, es, fr, de, ru, pt } from '../src/locale.ts'
 
 describe('desktop locale dictionaries', () => {
+  it('points the key gate at the brand gateway console instead of DeepSeek', async () => {
+    expect(zh.welcomeKeyDescription).toContain('DeepSeek')
+    vi.stubEnv('DSH_DESKTOP_PRODUCT_NAME', '蒜狸小助手')
+    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify({ baseURL: 'https://maas.ovaijisuan.com/v1' }))
+    vi.resetModules()
+    try {
+      const branded = await import('../src/locale.ts')
+      expect(branded.zh.welcomeKeyDescription).toBe('请填写蒜狸小助手官方 API Key，可前往 maas.ovaijisuan.com 获取')
+      for (const messages of [branded.en, branded.zh, branded.ja, branded.es, branded.fr, branded.de, branded.ru, branded.pt]) {
+        expect(messages.welcomeKeyDescription).toContain('maas.ovaijisuan.com')
+        expect(messages.welcomeKeyDescription).not.toMatch(/DeepSeek|Harness/)
+      }
+    } finally {
+      vi.unstubAllEnvs()
+      vi.resetModules()
+    }
+  })
+
   it('uses the same concise Chinese configuration error in the toast and details', () => {
     for (const message of [zh.updateConfigurationRead, zh.updateConfigurationFormat, zh.updateConfigurationChannel]) {
       expect(message).toBe('配置文件异常，更新已暂停')

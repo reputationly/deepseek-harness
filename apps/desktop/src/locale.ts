@@ -3,6 +3,17 @@
 /** Product name baked into this build; upstream builds keep the public name. */
 const PRODUCT_NAME = process.env.DSH_DESKTOP_PRODUCT_NAME ?? 'DeepSeek Harness'
 
+/** Host of the product gateway console that issues API keys; undefined in upstream builds. */
+const KEY_PORTAL = brandKeyPortal(process.env.DSH_BRAND_GATEWAY)
+
+function brandKeyPortal(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw === '') return undefined
+  try {
+    const { baseURL } = JSON.parse(raw) as { baseURL?: unknown }
+    return typeof baseURL === 'string' ? new URL(baseURL).host : undefined
+  } catch { return undefined }
+}
+
 export const en = {
   cliCommandMenu: 'Manage dsh Command…',
   cliCommandTitle: 'Manage dsh Command',
@@ -97,7 +108,9 @@ export const en = {
   welcomeSignIn: 'Sign in',
   welcomeApiKey: 'Add API Key',
   welcomeKeyTitle: 'Add an API key to get started',
-  welcomeKeyDescription: 'Configure official DeepSeek models to start using Harness',
+  welcomeKeyDescription: KEY_PORTAL === undefined
+    ? 'Configure official DeepSeek models to start using Harness'
+    : `Enter your official ${PRODUCT_NAME} API key. Get one at ${KEY_PORTAL}`,
   welcomeKeyPlaceholder: 'Enter API key',
   welcomeKeySave: 'Save and continue',
   welcomeKeyLater: 'Set up later',
@@ -291,7 +304,9 @@ export const zh = {
   welcomeSignIn: '登录',
   welcomeApiKey: '添加 API Key',
   welcomeKeyTitle: '添加一个 API Key 开始使用',
-  welcomeKeyDescription: '配置 DeepSeek 官方模型，即可开始使用',
+  welcomeKeyDescription: KEY_PORTAL === undefined
+    ? '配置 DeepSeek 官方模型，即可开始使用'
+    : `请填写${PRODUCT_NAME}官方 API Key，可前往 ${KEY_PORTAL} 获取`,
   welcomeKeyPlaceholder: '输入 API 密钥',
   welcomeKeySave: '保存并继续',
   welcomeKeyLater: '稍后配置',
@@ -483,7 +498,9 @@ export const ja = {
   welcomeSignIn: 'ログイン',
   welcomeApiKey: 'APIキーを追加',
   welcomeKeyTitle: 'APIキーを追加して開始',
-  welcomeKeyDescription: '公式のDeepSeekモデルを設定してHarnessを使い始めましょう',
+  welcomeKeyDescription: KEY_PORTAL === undefined
+    ? '公式のDeepSeekモデルを設定してHarnessを使い始めましょう'
+    : `${PRODUCT_NAME}の公式 API キーを入力してください。${KEY_PORTAL} で取得できます`,
   welcomeKeyPlaceholder: 'APIキーを入力',
   welcomeKeySave: '保存して続行',
   welcomeKeyLater: '後で設定',
@@ -675,7 +692,9 @@ export const es = {
   welcomeSignIn: 'Iniciar sesión',
   welcomeApiKey: 'Agregar clave API',
   welcomeKeyTitle: 'Agregue una clave API para comenzar',
-  welcomeKeyDescription: 'Configura los modelos oficiales DeepSeek para empezar a utilizar Harness',
+  welcomeKeyDescription: KEY_PORTAL === undefined
+    ? 'Configura los modelos oficiales DeepSeek para empezar a utilizar Harness'
+    : `Introduce tu clave de API oficial de ${PRODUCT_NAME}. Obtenla en ${KEY_PORTAL}`,
   welcomeKeyPlaceholder: 'Ingrese la clave API',
   welcomeKeySave: 'Guardar y continuar',
   welcomeKeyLater: 'Configurar más tarde',
@@ -867,7 +886,9 @@ export const fr = {
   welcomeSignIn: 'Connectez-vous',
   welcomeApiKey: 'Ajouter une clé API',
   welcomeKeyTitle: 'Ajoutez une clé API pour commencer',
-  welcomeKeyDescription: 'Configurez les modèles DeepSeek officiels pour commencer à utiliser Harness',
+  welcomeKeyDescription: KEY_PORTAL === undefined
+    ? 'Configurez les modèles DeepSeek officiels pour commencer à utiliser Harness'
+    : `Saisissez votre clé API officielle ${PRODUCT_NAME}. Obtenez-la sur ${KEY_PORTAL}`,
   welcomeKeyPlaceholder: 'Entrez la clé API',
   welcomeKeySave: 'Enregistrer et continuer',
   welcomeKeyLater: 'Configurer plus tard',
@@ -1059,7 +1080,9 @@ export const de = {
   welcomeSignIn: 'Anmelden',
   welcomeApiKey: 'API-Schlüssel hinzufügen',
   welcomeKeyTitle: 'Fügen Sie einen API-Schlüssel hinzu, um loszulegen',
-  welcomeKeyDescription: 'Konfigurieren Sie offizielle DeepSeek-Modelle für die Verwendung von Harness',
+  welcomeKeyDescription: KEY_PORTAL === undefined
+    ? 'Konfigurieren Sie offizielle DeepSeek-Modelle für die Verwendung von Harness'
+    : `Geben Sie Ihren offiziellen ${PRODUCT_NAME}-API-Schlüssel ein. Erhältlich unter ${KEY_PORTAL}`,
   welcomeKeyPlaceholder: 'API-Schlüssel eingeben',
   welcomeKeySave: 'Speichern und fortfahren',
   welcomeKeyLater: 'Später einrichten',
@@ -1251,7 +1274,9 @@ export const ru = {
   welcomeSignIn: 'Войти',
   welcomeApiKey: 'Добавить ключ API',
   welcomeKeyTitle: 'Добавьте ключ API, чтобы начать работу.',
-  welcomeKeyDescription: 'Настройте официальные модели DeepSeek, чтобы начать использовать Harness.',
+  welcomeKeyDescription: KEY_PORTAL === undefined
+    ? 'Настройте официальные модели DeepSeek, чтобы начать использовать Harness.'
+    : `Введите официальный API-ключ ${PRODUCT_NAME}. Получить его можно на ${KEY_PORTAL}`,
   welcomeKeyPlaceholder: 'Введите ключ API',
   welcomeKeySave: 'Сохранить и продолжить',
   welcomeKeyLater: 'Настроить позже',
@@ -1443,7 +1468,9 @@ export const pt = {
   welcomeSignIn: 'Faça login',
   welcomeApiKey: 'Adicionar chave API',
   welcomeKeyTitle: 'Adicione uma chave API para começar',
-  welcomeKeyDescription: 'Configure modelos DeepSeek oficiais para começar a usar o Harness',
+  welcomeKeyDescription: KEY_PORTAL === undefined
+    ? 'Configure modelos DeepSeek oficiais para começar a usar o Harness'
+    : `Insira sua chave de API oficial do ${PRODUCT_NAME}. Obtenha-a em ${KEY_PORTAL}`,
   welcomeKeyPlaceholder: 'Insira a chave de API',
   welcomeKeySave: 'Salvar e continuar',
   welcomeKeyLater: 'Configurar mais tarde',
