@@ -10,6 +10,7 @@ const electron = vi.hoisted(() => ({
 }))
 vi.mock('electron', () => ({
   app: { getAppPath: () => electron.root },
+  nativeTheme: { shouldUseDarkColors: false },
   BrowserWindow: vi.fn(function (options: unknown) { return electron.create(options) }),
   ipcMain: {
     handle: (name: string, handler: (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>) => {
@@ -67,7 +68,9 @@ describe('desktop welcome window', () => {
       expect(options.visualEffectState).toBe('active')
       expect(options.trafficLightPosition).toEqual({ x: 21, y: 21 })
     } else if (platform === 'win32') {
-      expect(options.backgroundMaterial).toBe('acrylic')
+      expect(options.backgroundMaterial).toBeUndefined()
+      expect(options.backgroundColor).toBe('#FFFFFF')
+      expect(welcomeWindowOptions('win32', resolveDesktopLocale('en'), true).backgroundColor).toBe('#18191C')
       expect(options.titleBarOverlay).toMatchObject({ height: 42 })
     } else {
       expect(options.backgroundColor).toBe('#FFFFFF')
