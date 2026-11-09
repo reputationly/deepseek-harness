@@ -211,6 +211,8 @@ export function resolveClientBuildEnvironment(
       DSH_CLIENT_VERSION: version,
       ...(profile === 'official' ? OFFICIAL_CLIENT_BUILD_ENVIRONMENT : {
         DSH_CLIENT_BUILD_PROFILE: 'local',
+        // Unsigned product releases build with this profile, so it names the product too.
+        DSH_CLIENT_TITLE: BRAND.productName,
         ...(environment.DSH_CLIENT_GIT_DIRTY === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
       }),
     }

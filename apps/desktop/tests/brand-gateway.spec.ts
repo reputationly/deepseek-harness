@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { brandGateway, gatewayProfilePatch, writeGatewayProfile } from '../src/brand-gateway.ts'
+import { brandGateway, gatewayProfilePatch, storedGatewayKey, writeGatewayProfile } from '../src/brand-gateway.ts'
 import { probeGatewayKey } from '../src/gateway-probe.ts'
 
 const GATEWAY = {
@@ -72,6 +72,24 @@ describe('brand gateway configuration', () => {
     expect(patch).toContain('    apiKeyEnv: "EXAMPLE_API_KEY"')
     expect(patch).toContain('      - id: "model-a"\n        contextWindow: 1000')
     expect(patch).toContain('      - id: "model-b"')
+    expect(patch).not.toContain('displayName')
+    expect(gatewayProfilePatch(GATEWAY, '蒜狸小助手')).toContain('    apiKeyEnv: "EXAMPLE_API_KEY"\n    displayName: "蒜狸小助手"\n')
+  })
+
+  it('reads the stored gateway key from the product home before the environment', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-gateway-'))
+    try {
+      expect(storedGatewayKey(GATEWAY, { DSH_HOME: root })).toBeUndefined()
+      expect(storedGatewayKey(GATEWAY, { DSH_HOME: root, EXAMPLE_API_KEY: 'from-env' })).toBe('from-env')
+      writeFileSync(join(root, '.credentials.yaml'), 'version: 1\nrefs:\n  OTHER_KEY: other\n')
+      expect(storedGatewayKey(GATEWAY, { DSH_HOME: root })).toBeUndefined()
+      writeFileSync(join(root, '.credentials.yaml'), 'version: 1\nrefs:\n  EXAMPLE_API_KEY: "from-file"\n')
+      expect(storedGatewayKey(GATEWAY, { DSH_HOME: root, EXAMPLE_API_KEY: 'from-env' })).toBe('from-file')
+      writeFileSync(join(root, '.credentials.yaml'), 'refs: [unterminated\n')
+      expect(storedGatewayKey(GATEWAY, { DSH_HOME: root })).toBeUndefined()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('rewrites the profile patch file and leaves other profiles untouched', () => {

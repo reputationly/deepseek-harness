@@ -18,11 +18,14 @@ const OFFICIAL_ORIGIN = new URL(PUBLIC_BASE_URL).origin
 export interface Config extends ProtocolConfig, ModelListingConfig {
   /** Credential reference resolved per request; defaults to DEEPSEEK_API_KEY. */
   apiKeyEnv: Volatile<string>
+  /** Provider name shown in model menus and settings; defaults to DeepSeek. */
+  displayName: string
 }
 export const Config = z.object({
   ...deepSeekConfigFields,
   ...modelListingConfigFields,
   apiKeyEnv: z.string().role('credential-ref').default('DEEPSEEK_API_KEY').volatile(),
+  displayName: z.string().min(1).default('DeepSeek'),
 })
 /** Plain deployment inputs for the API-key provider. */
 export type Options = ProtocolOptions & ModelListingOptions & { apiKeyEnv?: string }

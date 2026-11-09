@@ -50,7 +50,8 @@ import { OperationJournal } from './operation-journal.ts'
 import { runOperationReportJob, type OperationReportJobResult } from './operation-report-job.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
 import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
-import { brandGateway } from './brand-gateway.ts'
+import { brandGateway, storedGatewayKey } from './brand-gateway.ts'
+import { probeGatewayKey } from './gateway-probe.ts'
 import { brandUrlScheme, isolateBrandHome } from './brand-identity.ts'
 import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
 import { DesktopUpdateJournal } from './update-journal.ts'
@@ -1430,13 +1431,18 @@ async function main(): Promise<void> {
   const openInitialWindow = async (): Promise<void> => {
     if (quitting || recovery.active) return
     const state = await readWelcomeState()
+    // A product build skips its key gate only for a stored key the gateway accepts right now.
+    const gateway = brandGateway()
+    const storedKey = gateway === undefined ? undefined : storedGatewayKey(gateway)
+    const gated = gateway === undefined
+      ? needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey })
+      : storedKey === undefined || await probeGatewayKey(gateway.baseURL, storedKey) !== 'ok'
     if (isQuitting() || backend.state.phase !== 'ready') return
     locale = resolveDesktopStartupLocale(state.localePreference, systemLanguages)
     writeDesktopLocaleCache(app.getPath('userData'), locale.id)
     windowsLanguage = locale.id
     refreshApplicationMenu()
-    // A product build always presents its key gate, so a stored key never bypasses the gateway check.
-    if (!enteredWorkspace && (brandGateway() !== undefined || needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey }))) {
+    if (!enteredWorkspace && gated) {
       // A later login must retain its own activation policy instead of replaying startup focus.
       raiseAfterUpdate = false
       await showWelcome()

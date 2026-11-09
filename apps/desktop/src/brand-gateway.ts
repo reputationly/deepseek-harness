@@ -1,5 +1,7 @@
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DSH_HOME_ENV } from '@deepseek-ai/dsh-home-paths'
+import { parse } from 'yaml'
 
 /** Product gateway baked into the shell at build time, and the profile patch that activates it. */
 
@@ -59,9 +61,10 @@ function scalar(value: string): string {
 /**
  * Build the profile patch that points the bundled runtime at the product gateway.
  * @param gateway - configuration inlined by the build.
+ * @param productName - provider name shown in model menus and settings; the provider's own default when omitted.
  * @returns YAML patch entries replacing the provider endpoint, catalog, and default model.
  */
-export function gatewayProfilePatch(gateway: BrandGateway): string {
+export function gatewayProfilePatch(gateway: BrandGateway, productName?: string): string {
   const models = gateway.models
     .map(model => `      - id: ${scalar(model.id)}${model.contextWindow === undefined ? '' : `\n        contextWindow: ${String(model.contextWindow)}`}`)
     .join('\n')
@@ -77,6 +80,7 @@ export function gatewayProfilePatch(gateway: BrandGateway): string {
     '  config:',
     `    baseURL: ${scalar(gateway.baseURL)}`,
     `    apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
+    ...productName === undefined || productName === '' ? [] : [`    displayName: ${scalar(productName)}`],
     '    models:',
     models,
     '',
@@ -97,5 +101,26 @@ export function gatewayProfilePatch(gateway: BrandGateway): string {
 export function writeGatewayProfile(profileDir: string): void {
   const gateway = brandGateway()
   if (gateway === undefined) return
-  writeFileSync(join(profileDir, 'cordis.patch.yml'), gatewayProfilePatch(gateway), { encoding: 'utf8', mode: 0o600 })
+  writeFileSync(join(profileDir, 'cordis.patch.yml'), gatewayProfilePatch(gateway, process.env.DSH_DESKTOP_PRODUCT_NAME), { encoding: 'utf8', mode: 0o600 })
+}
+
+/**
+ * Read the gateway key a previous run stored, with the credentials service's precedence: the managed document, then the environment.
+ * @param gateway - configuration inlined by the build.
+ * @param environment - main-process environment whose DSH_HOME names the product's Harness root.
+ * @returns the stored key, or undefined when none is stored or the document cannot be read.
+ */
+export function storedGatewayKey(gateway: BrandGateway, environment: NodeJS.ProcessEnv = process.env): string | undefined {
+  const home = environment[DSH_HOME_ENV]
+  if (home !== undefined && home !== '') {
+    try {
+      const document: unknown = parse(readFileSync(join(home, '.credentials.yaml'), 'utf8'))
+      const value = record(document) && record(document.refs) ? document.refs[gateway.apiKeyEnv] : undefined
+      if (typeof value === 'string' && value !== '') return value
+    } catch {
+      // A missing or unreadable document is an absent key; parser messages may quote the secret, so none is reported.
+    }
+  }
+  const inherited = environment[gateway.apiKeyEnv]
+  return inherited === undefined || inherited === '' ? undefined : inherited
 }
