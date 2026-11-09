@@ -34,11 +34,11 @@
 ```
 suanli-assistant/
   darwin-arm64/
-    latest-mac.yml                       ← 更新指针，每次发布重写
+    nightly-mac.yml                      ← 更新指针，每次发布重写
     latest/<当前版本>.dmg / .zip          ← 浮动下载路径，每次发布覆盖
     versions/<版本>/...                   ← 不可变，回滚和差量更新用
   win32-x64/
-    latest.yml
+    nightly.yml
     latest/<当前版本>.exe
     versions/<版本>/...
 ```
@@ -56,7 +56,7 @@ suanli-assistant/
 ```yaml
 provider: generic
 url: https://aijisuan.kdns.fr/suanli-assistant/darwin-arm64
-channel: latest
+channel: nightly
 ```
 
 由构建时的 `DSH_BRAND_UPDATE_BASE` 生成；未设置时不出这个文件，客户端也就不会检查更新。

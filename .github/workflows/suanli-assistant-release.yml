@@ -126,7 +126,7 @@ jobs:
           node scripts/release/aurora-publish.mjs             --artifacts artifacts             --version "${{ needs.prepare.outputs.version }}"             --keep "${{ inputs.keep }}"
       - name: Verify both pointers
         run: |
-          for target in darwin-arm64:latest-mac.yml win32-x64:latest.yml; do
+          for target in darwin-arm64:nightly-mac.yml win32-x64:nightly.yml; do
             dir="${target%%:*}"; feed="${target##*:}"
             url="$R2_PUBLIC_BASE/suanli-assistant/$dir/$feed"
             body="$(curl -fsS "$url")"

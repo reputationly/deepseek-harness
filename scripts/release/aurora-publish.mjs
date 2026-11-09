@@ -3,10 +3,10 @@
  *
  * Layout: every target keeps a mutable pointer beside immutable version directories.
  *
- *   suanli-assistant/darwin-arm64/latest-mac.yml                     <- update pointer, rewritten per release
+ *   suanli-assistant/darwin-arm64/nightly-mac.yml                    <- update pointer, rewritten per release
  *   suanli-assistant/darwin-arm64/latest/<installer>                 <- floating download, overwritten
  *   suanli-assistant/darwin-arm64/versions/<version>/<installer>     <- immutable, one directory per build
- *   suanli-assistant/win32-x64/latest.yml
+ *   suanli-assistant/win32-x64/nightly.yml
  *   suanli-assistant/win32-x64/versions/<version>/<installer>
  *
  * The pointer is rewritten only after every package of that target has uploaded, so a client never
@@ -56,9 +56,9 @@ const DEFAULT_KEEP = 2
 
 /** Artifact suffix to target directory. */
 const TARGETS = [
-  { match: /-mac-arm64-unsigned\.(?:dmg|zip)(?:\.blockmap)?$/u, target: 'darwin-arm64', feed: 'latest-mac.yml' },
-  { match: /-mac-x64-unsigned\.(?:dmg|zip)(?:\.blockmap)?$/u, target: 'darwin-x64', feed: 'latest-mac.yml' },
-  { match: /-win-x64-unsigned\.exe(?:\.blockmap)?$/u, target: 'win32-x64', feed: 'latest.yml' },
+  { match: /-mac-arm64-unsigned\.(?:dmg|zip)(?:\.blockmap)?$/u, target: 'darwin-arm64', feed: 'nightly-mac.yml' },
+  { match: /-mac-x64-unsigned\.(?:dmg|zip)(?:\.blockmap)?$/u, target: 'darwin-x64', feed: 'nightly-mac.yml' },
+  { match: /-win-x64-unsigned\.exe(?:\.blockmap)?$/u, target: 'win32-x64', feed: 'nightly.yml' },
 ]
 
 /**
