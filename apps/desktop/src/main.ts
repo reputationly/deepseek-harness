@@ -1434,12 +1434,13 @@ async function main(): Promise<void> {
   const openInitialWindow = async (): Promise<void> => {
     if (quitting || recovery.active) return
     const state = await readWelcomeState()
-    // A product build skips its key gate only for a stored key the gateway accepts right now.
+    // A product build returns to its key gate only when no key is stored or the gateway rejects it;
+    // an unreachable gateway keeps the workspace, where the failed request reports the outage.
     const gateway = brandGateway()
     const storedKey = gateway === undefined ? undefined : storedGatewayKey(gateway)
     const gated = gateway === undefined
       ? needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey })
-      : storedKey === undefined || await probeGatewayKey(gateway.baseURL, storedKey) !== 'ok'
+      : storedKey === undefined || await probeGatewayKey(gateway.baseURL, storedKey) === 'invalid'
     if (isQuitting() || backend.state.phase !== 'ready') return
     locale = resolveDesktopStartupLocale(state.localePreference, systemLanguages)
     writeDesktopLocaleCache(app.getPath('userData'), locale.id)
