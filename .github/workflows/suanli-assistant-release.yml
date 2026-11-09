@@ -67,6 +67,11 @@ jobs:
             echo "DSH_DESKTOP_PACKAGE_CACHE_DIR=$root/desktop"
             echo "ELECTRON_BUILDER_CACHE=$root/electron-builder"
             echo "electron_config_cache=$root/electron"
+            # GitHub keeps answering 504 for the dmgbuild bundle; electron-builder pins its sha256 and
+            # verifies every toolset it fetches, so a mirror cannot substitute the archive.
+            if [ "$RUNNER_OS" = macOS ]; then
+              echo "ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/"
+            fi
           } >> "$GITHUB_ENV"
       - name: Restore the download cache
         id: download-cache
