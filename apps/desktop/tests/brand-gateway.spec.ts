@@ -9,7 +9,7 @@ const GATEWAY = {
   baseURL: 'https://gateway.example/v1',
   apiKeyEnv: 'EXAMPLE_API_KEY',
   defaultModel: 'model-a',
-  models: [{ id: 'model-a', contextWindow: 1000 }, { id: 'model-b' }],
+  models: [{ id: 'model-a', contextWindow: 1000, inputModalities: ['text', 'image'] }, { id: 'model-b' }],
 }
 
 afterEach(() => { vi.unstubAllEnvs() })
@@ -70,7 +70,7 @@ describe('brand gateway configuration', () => {
     expect(patch).toContain('- id: llm-deepseek')
     expect(patch).toContain('    baseURL: "https://gateway.example/v1"')
     expect(patch).toContain('    apiKeyEnv: "EXAMPLE_API_KEY"')
-    expect(patch).toContain('      - id: "model-a"\n        contextWindow: 1000')
+    expect(patch).toContain('      - id: "model-a"\n        contextWindow: 1000\n        inputModalities: ["text", "image"]')
     expect(patch).toContain('      - id: "model-b"')
     expect(patch).not.toContain('displayName')
     expect(gatewayProfilePatch(GATEWAY, '蒜狸小助手')).toContain('    apiKeyEnv: "EXAMPLE_API_KEY"\n    displayName: "蒜狸小助手"\n')

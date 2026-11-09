@@ -12,19 +12,35 @@
     "models": [
       {
         "id": "deepseek-v4-1-flash",
-        "contextWindow": 838860
+        "contextWindow": 838860,
+        "inputModalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "glm-5.3-flash-w4a8",
-        "contextWindow": 720000
+        "contextWindow": 720000,
+        "inputModalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "minimax-m3.1-flash",
-        "contextWindow": 838860
+        "contextWindow": 838860,
+        "inputModalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "qwen3.8-flash-fp8",
-        "contextWindow": 838860
+        "contextWindow": 838860,
+        "inputModalities": [
+          "text",
+          "image"
+        ]
       }
     ]
   }

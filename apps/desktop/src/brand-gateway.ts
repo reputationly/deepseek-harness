@@ -9,6 +9,8 @@ import { parse } from 'yaml'
 export interface BrandGatewayModel {
   readonly id: string
   readonly contextWindow?: number
+  /** Accepted input kinds, such as text and image; the provider default (text only) when omitted. */
+  readonly inputModalities?: readonly string[]
 }
 
 /** Endpoint, credential reference, and pinned catalog for the product's model gateway. */
@@ -56,7 +58,16 @@ export function brandGateway(): BrandGateway | undefined {
     if (contextWindow !== undefined && (typeof contextWindow !== 'number' || !Number.isInteger(contextWindow) || contextWindow <= 0)) {
       throw new Error(`desktop brand: gateway model ${model.id} contextWindow must be a positive integer`)
     }
-    return contextWindow === undefined ? { id: model.id } : { id: model.id, contextWindow }
+    const { inputModalities } = model
+    if (inputModalities !== undefined && (!Array.isArray(inputModalities) || inputModalities.length === 0
+      || !inputModalities.every((kind: unknown) => typeof kind === 'string' && kind !== ''))) {
+      throw new Error(`desktop brand: gateway model ${model.id} inputModalities must be a non-empty string list`)
+    }
+    return {
+      id: model.id,
+      ...contextWindow === undefined ? {} : { contextWindow },
+      ...inputModalities === undefined ? {} : { inputModalities: inputModalities as string[] },
+    }
   })
   if (!catalog.some(model => model.id === defaultModel)) {
     throw new Error('desktop brand: gateway defaultModel must appear in the catalog')
@@ -109,7 +120,11 @@ export function gatewayProfilePatch(gateway: BrandGateway, productName?: string,
   const model = saved?.model ?? gateway.defaultModel
   const reasoningEffort = saved === undefined ? gateway.defaultReasoningEffort : saved.reasoningEffort
   const models = gateway.models
-    .map(model => `      - id: ${scalar(model.id)}${model.contextWindow === undefined ? '' : `\n        contextWindow: ${String(model.contextWindow)}`}`)
+    .map(model => [
+      `      - id: ${scalar(model.id)}`,
+      ...model.contextWindow === undefined ? [] : [`        contextWindow: ${String(model.contextWindow)}`],
+      ...model.inputModalities === undefined ? [] : [`        inputModalities: [${model.inputModalities.map(scalar).join(', ')}]`],
+    ].join('\n'))
     .join('\n')
   return [
     '# Written by the desktop shell at every start from its baked brand configuration.',
