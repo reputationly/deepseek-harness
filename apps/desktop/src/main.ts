@@ -1589,6 +1589,13 @@ async function main(): Promise<void> {
 
 const ownsDesktopInstance = claimDesktopSingleInstance(app, () => { focusPrimaryWindow() })
 
+// Packaged builds take the executable's icon; an unpackaged launch would otherwise show Electron's.
+if (process.platform === 'win32' && !app.isPackaged) {
+  app.on('browser-window-created', (_event, window) => {
+    window.setIcon(join(app.getAppPath(), 'resources', 'icon-windows.png'))
+  })
+}
+
 if (ownsDesktopInstance) void app.whenReady().then(main).catch(async (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error)
   console.error(error)

@@ -48,12 +48,12 @@ async function run(command: string, args: readonly string[], cwd: string, enviro
   })
 }
 
-async function runPackageScript(script: string, cwd: string): Promise<void> {
+async function runPackageScript(script: string, cwd: string, args: readonly string[] = []): Promise<void> {
   const packageManager = process.env.npm_execpath
   if (packageManager === undefined || packageManager === '') {
     throw new Error('desktop development: invoke this launcher through pnpm run dev:desktop or start:desktop')
   }
-  await run(process.execPath, [packageManager, 'run', script], cwd)
+  await run(process.execPath, [packageManager, 'run', script, ...args], cwd)
 }
 
 async function launchElectron(): Promise<void> {
@@ -93,7 +93,8 @@ async function launchElectron(): Promise<void> {
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { 'skip-build': { type: 'boolean', default: false } } })
   if (!values['skip-build']) {
-    await runPackageScript('build:artifacts', REPOSITORY_ROOT)
+    // Same client profile as an unsigned product release, so the brand title and hidden model seat match.
+    await runPackageScript('build:artifacts', REPOSITORY_ROOT, ['--profile', 'local'])
     await runPackageScript('build', APP_ROOT)
   }
   for (const path of [
