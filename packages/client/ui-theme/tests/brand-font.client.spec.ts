@@ -20,6 +20,13 @@ describe('offline brand font', () => {
     expect(css).not.toMatch(/url\(https?:/)
     const license = readFileSync(new URL('../src/styles/Montserrat-OFL.txt', import.meta.url), 'utf8')
     expect(license).toContain('SIL OPEN FONT LICENSE Version 1.1')
+    // The product wordmark's brush face ships with its own license and local bytes.
+    expect(css).toContain("font-family: 'Ma Shan Zheng'")
+    const wordmark = readFileSync(new URL('../src/styles/mashanzheng-subset.woff2', import.meta.url))
+    expect(wordmark.readUInt32BE(0)).toBe(0x774f4632)
+    const wordmarkLicense = readFileSync(new URL('../src/styles/MaShanZheng-OFL.txt', import.meta.url), 'utf8')
+    expect(wordmarkLicense).toContain('SIL OPEN FONT LICENSE Version 1.1')
+    expect(wordmarkLicense).toContain('MaShanZheng Project Authors')
     const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
       files: string[]
       exports: Record<string, unknown>

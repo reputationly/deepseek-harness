@@ -75,7 +75,7 @@ export default defineConfig([
         plugins: [{
           name: 'desktop-shell-assets',
           async generateBundle() {
-            for (const name of ['design-platform.css', 'brand-font.css', 'montserrat-regular.woff2', 'montserrat-light.woff2', 'montserrat-medium.woff2', 'Montserrat-OFL.txt']) {
+            for (const name of ['design-platform.css', 'brand-font.css', 'montserrat-regular.woff2', 'montserrat-light.woff2', 'montserrat-medium.woff2', 'Montserrat-OFL.txt', 'mashanzheng-subset.woff2', 'MaShanZheng-OFL.txt']) {
               this.emitFile({
                 type: 'asset',
                 fileName: name,
