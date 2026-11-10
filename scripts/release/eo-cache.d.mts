@@ -14,3 +14,11 @@ export interface EdgeOneCachePlan {
  * @returns installer URLs to pre-warm, and pointers to refresh.
  */
 export declare function planFromIndex(file: string): EdgeOneCachePlan
+
+/**
+ * Merge the URLs a release derives from its indexes with the ones ops names directly.
+ * @param indexes - index files to plan from.
+ * @param extraRefresh - URLs to refresh that no index mentions; trimmed, blanks dropped.
+ * @returns warm and refresh targets without duplicates, extra refreshes first.
+ */
+export declare function planTargets(indexes: readonly string[], extraRefresh?: readonly string[]): EdgeOneCachePlan
