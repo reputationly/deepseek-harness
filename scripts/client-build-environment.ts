@@ -21,6 +21,18 @@ const BRAND = JSON.parse(
   readFileSync(new URL('../brand.json', import.meta.url), 'utf8'),
 ) as { productName: string }
 
+/**
+ * Surface choices this fork's client builds ship, shared by the official and local profiles.
+ * A Client plugin row's `config` never reaches the browser plugin (the boot roster carries
+ * id, url, and inject only), so product-wide surface choices travel as public build values.
+ */
+const PRODUCT_CLIENT_CHOICES = {
+  // Model access comes from the product gateway key; the account pages have no account.
+  DSH_CLIENT_ACCOUNT_ENTRY: 'hidden',
+  // The Plugins page lists the reviewed roster this build ships, so the dialog keeps no trust box.
+  DSH_CLIENT_INSTALL_NOTICE: 'hidden',
+} as const
+
 /** Public client environment required by release artifacts of this fork. */
 const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'official',
@@ -28,6 +40,7 @@ const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   // The product conversation hides the model; settings own the default model and effort.
   DSH_CLIENT_MODEL_SEAT: 'hidden',
   DSH_CLIENT_HERO: 'product',
+  ...PRODUCT_CLIENT_CHOICES,
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
@@ -218,6 +231,7 @@ export function resolveClientBuildEnvironment(
         DSH_CLIENT_TITLE: BRAND.productName,
         DSH_CLIENT_MODEL_SEAT: 'hidden',
         DSH_CLIENT_HERO: 'product',
+        ...PRODUCT_CLIENT_CHOICES,
         ...(environment.DSH_CLIENT_GIT_DIRTY === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
       }),
     }

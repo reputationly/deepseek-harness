@@ -405,6 +405,8 @@ export interface PluginManagerState {
 
 /** The registration-side face the tab's slot entry injects. */
 export interface PluginManagerFace {
+  /** Whether the install dialog shows its notice box above Install (permission warning and upgrade sentence). */
+  installGuideNotice: boolean
   /** Resolve local package text in the current Client locale at render time. */
   resolveText: (text: LocalizedText) => string
   /** Resolve a configuration form by the Host entry id. */
@@ -732,13 +734,16 @@ export class PluginManagerController {
    * @param configLedger - the projection of the plugins carrying configuration, bound beside the tab's own state.
    * @param pluginTabs - the tabs other plugins contribute through `plugins.tab`.
    * @param resolveText - render-time package text resolution supplied by the locale service.
+   * @param installGuideNotice - whether the install dialog shows its notice box above Install.
    * @returns the tab's snapshot sources and its actions.
    */
   inject(
     configLedger: HostObservable<ConfigLedger>, pluginTabs: HostObservable<readonly PluginTab[]>, resolveText: PluginManagerFace['resolveText'],
+    installGuideNotice: boolean,
   ): PluginManagerFace {
     const details = this.details
     return {
+      installGuideNotice,
       resolveText,
       hooks: {
         pluginManager: this.store, configLedger, pluginTabs, configurations: this.ctx.configForms.describe(),

@@ -105,6 +105,7 @@ const NO_CONFIG: ConfigLedger = { items: [], bundles: new Set(), rows: new Set()
 function renderTab(
   state: Partial<PluginManagerState> = {}, config: Partial<ConfigLedger> = {},
   bodies: SlotBodies = {}, forms: Record<string, ConfigPageForm> = {}, tabs: readonly PluginTab[] = [],
+  installGuideNotice = true,
 ) {
   const ctx = new Context()
   onTestFinished(async () => { await ctx.fiber.dispose() })
@@ -165,6 +166,7 @@ function renderTab(
   const navigation = createNavigationStore().create()
   const props: PluginManagerPageProps = {
     createHeaderRef: vi.fn(() => vi.fn()),
+    installGuideNotice,
     useStore: bindSnapshotSelector(navigation), actions: navigation.actions,
     ...standard,
     t,
@@ -1570,6 +1572,16 @@ describe('PluginManagerPage', () => {
     set({ install: { ...install, spec: '@actual/plugin' } })
     expect(screen.queryByRole('status')).toBeNull()
     expect(screen.getByRole('textbox', { name: zh.installSpecLabel }).getAttribute('aria-describedby')).toBeNull()
+  })
+
+  it('drops the whole notice box above Install when the deployment disables it', () => {
+    const { set } = renderTab({ install: { ...IDLE_INSTALL, open: true } }, {}, {}, {}, [], false)
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(screen.queryByText(en.installGuideSafety)).toBeNull()
+    expect(screen.queryByText(en.installUpgradeNotice)).toBeNull()
+    // The rest of the dialog is unchanged: the Install action still runs the spec.
+    set({ install: { ...IDLE_INSTALL, open: true, spec: '@actual/plugin' } })
+    expect(screen.getByRole('button', { name: en.installRun })).toBeTruthy()
   })
 
   it('opens a guide under the field and drops an example into it', () => {

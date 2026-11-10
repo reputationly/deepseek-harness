@@ -13,6 +13,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { AccountView, AccountDetails } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { OnboardingChange } from './onboarding-contract.ts'
 import type { PlatformBridge } from './PlatformOverlay.tsx'
+import z from '@deepseek-ai/schemastery'
 import { ContactConfig, CONTACT_CONFIG_GLOBAL } from '../contact-config.ts'
 import { contactUrl } from './contact-url.ts'
 import { authorizeUrlWithTheme } from './authorize-url.ts'
@@ -41,15 +42,31 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { 'settings.account': AccountKey }
 }
 
+/** Deployment choice for the account surfaces this package registers. */
+export interface Config {
+  /**
+   * Register the settings entry that opens the hosted account pages (default true).
+   * A deployment whose model access comes from its own gateway key sets this to false:
+   * the entry leads to account pages that deployment has no account for.
+   */
+  accountSettingsEntry?: boolean
+}
+/** Validated account-surface options. */
+export const Config: z<Config> = z.object({ accountSettingsEntry: z.boolean().default(true) })
+
 /** Services required by account settings. */
 export const inject = ['slots', 'locale', 'remote', 'remote.account', 'remote.session', 'theme', 'configForms', 'remoteAccess']
-/** Register account UI in Desktop and plain Web clients. @param ctx - client plugin context. */
-export function apply(ctx: Context): void {
+/**
+ * Register account UI in Desktop and plain Web clients.
+ * @param ctx - client plugin context.
+ * @param config - validated account-surface options.
+ */
+export function apply(ctx: Context, config: Config = Config({})): void {
   const desktop = 'dshDesktop' in globalThis
   ctx.effect(() => ctx.locale.register('settings.account', { en, zh, ja, es, fr, de, ru, pt }), 'account: dictionaries')
   const t = ctx.locale.bind('settings.account')
   const page = globalThis as Partial<Record<typeof CONTACT_CONFIG_GLOBAL, unknown>>
-  const config = ContactConfig(page[CONTACT_CONFIG_GLOBAL] ?? {})
+  const contact = ContactConfig(page[CONTACT_CONFIG_GLOBAL] ?? {})
   let snapshot: AccountSnapshot = {
     view: undefined, details: undefined, avatar: undefined, failed: false, loginVisible: false, desktopOnboardingVisible: desktop,
   }
@@ -67,8 +84,8 @@ export function apply(ctx: Context): void {
   // card reports a presented frame. The Host owns which bonus is unnotified and
   // the server owns the copy.
   const notices = createBonusNoticeController({
-    ackRetryDelayMs: config.bonusAckRetryDelayMs,
-    ackRetryMaxDelayMs: config.bonusAckRetryMaxDelayMs,
+    ackRetryDelayMs: contact.bonusAckRetryDelayMs,
+    ackRetryMaxDelayMs: contact.bonusAckRetryMaxDelayMs,
     read: async () => {
       const result = await ctx.remote.account.getUnnotifiedBonuses(client())
       if (!result.ok) throw new Error('account bonus read failed')
@@ -210,7 +227,7 @@ export function apply(ctx: Context): void {
         width: window.screen.width, height: window.screen.height, pixelRatio: window.devicePixelRatio,
       }
       const openForm = (deviceInfo: string): void => {
-        window.open(contactUrl(config, { ...context, deviceInfo }), '_blank', 'noopener,noreferrer')
+        window.open(contactUrl(contact, { ...context, deviceInfo }), '_blank', 'noopener,noreferrer')
       }
       const readDeviceInfo = (globalThis as typeof globalThis & {
         dshDesktop?: { deviceInfo?: () => Promise<string> }
@@ -330,9 +347,13 @@ export function apply(ctx: Context): void {
       }),
     }, AccountPlatformHost))
   }
-  ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.launcher', () => ctx.slots.register({
-    name: 'settings.launcher', locale: 'settings.account', inject: () => operations,
-  }, AccountMenu)))
+  // The product ships the choice as a public build value: a Client row's `config` never
+  // reaches this plugin, so the shipped build hides the entry here.
+  if ((config.accountSettingsEntry ?? true) && process.env.DSH_CLIENT_ACCOUNT_ENTRY !== 'hidden') {
+    ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.launcher', () => ctx.slots.register({
+      name: 'settings.launcher', locale: 'settings.account', inject: () => operations,
+    }, AccountMenu)))
+  }
   ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.section', () => {
     let unregister: (() => void) | undefined
     const update = () => {
