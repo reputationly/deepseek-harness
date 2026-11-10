@@ -6,7 +6,6 @@
  *   suanli-assistant/darwin-arm64/nightly-mac.yml                          <- update pointer, rewritten per release
  *   suanli-assistant/darwin-arm64/latest.json                             <- version/size/hash of the current build
  *   suanli-assistant/darwin-arm64/latest/<stable name>                    <- stable download URL, bytes float
- *   suanli-assistant/darwin-arm64/latest/<versioned installer>            <- legacy floating copy, kept for old links
  *   suanli-assistant/darwin-arm64/versions/<version>/<installer>          <- immutable, one directory per build
  *   suanli-assistant/win32-x64/nightly.yml
  *   suanli-assistant/win32-x64/latest.json
@@ -367,11 +366,11 @@ function publish(options) {
       const path = join(artifacts, file)
       upload(objectKey(namespace, target, version, file), path, contentTypeOf(file), installerHeaders(CACHE_CONTROL.immutable, file))
       entry.uploaded.add(file)
-      // A fixed directory so a download page never has to know the current version. The versioned
-      // copy stays for links published before the stable names existed.
+      // One stable name per installer, so a download page never has to know the current version.
+      // Only the stable name is published: a second copy under the versioned name would double the
+      // bytes, the CDN cache and the pre-warm quota for a URL nothing links to.
       if (!file.endsWith('.blockmap')) {
         const stable = latestName(namespace, target, file)
-        upload(`${namespace}/${target}/${LATEST_DIRECTORY}/${file}`, path, contentTypeOf(file), installerHeaders(CACHE_CONTROL.floating, file))
         upload(`${namespace}/${target}/${LATEST_DIRECTORY}/${stable}`, path, contentTypeOf(file), installerHeaders(CACHE_CONTROL.floating, stable))
       }
     }
@@ -389,12 +388,11 @@ function publish(options) {
     const rewritten = rewriteFeed(readFileSync(feedPath, 'utf8'), publicBase, namespace, target, version)
     const staged = join(artifacts, `${target}-${feed}`)
     writeFileSync(staged, rewritten)
-    // The floating directory keeps this release's files plus the stable names that download pages
-    // link to, which repeat across releases and must survive the cleanup.
-    const floatingKeep = new Set([
-      ...files,
-      ...files.filter(file => !file.endsWith('.blockmap')).map(file => latestName(namespace, target, file)),
-    ])
+    // The floating directory holds nothing but the stable names, and those repeat across releases,
+    // so everything currently listed there under another name is stale.
+    const floatingKeep = new Set(
+      files.filter(file => !file.endsWith('.blockmap')).map(file => latestName(namespace, target, file)),
+    )
     pruneFloating({ bucket, endpoint: endpointUrl, namespace, target, keep: floatingKeep, dryRun })
     upload(`${namespace}/${target}/${feed}`, staged, 'text/yaml; charset=utf-8', [`cache-control: ${CACHE_CONTROL.pointer}`])
     // Last, so the index never names a build whose bytes are still on their way up.
@@ -408,10 +406,9 @@ function publish(options) {
 /**
  * Remove floating copies left by earlier releases.
  *
- * The floating directory keeps two names per installer: the versioned one, so a download always
- * names what it installs, and the stable one a page links to. The versioned copies pile up with every
- * release, and a stale copy would keep being served long after its version directory is gone, so
- * anything outside the current release is removed here.
+ * The floating directory holds one stable name per installer. Those names never change, so anything
+ * listed there that is not part of the current release is left over from an older layout and is
+ * removed here.
  *
  * @param options - bucket connection, target, the current release's file names, and the dry-run flag.
  */
