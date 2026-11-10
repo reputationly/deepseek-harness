@@ -97,6 +97,8 @@ const HERO_SWIM_DOWN_PATH =
  * @param props.hovering - driven by the hitbox parent's pointer state.
  * @returns the fish svg element.
  */
+const PRODUCT_HERO = process.env.DSH_CLIENT_HERO === 'product'
+
 function HeroFish({ hovering }: { hovering: boolean }) {
   return (
     <svg
@@ -152,10 +154,9 @@ export function HeroShell({ t, renderSlot, children }: HeroShellProps) {
           </span>
           <span className={css.titleGroup}>
             {/* Own element: keeps the headline text addressable apart from the badge. */}
-            <span>{t('hero.headline')}</span>
-            {/* Product builds ship without the preview badge. */}
-            {process.env.DSH_CLIENT_HERO_PREVIEW === 'hidden'
-              ? null : <span className={css.previewBadge}>{t('hero.preview')}</span>}
+            {/* Product builds carry their own slogan and ship without the preview badge. */}
+            <span>{t(PRODUCT_HERO ? 'hero.productHeadline' : 'hero.headline')}</span>
+            {PRODUCT_HERO ? null : <span className={css.previewBadge}>{t('hero.preview')}</span>}
           </span>
         </div>
         <div className={css.body}>

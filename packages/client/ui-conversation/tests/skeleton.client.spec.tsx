@@ -420,11 +420,17 @@ function mount(
 }
 
 describe('Hero chrome', () => {
-  it('omits the preview badge from product builds', () => {
-    vi.stubEnv('DSH_CLIENT_HERO_PREVIEW', 'hidden')
+  it('shows the product slogan without the preview badge in product builds', async () => {
+    vi.stubEnv('DSH_CLIENT_HERO', 'product')
+    vi.resetModules()
     try {
-      const view = render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={(() => null) as never} />)
-      expect(view.getByText('Into the Unknown')).toBeTruthy()
+      const { HeroShell: ProductHero } = await import('../src/client/skeleton/EmptyHero.tsx')
+      const view = render(<ProductHero t={makeTranslate(en, commonEn)} renderSlot={(() => null) as never} />)
+      expect(view.getByText('Compute power, at your fingertips')).toBeTruthy()
+      expect(view.queryByText('Into the Unknown')).toBeNull()
+      view.rerender(<ProductHero t={makeTranslate(zh, commonZh)} renderSlot={(() => null) as never} />)
+      expect(view.getByText('蒜狸在手，算力无忧')).toBeTruthy()
+      expect(view.queryByText('预览版')).toBeNull()
       expect(view.queryByText('Preview')).toBeNull()
     } finally {
       vi.unstubAllEnvs()
