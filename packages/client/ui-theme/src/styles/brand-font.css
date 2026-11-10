@@ -1,4 +1,7 @@
-/* Montserrat; SIL Open Font License in Montserrat-OFL.txt. */
+/* Montserrat; SIL Open Font License in Montserrat-OFL.txt.
+ * Ma Shan Zheng (马善政) subset for the product wordmark; SIL Open Font License in
+ * MaShanZheng-OFL.txt. The subset covers 蒜狸小助手 only, so renaming the product
+ * needs a new subset or the missing glyphs fall back to the system font. */
 @font-face {
   font-family: 'Montserrat';
   font-style: normal;
@@ -21,4 +24,12 @@
   font-weight: 500;
   font-display: swap;
   src: url(./montserrat-medium.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Ma Shan Zheng';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./mashanzheng-subset.woff2) format('woff2');
 }

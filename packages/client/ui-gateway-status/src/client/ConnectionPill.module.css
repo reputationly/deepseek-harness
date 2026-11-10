@@ -7,7 +7,7 @@
   min-width: 0;
   padding: 6px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   font: inherit;
@@ -16,8 +16,10 @@
   cursor: pointer;
 }
 
-.pill:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .pill:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 .pill:disabled {
@@ -33,6 +35,8 @@
   flex: none;
   width: 8px;
   height: 8px;
+  /* Paired with the full-round radius: a smoothed superellipse would wobble the dot. */
+  corner-shape: round;
   border-radius: 50%;
 }
 

@@ -197,7 +197,6 @@ Factory: conversation.content [ConversationContent]
 │  └─ id=queue [QueueDock]
 │     └─ calls Factory: conversation.user.text
 ├─ conversation.hero.frame [hoc]
-│  └─ id=pixel-whale [PixelWhale]
 ├─ conversation.hero.brand.mark
 ├─ conversation.hero.workspace
 │  └─ conversation.hero.workspace.directoryFlow

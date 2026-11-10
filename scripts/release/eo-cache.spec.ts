@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { planFromIndex } from './eo-cache.mjs'
+import { planFromIndex, planTargets } from './eo-cache.mjs'
 
 function indexFile(body: unknown): string {
   const directory = mkdtempSync(join(tmpdir(), 'eo-cache-'))
@@ -28,6 +28,28 @@ describe('EdgeOne cache plan', () => {
       'https://cdn.test/suanli-assistant/win32-x64/latest/app.exe',
       'https://cdn.test/suanli-assistant/win32-x64/latest.json',
     ])
+  })
+
+  it('refreshes a URL ops names directly alongside the ones an index implies', () => {
+    const file = indexFile({
+      version: '1.0.0',
+      feed: 'https://cdn.test/suanli-assistant/win32-x64/nightly.yml',
+      files: [{ url: 'https://cdn.test/a/versions/1/app.exe', stableUrl: 'https://cdn.test/a/latest/app.exe' }],
+    })
+    // A padded repeat of the same URL trims to the one target it names.
+    expect(planTargets([], ['https://download.test/download', '  https://download.test/download  ', '  '])).toEqual({
+      warm: [],
+      refresh: ['https://download.test/download'],
+    })
+    expect(planTargets([file], ['https://download.test/download'])).toEqual({
+      warm: ['https://cdn.test/a/versions/1/app.exe'],
+      refresh: [
+        'https://download.test/download',
+        'https://cdn.test/suanli-assistant/win32-x64/nightly.yml',
+        'https://cdn.test/a/latest/app.exe',
+        'https://cdn.test/suanli-assistant/win32-x64/latest.json',
+      ],
+    })
   })
 
   it('keeps one entry per URL when a target lists the same file twice', () => {

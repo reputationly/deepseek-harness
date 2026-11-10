@@ -1,8 +1,12 @@
 .name {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  /* Brush script for the product name: its strokes are thinner than a UI face, so the
+     tracking opens up and the text antialiases rather than turning muddy. */
+  font-family: 'Ma Shan Zheng', var(--dsh-font-family-text-default, system-ui), sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
   line-height: 1;
   white-space: nowrap;
   color: inherit;
+  -webkit-font-smoothing: antialiased;
 }
