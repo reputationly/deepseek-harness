@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/api/gateway-status/README.md
+/:
+  en: e67639058220ff95
+  zh: 622276121ac0be3f
+/deepseek-ai-dsh-api-gateway-status:
+  en: 788c9f11a0bd2c0a
+  zh: 6c84ac13472052c3
+/deepseek-ai-dsh-api-gateway-status/summary:
+  en: c573e7ef514bbcd5
+  zh: 2f23c862d514dc00
+/deepseek-ai-dsh-api-gateway-status/table-of-contents:
+  en: af856ba79fe31b8e
+  zh: 167bf0f72df3ac9a
+/deepseek-ai-dsh-api-gateway-status/use-this-package:
+  en: 5476ddddb68c634a
+  zh: 9ba6af9d5184435d
+/deepseek-ai-dsh-api-gateway-status/model-experience:
+  en: 4e93a9d82a6ae5a1
+  zh: 93a3a93a961b5223
+/deepseek-ai-dsh-api-gateway-status/model-experience/kv-cache-effect:
+  en: ca3015e252db0114
+  zh: ee5d25c033e93b2a
+/deepseek-ai-dsh-api-gateway-status/known-limitations-and-deferred-work:
+  en: ca1d23d8d50c30ee
+  zh: bd1d18677fa98ad9
+/deepseek-ai-dsh-api-gateway-status/known-limitations-and-deferred-work/dev-note:
+  en: 3375da29fc7936de
+  zh: b10e27dde30128ea

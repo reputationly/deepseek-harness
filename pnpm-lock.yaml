@@ -1403,6 +1403,25 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
 
+  packages/api/gateway-status:
+    dependencies:
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:*
+        version: link:../../credentials/credentials
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:*
+        version: link:../../typert/protocol
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-typert-registry':
+        specifier: workspace:*
+        version: link:../../typert/registry
+
   packages/api/job-controller:
     dependencies:
       '@deepseek-ai/dsh-typert-protocol':
@@ -1501,6 +1520,9 @@ importers:
       '@deepseek-ai/dsh-api-gateway':
         specifier: workspace:*
         version: link:../gateway
+      '@deepseek-ai/dsh-api-gateway-status':
+        specifier: workspace:*
+        version: link:../gateway-status
       '@deepseek-ai/dsh-api-job-controller':
         specifier: workspace:*
         version: link:../job-controller
@@ -2963,6 +2985,9 @@ importers:
       '@deepseek-ai/dsh-api-account-controller':
         specifier: workspace:*
         version: link:../../api/account-controller
+      '@deepseek-ai/dsh-api-gateway-status':
+        specifier: workspace:*
+        version: link:../../api/gateway-status
       '@deepseek-ai/dsh-api-job-controller':
         specifier: workspace:*
         version: link:../../api/job-controller
@@ -3059,6 +3084,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-file-drag':
         specifier: workspace:*
         version: link:../../client/ui-file-drag
+      '@deepseek-ai/dsh-client-ui-gateway-status':
+        specifier: workspace:*
+        version: link:../../client/ui-gateway-status
       '@deepseek-ai/dsh-client-ui-goal':
         specifier: workspace:*
         version: link:../../client/ui-goal
@@ -4659,6 +4687,42 @@ importers:
       '@deepseek-ai/dsh-util-file-drag':
         specifier: workspace:*
         version: link:../../util/file-drag
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+
+  packages/client/ui-gateway-status:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-api-gateway-status':
+        specifier: workspace:*
+        version: link:../../api/gateway-status
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:*
+        version: link:../locale
+      '@deepseek-ai/dsh-client-store':
+        specifier: workspace:*
+        version: link:../store
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: workspace:*
+        version: link:../../test-support/client-runtime
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:*
+        version: link:../ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../ui-renderer
+      '@deepseek-ai/dsh-client-ui-sidebar':
+        specifier: workspace:*
+        version: link:../ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../ui-slots
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
       react:
         specifier: ^18.2.0
         version: 18.3.1
