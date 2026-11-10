@@ -144,6 +144,8 @@ jobs:
       R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      # `secrets` cannot be read from a step-level `if`, so resolve the switch once for the job.
+      EO_ENABLED: ${{ secrets.EO_SECRET_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -157,6 +159,19 @@ jobs:
       - name: Publish every target
         run: |
           node scripts/release/aurora-publish.mjs             --artifacts artifacts             --version "${{ needs.prepare.outputs.version }}"             --keep "${{ inputs.keep }}"
+      # Artifacts are live at this point; a CDN hiccup must not mark the release failed, but it must
+      # be visible: the run shows the warning and the log carries the reason.
+      - name: Pre-warm the installers and refresh the pointers
+        if: env.EO_ENABLED == 'true'
+        continue-on-error: true
+        env:
+          EO_SECRET_ID: ${{ secrets.EO_SECRET_ID }}
+          EO_SECRET_KEY: ${{ secrets.EO_SECRET_KEY }}
+          EO_ZONE_ID: ${{ secrets.EO_ZONE_ID }}
+        run: |
+          node scripts/release/eo-cache.mjs \
+            --index artifacts/darwin-arm64-latest.json \
+            --index artifacts/win32-x64-latest.json
       - name: Verify the published pointers
         run: |
           version="${{ needs.prepare.outputs.version }}"

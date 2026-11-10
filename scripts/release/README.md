@@ -77,6 +77,28 @@ CDN 侧要配合的规则（否则会反过来破坏自动更新）：
 
 上传走 Cloudflare R2 的 S3 兼容接口，用 `curl --aws-sigv4` 签名，不需要 AWS CLI。
 
+## 发布之后：预热与刷新
+
+`publish` job 末尾会让 EdgeOne 立刻认识新版本，只在仓库配了下列 secret 时执行（缺省则整步跳过）：
+
+| secret | 说明 |
+|---|---|
+| `EO_SECRET_ID` / `EO_SECRET_KEY` | 子账号密钥，只需 `teo:CreatePrefetchTask`、`teo:CreatePurgeTask` |
+| `EO_ZONE_ID` | 站点 ID，形如 `zone-…` |
+
+它做两件事：
+
+- **预热** `versions/<版本>/` 里的安装包 —— 节点主动回源，用户第一次点击就是命中缓存。不预热的话国内首拉只有几百 KB/s，319MB 要十几分钟。
+- **刷新** `nightly.yml`、`latest.json` 和 `latest/` 里的固定文件名 —— 指针立刻翻转，不会出现"页面写着新版、下载到旧包"。
+
+这一步是 `continue-on-error`：字节此时已经在桶里，CDN 慢一拍不该把一次成功的发布标成失败，但会在运行摘要里留下告警。想先看清单而不真调接口：
+
+```
+node scripts/release/eo-cache.mjs --index artifacts/win32-x64-latest.json --dry-run
+```
+
+预热按套餐计量，319MB 预热一次会占掉相应额度和回源流量；额度紧张时只预热安装包、不预热 `.blockmap` 也能省一半。
+
 ## 客户端如何发现更新
 
 安装包内 `Contents/Resources/app-update.yml`（Windows 为 `resources/app-update.yml`）：
