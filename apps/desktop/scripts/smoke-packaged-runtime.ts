@@ -2,7 +2,7 @@
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { desktopArtifactOutput, resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
-import { EXECUTABLE_NAME, PRODUCT_NAME } from './desktop-brand.mjs'
+import { EXECUTABLE_NAME } from './desktop-brand.mjs'
 import { readDesktopRuntime, verifyDesktopRuntime } from '../src/runtime-tree.ts'
 import { verifyWindowsCode } from './windows-runtime-signature.mjs'
 import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
@@ -14,7 +14,7 @@ const target = resolveDesktopBuildTarget()
 const windows = target === 'win-x64'
 const artifacts = desktopArtifactOutput(paths, { unsigned: values.unsigned, skipNotarization: values['skip-notarization'] }).directory
 const application = windows ? join(artifacts, 'win-unpacked')
-  : join(artifacts, target === 'mac-arm64' ? 'mac-arm64' : 'mac', `${PRODUCT_NAME}.app`, 'Contents')
+  : join(artifacts, target === 'mac-arm64' ? 'mac-arm64' : 'mac', `${EXECUTABLE_NAME}.app`, 'Contents')
 const resources = join(application, windows ? 'resources' : 'Resources')
 const executable = windows ? join(application, `${EXECUTABLE_NAME}.exe`) : join(application, 'MacOS', EXECUTABLE_NAME)
 const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
