@@ -1,0 +1,220 @@
+/** Copy owned by the project canvas tab. */
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
+
+/** Dictionary namespace owned by this plugin. */
+export const NS = 'sidebarCanvas'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    /** Canvas tab, toolbar, and node copy. */
+    sidebarCanvas: keyof typeof zh
+  }
+}
+
+/** Simplified Chinese canvas copy. */
+export const zh = {
+  title: '画布',
+  'guide.description': '查看对话生成的素材及其关系',
+  loading: '正在读取画布…',
+  failed: '画布读取失败：{message}',
+  retry: '重试',
+  empty: '画布还是空的。让助手生成或整理素材后，结果会出现在这里',
+  toolbar: '画布工具',
+  zoomIn: '放大',
+  zoomOut: '缩小',
+  fit: '适应视图',
+  refresh: '刷新',
+  group: '编组',
+  'group.new': '新分组',
+  ungroup: '取消编组',
+  remove: '删除',
+  minimap: '画布缩略图',
+  notice: '操作未完全生效：{message}',
+  dismiss: '关闭提示',
+  'media.loading': '正在加载…',
+  'media.failed': '无法加载此文件',
+  'video.play': '播放视频',
+  'audio.play': '播放音频',
+} satisfies Record<string, string>
+
+/** English canvas copy. */
+export const en = {
+  title: 'Canvas',
+  'guide.description': 'See generated media and how it is related',
+  loading: 'Reading canvas…',
+  failed: 'Canvas could not be read: {message}',
+  retry: 'Retry',
+  empty: 'The canvas is empty. Ask the assistant to generate or arrange media, and the results appear here.',
+  toolbar: 'Canvas tools',
+  zoomIn: 'Zoom in',
+  zoomOut: 'Zoom out',
+  fit: 'Fit view',
+  refresh: 'Refresh',
+  group: 'Group',
+  'group.new': 'New group',
+  ungroup: 'Ungroup',
+  remove: 'Delete',
+  minimap: 'Canvas overview',
+  notice: 'The edit did not fully apply: {message}',
+  dismiss: 'Dismiss',
+  'media.loading': 'Loading…',
+  'media.failed': 'This file could not be loaded',
+  'video.play': 'Play video',
+  'audio.play': 'Play audio',
+} satisfies Record<keyof typeof zh, string>
+
+/** Japanese canvas copy. */
+export const ja = {
+  title: 'キャンバス',
+  'guide.description': '生成された素材とその関係を表示',
+  loading: 'キャンバスを読み込んでいます…',
+  failed: 'キャンバスを読み込めませんでした：{message}',
+  retry: '再試行',
+  empty: 'キャンバスはまだ空です。アシスタントに素材の生成や整理を依頼すると、ここに表示されます。',
+  toolbar: 'キャンバスツール',
+  zoomIn: '拡大',
+  zoomOut: '縮小',
+  fit: '全体を表示',
+  refresh: '更新',
+  group: 'グループ化',
+  'group.new': '新しいグループ',
+  ungroup: 'グループ解除',
+  remove: '削除',
+  minimap: 'キャンバスの概要',
+  notice: '操作が完全には反映されませんでした：{message}',
+  dismiss: '閉じる',
+  'media.loading': '読み込み中…',
+  'media.failed': 'このファイルを読み込めませんでした',
+  'video.play': '動画を再生',
+  'audio.play': '音声を再生',
+} satisfies Record<keyof typeof en, string>
+
+/** Spanish canvas copy. */
+export const es = {
+  title: 'Lienzo',
+  'guide.description': 'Ver el contenido generado y cómo se relaciona',
+  loading: 'Leyendo el lienzo…',
+  failed: 'No se pudo leer el lienzo: {message}',
+  retry: 'Reintentar',
+  empty: 'El lienzo está vacío. Pide al asistente que genere u organice contenido y los resultados aparecerán aquí.',
+  toolbar: 'Herramientas del lienzo',
+  zoomIn: 'Acercar',
+  zoomOut: 'Alejar',
+  fit: 'Ajustar a la vista',
+  refresh: 'Actualizar',
+  group: 'Agrupar',
+  'group.new': 'Nuevo grupo',
+  ungroup: 'Desagrupar',
+  remove: 'Eliminar',
+  minimap: 'Vista general del lienzo',
+  notice: 'El cambio no se aplicó por completo: {message}',
+  dismiss: 'Cerrar',
+  'media.loading': 'Cargando…',
+  'media.failed': 'No se pudo cargar este archivo',
+  'video.play': 'Reproducir vídeo',
+  'audio.play': 'Reproducir audio',
+} satisfies Record<keyof typeof en, string>
+
+/** French canvas copy. */
+export const fr = {
+  title: 'Canevas',
+  'guide.description': 'Voir les médias générés et leurs relations',
+  loading: 'Lecture du canevas…',
+  failed: 'Impossible de lire le canevas : {message}',
+  retry: 'Réessayer',
+  empty: 'Le canevas est vide. Demandez à l’assistant de générer ou d’organiser des médias ; les résultats apparaîtront ici.',
+  toolbar: 'Outils du canevas',
+  zoomIn: 'Zoom avant',
+  zoomOut: 'Zoom arrière',
+  fit: 'Ajuster à la vue',
+  refresh: 'Actualiser',
+  group: 'Grouper',
+  'group.new': 'Nouveau groupe',
+  ungroup: 'Dégrouper',
+  remove: 'Supprimer',
+  minimap: 'Aperçu du canevas',
+  notice: 'La modification n’a pas été entièrement appliquée : {message}',
+  dismiss: 'Fermer',
+  'media.loading': 'Chargement…',
+  'media.failed': 'Impossible de charger ce fichier',
+  'video.play': 'Lire la vidéo',
+  'audio.play': 'Lire l’audio',
+} satisfies Record<keyof typeof en, string>
+
+/** German canvas copy. */
+export const de = {
+  title: 'Canvas',
+  'guide.description': 'Erzeugte Medien und ihre Beziehungen ansehen',
+  loading: 'Canvas wird gelesen…',
+  failed: 'Canvas konnte nicht gelesen werden: {message}',
+  retry: 'Erneut versuchen',
+  empty: 'Der Canvas ist leer. Bitte den Assistenten, Medien zu erzeugen oder anzuordnen – die Ergebnisse erscheinen hier.',
+  toolbar: 'Canvas-Werkzeuge',
+  zoomIn: 'Vergrößern',
+  zoomOut: 'Verkleinern',
+  fit: 'Ansicht einpassen',
+  refresh: 'Aktualisieren',
+  group: 'Gruppieren',
+  'group.new': 'Neue Gruppe',
+  ungroup: 'Gruppierung aufheben',
+  remove: 'Löschen',
+  minimap: 'Canvas-Übersicht',
+  notice: 'Die Änderung wurde nicht vollständig angewendet: {message}',
+  dismiss: 'Schließen',
+  'media.loading': 'Wird geladen…',
+  'media.failed': 'Diese Datei konnte nicht geladen werden',
+  'video.play': 'Video abspielen',
+  'audio.play': 'Audio abspielen',
+} satisfies Record<keyof typeof en, string>
+
+/** Russian canvas copy. */
+export const ru = {
+  title: 'Холст',
+  'guide.description': 'Просмотр созданных материалов и связей между ними',
+  loading: 'Чтение холста…',
+  failed: 'Не удалось прочитать холст: {message}',
+  retry: 'Повторить',
+  empty: 'Холст пуст. Попросите ассистента создать или упорядочить материалы — результаты появятся здесь.',
+  toolbar: 'Инструменты холста',
+  zoomIn: 'Увеличить',
+  zoomOut: 'Уменьшить',
+  fit: 'Вписать в окно',
+  refresh: 'Обновить',
+  group: 'Сгруппировать',
+  'group.new': 'Новая группа',
+  ungroup: 'Разгруппировать',
+  remove: 'Удалить',
+  minimap: 'Обзор холста',
+  notice: 'Изменение применено не полностью: {message}',
+  dismiss: 'Закрыть',
+  'media.loading': 'Загрузка…',
+  'media.failed': 'Не удалось загрузить этот файл',
+  'video.play': 'Воспроизвести видео',
+  'audio.play': 'Воспроизвести аудио',
+} satisfies Record<keyof typeof en, string>
+
+/** Portuguese canvas copy. */
+export const pt = {
+  title: 'Tela',
+  'guide.description': 'Ver a mídia gerada e como ela se relaciona',
+  loading: 'Lendo a tela…',
+  failed: 'Não foi possível ler a tela: {message}',
+  retry: 'Tentar novamente',
+  empty: 'A tela está vazia. Peça ao assistente para gerar ou organizar mídia e os resultados aparecerão aqui.',
+  toolbar: 'Ferramentas da tela',
+  zoomIn: 'Ampliar',
+  zoomOut: 'Reduzir',
+  fit: 'Ajustar à visualização',
+  refresh: 'Atualizar',
+  group: 'Agrupar',
+  'group.new': 'Novo grupo',
+  ungroup: 'Desagrupar',
+  remove: 'Excluir',
+  minimap: 'Visão geral da tela',
+  notice: 'A edição não foi totalmente aplicada: {message}',
+  dismiss: 'Dispensar',
+  'media.loading': 'Carregando…',
+  'media.failed': 'Não foi possível carregar este arquivo',
+  'video.play': 'Reproduzir vídeo',
+  'audio.play': 'Reproduzir áudio',
+} satisfies Record<keyof typeof en, string>

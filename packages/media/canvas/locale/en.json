@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Project canvas",
+    "description": "Keeps the project canvas document so the model can place, connect, and group nodes and use nodes or groups as generation inputs."
+  }
+}

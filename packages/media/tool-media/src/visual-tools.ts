@@ -6,9 +6,11 @@
  */
 
 import { readFile } from 'node:fs/promises'
-import { extname } from 'node:path'
+import { extname, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { CanvasService } from '@deepseek-ai/dsh-canvas'
+import type { Session } from '@deepseek-ai/dsh-session'
+import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { CatalogSource, MediaCatalog } from './catalog.ts'
 import type { ParamChoice } from './choices.ts'
 import { awaitTask, downloadMedia, editImages, generateImage, submitTask, type GatewayRequest } from './gateway.ts'
@@ -24,6 +26,8 @@ export interface VisualToolDeps {
   readonly taskTimeoutMs: number
   readonly pollIntervalMs: number
   readonly write: (prefix: string, contentType: string, bytes: Uint8Array) => Promise<string>
+  /** Project canvas, when the deployment mounts one. */
+  readonly canvas: () => CanvasService | undefined
 }
 
 /** Tool result: a written file, or the choices the user must make before generation. */
@@ -31,7 +35,57 @@ interface VisualResult {
   status: 'done' | 'needs_choice'
   model: string
   path?: string
+  /** Canvas node created for the written file. */
+  nodeId?: string
+  /** Why the written file could not be placed on the canvas. */
+  canvasError?: string
   choices?: ParamChoice[]
+}
+
+/** The canvas of the Session a call runs in. */
+interface CanvasLink {
+  readonly canvas: CanvasService
+  readonly session: Session
+}
+
+function canvasLink(deps: VisualToolDeps, exec: ToolExecution): CanvasLink | undefined {
+  const canvas = deps.canvas()
+  return canvas === undefined || exec.agent === undefined ? undefined : { canvas, session: exec.agent.session }
+}
+
+async function nodeImages(tool: string, link: CanvasLink | undefined, ids: readonly string[]): Promise<string[]> {
+  if (ids.length === 0) return []
+  if (link === undefined) throw new Error(`${tool}: no canvas is available here; pass image files instead of canvas nodes`)
+  try {
+    return await link.canvas.resolveImages(link.session, ids)
+  } catch (error: unknown) {
+    throw new Error(`${tool}: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+  }
+}
+
+/** Put a generated file on the canvas with derivation edges from the nodes and files it was made from. */
+async function place(
+  link: CanvasLink | undefined,
+  node: { readonly type: 'image' | 'video'; readonly path: string; readonly prompt: string; readonly model: string },
+  sourceNodes: readonly string[],
+  sourceFiles: readonly string[],
+): Promise<Pick<VisualResult, 'nodeId' | 'canvasError'>> {
+  if (link === undefined) return {}
+  try {
+    const document = await link.canvas.read(link.session)
+    const fromFiles = sourceFiles.flatMap(file =>
+      document.nodes.filter(candidate => candidate.path === resolve(file)).map(candidate => candidate.id))
+    const sources = [...new Set([...sourceNodes, ...fromFiles])]
+    const result = await link.canvas.edit(link.session, [
+      { op: 'add', ref: 'result', ...node, title: node.prompt.length > 40 ? `${node.prompt.slice(0, 40)}…` : node.prompt },
+      ...sources.map(source => ({ op: 'connect' as const, from: source, to: 'result', kind: 'derivation' as const })),
+    ])
+    const nodeId = result.refs.result
+    return nodeId === undefined ? { canvasError: result.skipped[0]?.reason ?? 'the node was not created' } : { nodeId }
+  } catch (error: unknown) {
+    // The file is already written and paid for; the canvas failure is reported beside it.
+    return { canvasError: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 const IMAGE_TYPES: Readonly<Record<string, string>> = {
@@ -64,6 +118,8 @@ const resultSchema = {
     status: { type: 'string' as const, required: true as const, enum: ['done', 'needs_choice'] as const },
     model: { type: 'string' as const, required: true as const },
     path: { type: 'string' as const },
+    nodeId: { type: 'string' as const },
+    canvasError: { type: 'string' as const },
     choices: {
       type: 'array' as const,
       items: {
@@ -89,7 +145,11 @@ function plainChoice(choice: ParamChoice) {
 }
 
 function renderResult(tool: string, value: VisualResult) {
-  if (value.status === 'done') return [{ type: 'text' as const, text: `Wrote ${value.path ?? ''}.` }]
+  if (value.status === 'done') {
+    const placed = value.nodeId === undefined ? '' : ` It is canvas node ${value.nodeId}.`
+    const failed = value.canvasError === undefined ? '' : ` It was not placed on the canvas: ${value.canvasError}.`
+    return [{ type: 'text' as const, text: `Wrote ${value.path ?? ''}.${placed}${failed}` }]
+  }
   const lines = (value.choices ?? []).map((choice) => {
     const rejected = choice.rejected === undefined ? '' : ` The user asked for "${choice.rejected}", which is not supported.`
     return `- ${choice.id} (${choice.title}): options ${choice.options.join(', ')}; recommended ${choice.recommended}.${rejected}`
@@ -118,14 +178,17 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
     parameters: {
       prompt: { type: 'string', required: true, description: 'What the image should show, or how to change the references.' },
       referenceImages: { type: 'array', items: { type: 'string' }, description: 'Local image files to edit or combine. Omit to generate from the prompt alone.' },
+      referenceNodes: { type: 'array', items: { type: 'string' }, description: 'Canvas image nodes or groups to edit or combine; a group stands for all of its images.' },
       aspectRatio: { type: 'string', description: `Aspect ratio such as 16:9, 9:16, 1:1, or adaptive. ${STATED}` },
       resolution: { type: 'string', description: `Resolution tier such as 1K or 2K. ${STATED}` },
     },
-    output: { schema: resultSchema, render: (_args, value) => renderResult('generate_image', value as unknown as VisualResult) },
+    output: { schema: resultSchema, render: (_args, value) => renderResult('generate_image', value) },
     async execute(args, exec) {
       const input = args
+      const link = canvasLink(deps, exec)
+      const files = [...input.referenceImages ?? [], ...await nodeImages('generate_image', link, input.referenceNodes ?? [])]
       const gateway = await deps.request(exec.signal)
-      const references = await Promise.all((input.referenceImages ?? []).map(reference))
+      const references = await Promise.all(files.map(reference))
       const plan = planImage(await catalogOf(deps, gateway), {
         prompt: input.prompt, references,
         ...input.aspectRatio === undefined ? {} : { aspectRatio: input.aspectRatio },
@@ -139,7 +202,11 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
           model: plan.model, prompt: input.prompt, ...plan.call.size === undefined ? {} : { size: plan.call.size },
         })
       const media = await downloadMedia(gateway, url)
-      return { status: 'done' as const, model: plan.model, path: await deps.write('image', media.contentType, media.bytes) }
+      const path = await deps.write('image', media.contentType, media.bytes)
+      return {
+        status: 'done' as const, model: plan.model, path,
+        ...await place(link, { type: 'image', path, prompt: input.prompt, model: plan.model }, input.referenceNodes ?? [], input.referenceImages ?? []),
+      }
     },
   }))
 
@@ -156,16 +223,29 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
       firstFrame: { type: 'string', description: 'Local image file used as the first frame.' },
       lastFrame: { type: 'string', description: 'Local image file used as the last frame; needs firstFrame.' },
       referenceImages: { type: 'array', items: { type: 'string' }, description: 'Local image files whose subject or product the video keeps consistent; not combined with frames.' },
+      firstFrameNode: { type: 'string', description: 'Canvas image node used as the first frame, instead of firstFrame.' },
+      lastFrameNode: { type: 'string', description: 'Canvas image node used as the last frame, instead of lastFrame.' },
+      referenceNodes: { type: 'array', items: { type: 'string' }, description: 'Canvas image nodes or groups used like referenceImages; a group stands for all of its images.' },
     },
-    output: { schema: resultSchema, render: (_args, value) => renderResult('generate_video', value as unknown as VisualResult) },
+    output: { schema: resultSchema, render: (_args, value) => renderResult('generate_video', value) },
     async execute(args, exec) {
       const input = args
+      const link = canvasLink(deps, exec)
+      const frameOf = async (file: string | undefined, node: string | undefined): Promise<string | undefined> => {
+        if (node === undefined) return file
+        const [path, ...rest] = await nodeImages('generate_video', link, [node])
+        if (path === undefined || rest.length > 0) throw new Error(`generate_video: canvas node ${node} is not a single image; a frame needs one image node`)
+        return path
+      }
+      const firstFrame = await frameOf(input.firstFrame, input.firstFrameNode)
+      const lastFrame = await frameOf(input.lastFrame, input.lastFrameNode)
+      const files = [...input.referenceImages ?? [], ...await nodeImages('generate_video', link, input.referenceNodes ?? [])]
       const gateway = await deps.request(exec.signal)
       const plan = planVideo(await catalogOf(deps, gateway), {
         prompt: input.prompt,
-        references: await Promise.all((input.referenceImages ?? []).map(reference)),
-        ...input.firstFrame === undefined ? {} : { firstFrame: await reference(input.firstFrame) },
-        ...input.lastFrame === undefined ? {} : { lastFrame: await reference(input.lastFrame) },
+        references: await Promise.all(files.map(reference)),
+        ...firstFrame === undefined ? {} : { firstFrame: await reference(firstFrame) },
+        ...lastFrame === undefined ? {} : { lastFrame: await reference(lastFrame) },
         ...input.aspectRatio === undefined ? {} : { aspectRatio: input.aspectRatio },
         ...input.resolution === undefined ? {} : { resolution: input.resolution },
         ...input.duration === undefined ? {} : { duration: input.duration },
@@ -176,7 +256,13 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
       const id = await submitTask(gateway, plan.model, { ...plan.body })
       const url = await awaitTask(gateway, id, { timeoutMs: deps.taskTimeoutMs, intervalMs: deps.pollIntervalMs })
       const media = await downloadMedia(gateway, url)
-      return { status: 'done' as const, model: plan.model, path: await deps.write('video', media.contentType, media.bytes) }
+      const path = await deps.write('video', media.contentType, media.bytes)
+      const sourceNodes = [input.firstFrameNode, input.lastFrameNode, ...input.referenceNodes ?? []].filter(id => id !== undefined)
+      const sourceFiles = [input.firstFrame, input.lastFrame, ...input.referenceImages ?? []].filter(file => file !== undefined)
+      return {
+        status: 'done' as const, model: plan.model, path,
+        ...await place(link, { type: 'video', path, prompt: input.prompt, model: plan.model }, sourceNodes, sourceFiles),
+      }
     },
   }))
 }

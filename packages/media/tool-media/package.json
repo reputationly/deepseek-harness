@@ -21,10 +21,19 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
-    "@deepseek-ai/schemastery": "workspace:~"
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@deepseek-ai/dsh-canvas": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-canvas": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-canvas": {
+      "optional": true
+    }
   },
   "scripts": {
     "bundle": "tsdown"

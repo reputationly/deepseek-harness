@@ -83,6 +83,8 @@ import McpResources from '@deepseek-ai/dsh-mcp-resources'
 import * as ToolSubagent from '@deepseek-ai/dsh-tool-subagent'
 import * as ToolSubagentOar from '@deepseek-ai/dsh-experimental-tool-subagent-oar'
 import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
+import CanvasService from '@deepseek-ai/dsh-canvas'
+import * as ToolMedia from '@deepseek-ai/dsh-tool-media'
 import WorkflowEngine from '@deepseek-ai/dsh-workflow'
 import type { WorkflowRun, WorkflowStartRequest } from '@deepseek-ai/dsh-workflow'
 import * as ToolRalph from '@deepseek-ai/dsh-tool-ralph'
@@ -728,6 +730,34 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-canvas',
+    dir: 'canvas',
+    source: 'packages/media/canvas/src/tools.ts',
+    requires: ['ctx.workingDirectory', 'ctx.tools', 'an owning Agent session'],
+    writes: ['tool/call', 'tool/result', 'the project canvas file'],
+    async mount(ctx) {
+      await ctx.plugin(CanvasService)
+    },
+    note: 'The canvas belongs to the project directory of the calling Session; Web ui-sidebar-canvas shows it.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-media',
+    dir: 'tool-media',
+    source: {
+      generate_image: 'packages/media/tool-media/src/visual-tools.ts',
+      generate_video: 'packages/media/tool-media/src/visual-tools.ts',
+      generate_speech: 'packages/media/tool-media/src/index.ts',
+      generate_music: 'packages/media/tool-media/src/index.ts',
+    },
+    requires: ['ctx.tools', 'ctx.credentials', 'ctx.canvas for node inputs and result nodes'],
+    writes: ['tool/call', 'tool/result', 'generated media files', 'the project canvas file'],
+    async mount(ctx) {
+      // Schema harvest never contacts the gateway.
+      await ctx.plugin(ToolMedia, { baseURL: 'https://gateway.invalid/v1' })
+    },
+    note: 'Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema.',
   },
 ]
 

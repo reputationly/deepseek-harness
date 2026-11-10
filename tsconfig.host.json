@@ -512,6 +512,7 @@
     { "path": "./packages/web/web-deepseek-api" },
     { "path": "./packages/web/web-fetch-http" },
     { "path": "./packages/web/tool-web" },
+    { "path": "./packages/media/canvas" },
     { "path": "./packages/media/tool-media" },
     { "path": "./packages/spill/spill" },
     { "path": "./packages/spill/spill-local" },

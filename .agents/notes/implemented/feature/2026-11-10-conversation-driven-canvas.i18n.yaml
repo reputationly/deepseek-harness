@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for 2026-11-10-conversation-driven-canvas.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-10-conversation-driven-canvas.md
+/agent-note-conversation-driven-canvas:
+  en: 9cd6f7afe4f7184c
+  zh: 2702bc6276bd0152
+/agent-note-conversation-driven-canvas/problem:
+  en: 117c2f2d3878bb03
+  zh: fed3f0a23c4d83ff
+/agent-note-conversation-driven-canvas/decision:
+  en: 7674799297b76f93
+  zh: ac89de3c568caaaf
+/agent-note-conversation-driven-canvas/decision/document:
+  en: fcaf0b91a9d910f2
+  zh: 03703b091130481e
+/agent-note-conversation-driven-canvas/decision/model-tools:
+  en: cdf4d7205b914247
+  zh: 9c2c06078a3e922b
+/agent-note-conversation-driven-canvas/decision/nodes-and-groups-as-generation-inputs:
+  en: 9662027b498fe933
+  zh: 1d9d57092304bf70
+/agent-note-conversation-driven-canvas/decision/remote-api-and-sidebar-tab:
+  en: b2159604a32b446e
+  zh: 97d872997966e77a
+/agent-note-conversation-driven-canvas/alternatives-considered:
+  en: 8f68322b2269abbf
+  zh: 5fb6e56c4777ba0a
+/agent-note-conversation-driven-canvas/consequences:
+  en: 38c4e7a5718d49e5
+  zh: 5abb68305a3cf119
+/agent-note-conversation-driven-canvas/testing:
+  en: 7032ce3f2e54d0d7
+  zh: 3594c456b5bcf3b5

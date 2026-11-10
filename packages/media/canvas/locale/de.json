@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Projekt-Canvas",
+    "description": "Verwaltet das Canvas-Dokument des Projekts, damit das Modell Knoten platzieren, verbinden und gruppieren und Knoten oder Gruppen als Eingaben für die Erzeugung verwenden kann."
+  }
+}

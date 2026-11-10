@@ -508,6 +508,11 @@
       name: '@deepseek-ai/dsh-tool-media'
       disabled: true
 
+    # Project canvas the media tools place results on. Enabled together with tool-media.
+    - id: canvas
+      name: '@deepseek-ai/dsh-canvas'
+      disabled: true
+
     - id: mcp-resources
       name: '@deepseek-ai/dsh-mcp-resources'
 

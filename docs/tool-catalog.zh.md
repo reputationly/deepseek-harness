@@ -54,6 +54,8 @@
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+| `@deepseek-ai/dsh-canvas` | `canvas_edit`、`canvas_get` | `ctx.workingDirectory`、`ctx.tools`、`an owning Agent session` | `tool/call`、`tool/result`、`the project canvas file` | - | 画布属于调用方 Session 的项目目录；Web 的 ui-sidebar-canvas 负责显示。 |
+| `@deepseek-ai/dsh-tool-media` | `generate_image`、`generate_music`、`generate_speech`、`generate_video` | `ctx.tools`、`ctx.credentials`、`ctx.canvas for node inputs and result nodes` | `tool/call`、`tool/result`、`generated media files`、`the project canvas file` | - | 模型和可接受的参数值在调用时取自网关能力目录，而不是 schema。 |
 
 <a id="deepseek-aidsh-plugin-manager"></a>
 
@@ -2704,3 +2706,289 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 来源：[`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。
+
+
+<a id="deepseek-aidsh-canvas"></a>
+
+## `@deepseek-ai/dsh-canvas`
+
+### `canvas_edit`
+
+用一组按顺序一起应用的操作编辑项目画布。节点自动定位。无法应用的操作会被跳过并报告，其余操作照常应用。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "operations": {
+      "type": "array",
+      "description": "Operations in the order they apply.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "type": "string",
+            "description": "add creates a node from type plus text or path. update changes title, text, or path of node. remove deletes node. connect and disconnect take from and to. group frames nodes under title. ungroup dissolves the group node and keeps its members.",
+            "enum": [
+              "add",
+              "update",
+              "remove",
+              "connect",
+              "disconnect",
+              "group",
+              "ungroup"
+            ]
+          },
+          "ref": {
+            "type": "string",
+            "description": "Name for the node that add or group creates, usable wherever a node id is expected in later operations of this call."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "image",
+              "video",
+              "audio",
+              "text"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Short label shown on the node or group."
+          },
+          "text": {
+            "type": "string",
+            "description": "Content of a text node."
+          },
+          "path": {
+            "type": "string",
+            "description": "File of an image, video, or audio node."
+          },
+          "group": {
+            "type": "string",
+            "description": "Existing group that the added node joins."
+          },
+          "node": {
+            "type": "string",
+            "description": "Node that update, remove, or ungroup acts on."
+          },
+          "from": {
+            "type": "string",
+            "description": "Node or group the edge starts at: the input or source material."
+          },
+          "to": {
+            "type": "string",
+            "description": "Node or group the edge points to: what was made from, or depends on, from."
+          },
+          "nodes": {
+            "type": "array",
+            "description": "Nodes that the new group frames.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "op"
+        ]
+      }
+    }
+  },
+  "required": [
+    "operations"
+  ]
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `canvas_get`
+
+读取用户在对话旁看到的项目画布：节点、组及其成员、边。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "description": "Node or group ids to read in full. Omit to list the whole canvas with long text and prompts shortened.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+画布属于调用方 Session 的项目目录；Web 的 ui-sidebar-canvas 负责显示。
+
+<a id="deepseek-aidsh-tool-media"></a>
+
+## `@deepseek-ai/dsh-tool-media`
+
+### `generate_image`
+
+根据文本提示词生成图片，或编辑、合成本地参考图。结果状态为 needs_choice 时没有生成任何内容：向用户询问列出的问题，然后再次调用。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "What the image should show, or how to change the references."
+    },
+    "referenceImages": {
+      "type": "array",
+      "description": "Local image files to edit or combine. Omit to generate from the prompt alone.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "referenceNodes": {
+      "type": "array",
+      "description": "Canvas image nodes or groups to edit or combine; a group stands for all of its images.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "aspectRatio": {
+      "type": "string",
+      "description": "Aspect ratio such as 16:9, 9:16, 1:1, or adaptive. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "resolution": {
+      "type": "string",
+      "description": "Resolution tier such as 1K or 2K. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/visual-tools.ts`](../packages/media/tool-media/src/visual-tools.ts)
+
+### `generate_music`
+
+生成一段音乐。提示词必须描述流派、配器、速度和情绪。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "What to produce, including style, instruments, tempo, and mood for music."
+    },
+    "lyrics": {
+      "type": "string",
+      "description": "Optional lyrics for a music request."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/index.ts`](../packages/media/tool-media/src/index.ts)
+
+### `generate_speech`
+
+用参考音色样本把文本合成为语音。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "Text to speak."
+    },
+    "voice": {
+      "type": "string",
+      "description": "Reference voice: an audio file path, HTTP(S) URL, or data URI. The clip must be 30 seconds or shorter."
+    }
+  },
+  "required": [
+    "text",
+    "voice"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/index.ts`](../packages/media/tool-media/src/index.ts)
+
+### `generate_video`
+
+根据文本提示词、首帧（及可选的尾帧）或参考图生成短视频。结果状态为 needs_choice 时没有生成任何内容：向用户询问列出的问题，然后再次调用。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "What happens in the video: subject, motion, camera, and style."
+    },
+    "aspectRatio": {
+      "type": "string",
+      "description": "Aspect ratio such as 16:9, 9:16, 1:1, or adaptive. Ignored with frames. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "resolution": {
+      "type": "string",
+      "description": "Resolution tier such as 768P or 2K. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "duration": {
+      "type": "string",
+      "description": "Length in seconds, such as 5. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "audio": {
+      "type": "boolean",
+      "description": "Whether the video has sound. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "firstFrame": {
+      "type": "string",
+      "description": "Local image file used as the first frame."
+    },
+    "lastFrame": {
+      "type": "string",
+      "description": "Local image file used as the last frame; needs firstFrame."
+    },
+    "referenceImages": {
+      "type": "array",
+      "description": "Local image files whose subject or product the video keeps consistent; not combined with frames.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "firstFrameNode": {
+      "type": "string",
+      "description": "Canvas image node used as the first frame, instead of firstFrame."
+    },
+    "lastFrameNode": {
+      "type": "string",
+      "description": "Canvas image node used as the last frame, instead of lastFrame."
+    },
+    "referenceNodes": {
+      "type": "array",
+      "description": "Canvas image nodes or groups used like referenceImages; a group stands for all of its images.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/visual-tools.ts`](../packages/media/tool-media/src/visual-tools.ts)
+
+模型和可接受的参数值在调用时取自网关能力目录，而不是 schema。

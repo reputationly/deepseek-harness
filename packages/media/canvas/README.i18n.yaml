@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/media/canvas/README.md
+/:
+  en: 3db6100cc0d580f5
+  zh: bc26317171f1deb7
+/deepseek-ai-dsh-canvas:
+  en: b819e2b1f5a08723
+  zh: 9f584e959f90faca
+/deepseek-ai-dsh-canvas/summary:
+  en: 3bb6823164f5ff21
+  zh: 25a7abe7494190d5
+/deepseek-ai-dsh-canvas/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: 52384aee991ac542
+/deepseek-ai-dsh-canvas/use-this-package:
+  en: 912e2953da1e7f11
+  zh: 1c3e791eed6bd293
+/deepseek-ai-dsh-canvas/understand-the-implementation:
+  en: 048807e3bfe7e3a3
+  zh: b85b656bae062560
+/deepseek-ai-dsh-canvas/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-canvas/model-experience/tool-schemas:
+  en: 3039bc5e7a796b21
+  zh: 6b7a9eaf69c9ea53
+/deepseek-ai-dsh-canvas/model-experience/tool-schemas/what-the-model-sees:
+  en: bcd7bc1ee8774db9
+  zh: 9d53a701c6e87650
+/deepseek-ai-dsh-canvas/model-experience/tool-schemas/token-effect:
+  en: 1c3a747a4fed071d
+  zh: 48a953be4ac08927
+/deepseek-ai-dsh-canvas/model-experience/tool-schemas/kv-cache-effect:
+  en: babaa297f7288ac1
+  zh: 38d9deefe1700730
+/deepseek-ai-dsh-canvas/model-experience/tool-call-history-and-results:
+  en: a8503137ad03720c
+  zh: 611a2dadf7c0c706
+/deepseek-ai-dsh-canvas/model-experience/tool-call-history-and-results/what-the-model-sees:
+  en: 8ae7facf2b1f7714
+  zh: 5671af309c199add
+/deepseek-ai-dsh-canvas/model-experience/tool-call-history-and-results/token-effect:
+  en: 1c133b2148078be2
+  zh: a9362f9bd224bc76
+/deepseek-ai-dsh-canvas/model-experience/tool-call-history-and-results/kv-cache-effect:
+  en: 884a79b4404602be
+  zh: acae01118c28e4a1
+/deepseek-ai-dsh-canvas/known-limitations-and-deferred-work:
+  en: eebfb3a8fd2ab722
+  zh: f38a3f3b28baa2fc
+/deepseek-ai-dsh-canvas/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 7aeea62eda52b83b

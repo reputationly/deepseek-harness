@@ -72,6 +72,8 @@ describe('brand gateway configuration', () => {
     expect(patch).toContain('    apiKeyEnv: "EXAMPLE_API_KEY"')
     expect(patch).toContain('      - id: "model-a"\n        contextWindow: 1000\n        inputModalities: ["text", "image"]')
     expect(patch).toContain('      - id: "model-b"')
+    expect(patch).toContain('- id: canvas\n  disabled: false\n')
+    expect(patch).toContain('- id: ui-sidebar-canvas\n  disabled: false\n')
     expect(patch).not.toContain('displayName')
     expect(gatewayProfilePatch(GATEWAY, '蒜狸小助手')).toContain('    apiKeyEnv: "EXAMPLE_API_KEY"\n    displayName: "蒜狸小助手"\n')
   })

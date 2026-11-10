@@ -165,6 +165,7 @@ export function apply(ctx: Context, config: Config): void {
     taskTimeoutMs: resolved.taskTimeoutMs,
     pollIntervalMs: resolved.pollIntervalMs,
     write: (prefix, contentType, bytes) => writeArtifact(resolved.outputDir, prefix, contentType, bytes),
+    canvas: () => ctx.get('canvas'),
   })
 
   ctx.tools.register(defineTool({
@@ -245,13 +246,22 @@ export function apply(ctx: Context, config: Config): void {
 /** Supported artifact file extensions, exported for tests. */
 export const MEDIA_EXTENSIONS = ['.png', '.jpg', '.webp', '.wav', '.mp3', '.mp4', '.bin'] as const
 
-/** Whether a path stays inside one directory tree, exported for tests. */
+/**
+ * Whether a path stays inside one directory tree, exported for tests.
+ * @param root - the directory that must contain the path.
+ * @param candidate - the path to check.
+ * @returns true when the path is strictly below the directory.
+ */
 export function staysInside(root: string, candidate: string): boolean {
   const path = relative(root, candidate)
   return path !== '' && path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path)
 }
 
-/** File extension of one artifact path, exported for tests. */
+/**
+ * File extension of one artifact path, exported for tests.
+ * @param path - the artifact path.
+ * @returns the extension with its leading dot, or an empty string.
+ */
 export function artifactExtension(path: string): string {
   return extname(path)
 }

@@ -9,8 +9,8 @@
   en: 6cc2cd9ced70bb09
   zh: 1c0e6cb4ba2ed637
 /tool-schema-catalog/tool-package-map:
-  en: 7b5b99bcc5cd46f4
-  zh: c1697f88326440ff
+  en: 79ccb169872791b9
+  zh: 6ff416996428cf3e
 /tool-schema-catalog/deepseek-ai-dsh-plugin-manager:
   en: e0143916bb634762
   zh: e0143916bb634762
@@ -330,5 +330,29 @@
   en: 8673f203aea9bdf2
   zh: 4e17783ffdf34c83
 /tool-schema-catalog/deepseek-ai-dsh-tool-web/web-search:
-  en: cc1ad38bf0006710
-  zh: 324eacb827a09e93
+  en: 01f300094796aeb1
+  zh: f6c0336ee200d5f7
+/tool-schema-catalog/deepseek-ai-dsh-canvas:
+  en: 66616109279ddb66
+  zh: 66616109279ddb66
+/tool-schema-catalog/deepseek-ai-dsh-canvas/canvas-edit:
+  en: 9028fda78739986f
+  zh: 4596e313f6cb69d0
+/tool-schema-catalog/deepseek-ai-dsh-canvas/canvas-get:
+  en: 4412bb232b7fee12
+  zh: f6bc3cad3ed5dead
+/tool-schema-catalog/deepseek-ai-dsh-tool-media:
+  en: 0b42ffcb73ba66a9
+  zh: 0b42ffcb73ba66a9
+/tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-image:
+  en: bf9585b25890d259
+  zh: 40bc70609b1fff61
+/tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-music:
+  en: f0ac8667df18d330
+  zh: 42f7a34602312b53
+/tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-speech:
+  en: ada7121019815f5b
+  zh: 90a877e50fadfd6d
+/tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-video:
+  en: a03fc239f6711d57
+  zh: 312db47d277e4538
