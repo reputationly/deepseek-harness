@@ -157,13 +157,24 @@ jobs:
       - name: Publish every target
         run: |
           node scripts/release/aurora-publish.mjs             --artifacts artifacts             --version "${{ needs.prepare.outputs.version }}"             --keep "${{ inputs.keep }}"
-      - name: Verify both pointers
+      - name: Verify the published pointers
         run: |
+          version="${{ needs.prepare.outputs.version }}"
           for target in darwin-arm64:nightly-mac.yml win32-x64:nightly.yml; do
             dir="${target%%:*}"; feed="${target##*:}"
-            url="$R2_PUBLIC_BASE/suanli-assistant/$dir/$feed"
-            body="$(curl -fsS "$url")"
+            # The bucket is read through a CDN: a pointer published seconds ago can still answer
+            # with the previous release until its own short lifetime runs out.
+            for attempt in 1 2 3 4 5 6; do
+              body="$(curl -fsS "$R2_PUBLIC_BASE/suanli-assistant/$dir/$feed" || true)"
+              echo "$body" | grep -q "version: $version" && break
+              sleep 15
+            done
             echo "$body"
-            echo "$body" | grep -q "version: ${{ needs.prepare.outputs.version }}"               || { echo "::error::$url does not name the new version"; exit 1; }
-            echo "::notice::$url"
+            echo "$body" | grep -q "version: $version" || { echo "::error::feed $dir/$feed does not name $version"; exit 1; }
+
+            index="$(curl -fsS "$R2_PUBLIC_BASE/suanli-assistant/$dir/latest.json" || true)"
+            echo "$index"
+            echo "$index" | grep -q "\"version\": \"$version\"" || { echo "::error::$dir/latest.json does not name $version"; exit 1; }
+            echo "$index" | grep -q "/versions/$version/" || { echo "::error::$dir/latest.json does not link the version directory"; exit 1; }
+            echo "::notice::$R2_PUBLIC_BASE/suanli-assistant/$dir/latest.json"
           done

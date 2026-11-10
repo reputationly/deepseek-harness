@@ -34,3 +34,46 @@ export declare function collect(directory: string): Map<string, AuroraTargetArti
  * @returns the rewritten feed.
  */
 export declare function rewriteFeed(source: string, publicBase: string, namespace: string, target: string, version: string): string
+
+/**
+ * Stable file name of one installer inside the floating directory.
+ * @param namespace - product namespace.
+ * @param target - target directory.
+ * @param file - versioned artifact file name.
+ * @returns the name the floating copy is published under.
+ */
+export declare function latestName(namespace: string, target: string, file: string): string
+
+/** One file the current build of a target publishes. */
+export interface AuroraIndexFile {
+  readonly name: string
+  readonly url: string
+  readonly stableUrl: string
+  readonly size: number
+  readonly sha256: string
+}
+
+/** `latest.json` body: which build a target currently serves. */
+export interface AuroraIndex {
+  readonly product: string
+  readonly target: string
+  readonly version: string
+  readonly publishedAt: string
+  readonly feed: string
+  readonly files: readonly AuroraIndexFile[]
+}
+
+/**
+ * Build the `latest.json` body for one target.
+ * @param options - publish inputs.
+ * @returns the JSON text to upload.
+ */
+export declare function buildIndex(options: {
+  namespace: string
+  publicBase: string
+  target: string
+  version: string
+  feed: string
+  files: string[]
+  artifacts: string
+}): string

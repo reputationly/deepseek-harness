@@ -1,13 +1,22 @@
 /**
  * Publish one completed Aurora build to the installer bucket.
  *
- * Layout: every target keeps a mutable pointer beside immutable version directories.
+ * Layout: every target keeps mutable pointers beside immutable version directories.
  *
- *   suanli-assistant/darwin-arm64/nightly-mac.yml                    <- update pointer, rewritten per release
- *   suanli-assistant/darwin-arm64/latest/<installer>                 <- floating download, overwritten
- *   suanli-assistant/darwin-arm64/versions/<version>/<installer>     <- immutable, one directory per build
+ *   suanli-assistant/darwin-arm64/nightly-mac.yml                          <- update pointer, rewritten per release
+ *   suanli-assistant/darwin-arm64/latest.json                             <- version/size/hash of the current build
+ *   suanli-assistant/darwin-arm64/latest/<stable name>                    <- stable download URL, bytes float
+ *   suanli-assistant/darwin-arm64/latest/<versioned installer>            <- legacy floating copy, kept for old links
+ *   suanli-assistant/darwin-arm64/versions/<version>/<installer>          <- immutable, one directory per build
  *   suanli-assistant/win32-x64/nightly.yml
+ *   suanli-assistant/win32-x64/latest.json
  *   suanli-assistant/win32-x64/versions/<version>/<installer>
+ *
+ * Every object carries its own `Cache-Control`, because the bucket is served through a CDN in front
+ * of R2 and R2 itself sends none: without it the CDN falls back to a `(now - Last-Modified) * 10%`
+ * heuristic, which gives a freshly published installer a lifetime of seconds. Immutable version
+ * directories get a year; the floating entry points get minutes, so a new build appears without
+ * anyone purging a cache by hand.
  *
  * The pointer is rewritten only after every package of that target has uploaded, so a client never
  * reads a feed whose file is not there yet. Version directories are never overwritten: a release
@@ -25,7 +34,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 
@@ -54,12 +63,116 @@ const LATEST_DIRECTORY = 'latest'
 /** Version directories kept per target, including the one being published. */
 const DEFAULT_KEEP = 2
 
+/** Index object naming the current build of one target; what a download page reads. */
+const INDEX_FILE = 'latest.json'
+
+/**
+ * Cache lifetimes written onto every uploaded object.
+ *
+ * R2 sends no `Cache-Control` of its own, so a CDN in front of the bucket falls back to a
+ * `(now - Last-Modified) * 10%` heuristic — for an installer published minutes ago that is a
+ * lifetime measured in seconds, which turns every early download into an origin pull. Declaring the
+ * lifetime on the object removes the guesswork, and keeps the two kinds of key honest:
+ *
+ *  - `versions/<version>/…` never changes, so it can be cached for a year;
+ *  - `latest/…` and the pointers change per release, so they expire in minutes and a new build shows
+ *    up without anyone purging a cache by hand.
+ */
+const CACHE_CONTROL = {
+  immutable: 'public, max-age=31536000, immutable',
+  floating: 'public, max-age=300',
+  pointer: 'no-cache, max-age=60',
+}
+
 /** Artifact suffix to target directory. */
 const TARGETS = [
   { match: /-mac-arm64-unsigned\.(?:dmg|zip)(?:\.blockmap)?$/u, target: 'darwin-arm64', feed: 'nightly-mac.yml' },
   { match: /-mac-x64-unsigned\.(?:dmg|zip)(?:\.blockmap)?$/u, target: 'darwin-x64', feed: 'nightly-mac.yml' },
   { match: /-win-x64-unsigned\.exe(?:\.blockmap)?$/u, target: 'win32-x64', feed: 'nightly.yml' },
 ]
+
+/**
+ * Stable file name of one installer inside the floating directory.
+ *
+ * The versioned name tells a download what it installs, but it changes every release, so a page, a
+ * support reply, or a partner's link cannot point at it. This name drops everything version specific
+ * and keeps the extension, which lets the bytes float underneath a URL that never changes.
+ *
+ * @param namespace - product namespace.
+ * @param target - target directory.
+ * @param file - versioned artifact file name.
+ * @returns the name the floating copy is published under.
+ */
+export function latestName(namespace, target, file) {
+  return `${namespace}-${target}-unsigned${file.slice(file.lastIndexOf('.'))}`
+}
+
+/**
+ * Hash one file without holding it in memory; installers routinely run to hundreds of megabytes.
+ * @param file - path to read.
+ * @returns the lowercase hex SHA-256 digest.
+ */
+function digest(file) {
+  const hash = createHash('sha256')
+  const descriptor = openSync(file, 'r')
+  const buffer = Buffer.allocUnsafe(1024 * 1024)
+  try {
+    for (;;) {
+      const read = readSync(descriptor, buffer, 0, buffer.length, null)
+      if (read === 0) break
+      hash.update(buffer.subarray(0, read))
+    }
+  } finally {
+    closeSync(descriptor)
+  }
+  return hash.digest('hex')
+}
+
+/**
+ * Metadata headers for one installer object.
+ * @param cacheControl - the lifetime a CDN should honour, taken from {@link CACHE_CONTROL}.
+ * @param filename - name a browser should save the object as.
+ * @returns curl header arguments.
+ */
+function installerHeaders(cacheControl, filename) {
+  return [
+    `cache-control: ${cacheControl}`,
+    `content-disposition: attachment; filename="${filename.replaceAll('"', '')}"`,
+  ]
+}
+
+/**
+ * Build the `latest.json` body for one target.
+ *
+ * A download page asks for this instead of guessing a file name: every URL inside points into the
+ * immutable version directory, so the bytes a page links to can never be replaced by a later release
+ * while the page itself stays cacheable only for minutes.
+ *
+ * @param options - publish inputs.
+ * @returns the JSON text to upload.
+ */
+export function buildIndex({ namespace, publicBase, target, version, feed, files, artifacts }) {
+  const entries = files
+    .filter(file => !file.endsWith('.blockmap'))
+    .map(file => {
+      const path = join(artifacts, file)
+      return {
+        name: file,
+        url: `${publicBase}/${objectKey(namespace, target, version, file)}`,
+        stableUrl: `${publicBase}/${namespace}/${target}/${LATEST_DIRECTORY}/${latestName(namespace, target, file)}`,
+        size: statSync(path).size,
+        sha256: digest(path),
+      }
+    })
+  return `${JSON.stringify({
+    product: namespace,
+    target,
+    version,
+    publishedAt: new Date().toISOString(),
+    feed: `${publicBase}/${namespace}/${target}/${feed}`,
+    files: entries,
+  }, null, 2)}\n`
+}
 
 /**
  * Read one connection value.
@@ -104,6 +217,7 @@ function s3(method, path, options = {}) {
     '--header', 'Expect:',
     '--retry', '3', '--retry-delay', '2', '--retry-all-errors',
     ...(options.contentType === undefined ? [] : ['--header', `content-type: ${options.contentType}`]),
+    ...(options.headers ?? []).flatMap(header => ['--header', header]),
     ...(options.upload === undefined ? [] : ['--upload-file', options.upload]),
     `${options.endpoint}/${options.bucket}${path}${options.query ?? ''}`,
   ]
@@ -238,23 +352,27 @@ function publish(options) {
   const { artifacts, version, namespace, keep, dryRun } = options
   const grouped = collect(artifacts)
   if (grouped.size === 0) throw new Error(`aurora publish: no installers in ${artifacts}`)
-  const upload = (key, path, contentType) => {
+  const upload = (key, path, contentType, headers = []) => {
     if (dryRun) {
-      console.log(`  would upload ${key}`)
+      console.log(`  would upload ${key}${headers.length === 0 ? '' : ` [${headers[0]}]`}`)
       return
     }
-    s3('PUT', `/${key}`, { endpoint: endpointUrl, bucket, upload: path, contentType })
+    s3('PUT', `/${key}`, { endpoint: endpointUrl, bucket, upload: path, contentType, headers })
     console.log(`  uploaded ${key}`)
   }
   for (const [target, entry] of grouped) {
     const { feed, files } = entry
     console.log(`aurora publish: ${target}`)
     for (const file of files) {
-      upload(objectKey(namespace, target, version, file), join(artifacts, file), contentTypeOf(file))
+      const path = join(artifacts, file)
+      upload(objectKey(namespace, target, version, file), path, contentTypeOf(file), installerHeaders(CACHE_CONTROL.immutable, file))
       entry.uploaded.add(file)
-      // A fixed path so a download page never has to know the current version.
+      // A fixed directory so a download page never has to know the current version. The versioned
+      // copy stays for links published before the stable names existed.
       if (!file.endsWith('.blockmap')) {
-        upload(`${namespace}/${target}/${LATEST_DIRECTORY}/${file}`, join(artifacts, file), contentTypeOf(file))
+        const stable = latestName(namespace, target, file)
+        upload(`${namespace}/${target}/${LATEST_DIRECTORY}/${file}`, path, contentTypeOf(file), installerHeaders(CACHE_CONTROL.floating, file))
+        upload(`${namespace}/${target}/${LATEST_DIRECTORY}/${stable}`, path, contentTypeOf(file), installerHeaders(CACHE_CONTROL.floating, stable))
       }
     }
     const feedPath = join(artifacts, feed)
@@ -262,15 +380,27 @@ function publish(options) {
       // Unsigned builds stop at the installer; the updater still needs a feed (and a ZIP on macOS).
       writeFileSync(feedPath, synthesizeFeed({ artifacts, target, version, files }))
       for (const file of files) {
-        if (!entry.uploaded.has(file)) upload(objectKey(namespace, target, version, file), join(artifacts, file), contentTypeOf(file))
+        if (!entry.uploaded.has(file)) {
+          upload(objectKey(namespace, target, version, file), join(artifacts, file), contentTypeOf(file), installerHeaders(CACHE_CONTROL.immutable, file))
+        }
       }
     }
     if (!existsSync(feedPath)) throw new Error(`aurora publish: ${target} has no ${feed}`)
     const rewritten = rewriteFeed(readFileSync(feedPath, 'utf8'), publicBase, namespace, target, version)
     const staged = join(artifacts, `${target}-${feed}`)
     writeFileSync(staged, rewritten)
-    pruneFloating({ bucket, endpoint: endpointUrl, namespace, target, keep: new Set(files), dryRun })
-    upload(`${namespace}/${target}/${feed}`, staged, 'text/yaml; charset=utf-8')
+    // The floating directory keeps this release's files plus the stable names that download pages
+    // link to, which repeat across releases and must survive the cleanup.
+    const floatingKeep = new Set([
+      ...files,
+      ...files.filter(file => !file.endsWith('.blockmap')).map(file => latestName(namespace, target, file)),
+    ])
+    pruneFloating({ bucket, endpoint: endpointUrl, namespace, target, keep: floatingKeep, dryRun })
+    upload(`${namespace}/${target}/${feed}`, staged, 'text/yaml; charset=utf-8', [`cache-control: ${CACHE_CONTROL.pointer}`])
+    // Last, so the index never names a build whose bytes are still on their way up.
+    const stagedIndex = join(artifacts, `${target}-${INDEX_FILE}`)
+    writeFileSync(stagedIndex, buildIndex({ namespace, publicBase, target, version, feed, files, artifacts }))
+    upload(`${namespace}/${target}/${INDEX_FILE}`, stagedIndex, 'application/json; charset=utf-8', [`cache-control: ${CACHE_CONTROL.pointer}`])
     prune({ bucket, endpoint: endpointUrl, namespace, target, keep, current: version, dryRun })
   }
 }
@@ -278,9 +408,10 @@ function publish(options) {
 /**
  * Remove floating copies left by earlier releases.
  *
- * The floating path keeps its versioned file name so a download always names what it installs, which
- * means every release adds a file there; without this the directory grows without bound and a stale
- * entry can be served long after its version directory is gone.
+ * The floating directory keeps two names per installer: the versioned one, so a download always
+ * names what it installs, and the stable one a page links to. The versioned copies pile up with every
+ * release, and a stale copy would keep being served long after its version directory is gone, so
+ * anything outside the current release is removed here.
  *
  * @param options - bucket connection, target, the current release's file names, and the dry-run flag.
  */

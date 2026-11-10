@@ -34,18 +34,46 @@
 ```
 suanli-assistant/
   darwin-arm64/
-    nightly-mac.yml                      ← 更新指针，每次发布重写
-    latest/<当前版本>.dmg / .zip          ← 浮动下载路径，每次发布覆盖
-    versions/<版本>/...                   ← 不可变，回滚和差量更新用
+    nightly-mac.yml                    ← 更新指针，每次发布重写
+    latest.json                        ← 当前版本 / 大小 / sha256，下载页读这个
+    latest/suanli-assistant-*.dmg/.zip ← 固定文件名，字节随版本浮动
+    latest/<带版本号的文件名>           ← 旧链接兼容用，只保留当前版本
+    versions/<版本>/...                ← 不可变，回滚和差量更新用
   win32-x64/
     nightly.yml
-    latest/<当前版本>.exe
+    latest.json
+    latest/suanli-assistant-win32-x64-unsigned.exe
     versions/<版本>/...
 ```
 
 - 版本目录**只增不改**：同一版本重发会覆盖，所以发布前确认版本号
 - 每个 target 保留最近 `keep` 个版本目录，删旧时跳过正在发布的那个
-- `latest/` 只保留当前版本的安装包（文件名带版本，否则会无限累积）
+- `latest/` 只保留当前版本的安装包：带版本号的那份每次发布换名，固定名那份原地覆盖
+
+### 三个入口，用途不同
+
+| 入口 | 谁用 | 缓存 |
+|---|---|---|
+| `versions/<版本>/<文件>` | `nightly.yml` 里的下载地址、差量更新 | 1 年 + `immutable` |
+| `latest.json` | 下载页、客服、文档想知道"最新是哪个" | `no-cache`，秒级 |
+| `latest/suanli-assistant-<平台>-unsigned.<ext>` | 给人手点的固定链接 | 5 分钟 |
+
+**给用户的固定链接只能用第三种，不能把 319MB 的文件挂在一个长缓存的固定路径上**：那样发版后
+一部分用户会永远拿到旧包，而且不同节点表现不同，几乎无法复现。
+
+### 缓存头是发布脚本写的
+
+R2 自己不发 `Cache-Control`，前面挂了 CDN（EdgeOne）时就会退回
+`TTL = (当前时间 - Last-Modified) × 10%` 的启发式 —— 刚发出来的安装包只剩几秒寿命，每个早期下载
+都会回源。所以每个对象上传时都带上自己的缓存头，值见
+`aurora-publish.mjs` 的 `CACHE_CONTROL`。
+
+CDN 侧要配合的规则（否则会反过来破坏自动更新）：
+
+- `versions/` 与 `latest/` 下的安装包 → 长缓存（与其自身 `Cache-Control` 一致即可）
+- **`nightly.yml`、`nightly-mac.yml`、`latest.json` → 不缓存或 ≤60 秒**。这几个是"指针"，
+  一旦被长缓存，客户端会长期收不到新版本
+- 开启「分片回源」，关闭「预刷新」和「智能压缩」（安装包本身已压缩）
 
 上传走 Cloudflare R2 的 S3 兼容接口，用 `curl --aws-sigv4` 签名，不需要 AWS CLI。
 
