@@ -31,7 +31,7 @@ function Tool({ label, disabled = false, onClick, children }: {
   onClick: () => void
   children: ReactNode
 }): ReactNode {
-  return <Tooltip label={label} side="top">
+  return <Tooltip label={label} side="top" portal>
     <span className={css.toolAnchor}>
       <Button size="sm" className={css.tool} aria-label={label} disabled={disabled} onClick={onClick}>{children}</Button>
     </span>
@@ -59,7 +59,7 @@ function Toolbar({ document, nodes, edges, edit, reload, t }: Pick<CanvasFlowPro
     <Tool label={t('zoomIn')} onClick={() => { void flow.zoomIn() }}><IconPlusOutlineRegular /></Tool>
     <Tool label={t('fit')} onClick={() => { void flow.fitView({ duration: 200, padding: 0.15 }) }}><IconFullscreenOutlineRegular /></Tool>
     <span className={css.toolSeparator} aria-hidden="true" />
-    <Tool label={t('group')} disabled={members.length === 0} onClick={() => { void edit([{ op: 'group', title: t('group.new'), nodes: members }]) }}>
+    <Tool label={t('group')} disabled={members.length < 2} onClick={() => { void edit([{ op: 'group', title: t('group.new'), nodes: members }]) }}>
       <IconLayersOutlineRegular />
     </Tool>
     <Tool label={t('remove')} disabled={removal.length === 0} onClick={() => { void edit(removal) }}><IconTrashOutlineRegular /></Tool>
