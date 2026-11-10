@@ -99,6 +99,10 @@ node scripts/release/eo-cache.mjs --index artifacts/win32-x64-latest.json --dry-
 
 预热按套餐计量，319MB 预热一次会占掉相应额度和回源流量；额度紧张时只预热安装包、不预热 `.blockmap` 也能省一半。
 
+预热**逐个 URL 提交**：套餐对单次提交的资源数有上限（免费版一次提 3 个就会返回
+`LimitExceeded.BatchQuota`），而单个 URL 失败只影响第一个访客的回源速度，所以预热的失败
+降级为 `::warning`，不会让一次已经上传成功的发布变红。
+
 ## 客户端如何发现更新
 
 安装包内 `Contents/Resources/app-update.yml`（Windows 为 `resources/app-update.yml`）：

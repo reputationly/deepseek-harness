@@ -146,14 +146,26 @@ async function run({ indexes, credentials, dryRun }) {
     for (const entry of failed) console.log(`  rejected ${String(entry.Url ?? '')} ${String(entry.Reason ?? '')}`.trim())
   }
   if (targets.warm.length > 0) {
-    const submitted = await call(
-      'CreatePrefetchTask',
-      { ZoneId: credentials.zone, Targets: targets.warm },
-      credentials,
-    )
-    const failed = submitted.FailedList ?? []
-    console.log(`eo cache: prefetch task ${String(submitted.JobId ?? '?')}${failed.length === 0 ? '' : `, ${String(failed.length)} rejected`}`)
-    for (const entry of failed) console.log(`  rejected ${String(entry.Url ?? '')} ${String(entry.Reason ?? '')}`.trim())
+    // One URL per request: the batch size a plan accepts is not published, and the free plan
+    // rejects a handful of URLs at once with `LimitExceeded.BatchQuota`. A rejected pre-warm only
+    // costs the first visitor an origin pull, so it warns instead of failing the release.
+    let accepted = 0
+    const rejected = []
+    for (const url of targets.warm) {
+      try {
+        const submitted = await call('CreatePrefetchTask', { ZoneId: credentials.zone, Targets: [url] }, credentials)
+        const failed = submitted.FailedList ?? []
+        if (failed.length === 0) {
+          accepted += 1
+          console.log(`eo cache: prefetch task ${String(submitted.JobId ?? '?')} for ${url}`)
+        }
+        for (const entry of failed) rejected.push(`${url} ${String(entry.Reason ?? 'rejected')}`.trim())
+      } catch (error) {
+        rejected.push(`${url} ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    console.log(`eo cache: prefetch accepted ${String(accepted)}/${String(targets.warm.length)}`)
+    for (const entry of rejected) console.log(`::warning::eo cache: pre-warm rejected ${entry}`)
   }
 }
 
