@@ -17,7 +17,6 @@ afterEach(() => {
 const HOLES = [
   'sidebar.brand.mark',
   'sidebar.brand.name',
-  'conversation.hero.frame',
 ] as const
 
 const HERO_HOLE = 'conversation.hero.brand.mark'
@@ -52,7 +51,8 @@ describe('official browser-brand plugin', () => {
     await subject.ctx.plugin({ inject: [...inject], apply }).await()
     expect(subject.slots.entries('sidebar.brand.mark')).toHaveLength(1)
     expect(subject.slots.entries('sidebar.brand.name')).toHaveLength(1)
-    expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(1)
+    // The blank home carries no decoration, so the frame slot stays free.
+    expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(0)
   })
 
   it('fills declarations before or after apply and removes every occupant on teardown', async () => {
@@ -86,15 +86,13 @@ describe('official browser-brand plugin', () => {
     expect(subject.slots.entries(HERO_HOLE)).toHaveLength(1)
   })
 
-  it('registers the whale as a self-contained frame layer beside the hero mark', async () => {
+  it('leaves the home frame slot to other occupants', async () => {
     vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', 'official')
     const subject = await bench()
     const fiber = subject.ctx.plugin({ inject: [...inject], apply })
     try {
       await fiber.await()
-      const [entry] = subject.slots.entries('conversation.hero.frame')
-      expect(entry?.options.id).toBe('pixel-whale')
-      expect(entry?.inject).toBeUndefined()
+      expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(0)
       expect(subject.slots.entries(HERO_HOLE)).toHaveLength(1)
     } finally {
       await fiber.dispose()
