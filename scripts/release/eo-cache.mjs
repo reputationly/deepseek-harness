@@ -13,6 +13,10 @@
  *
  *     EO_SECRET_ID=… EO_SECRET_KEY=… EO_ZONE_ID=zone-… \
  *     node scripts/release/eo-cache.mjs --index artifacts/win32-x64-latest.json --dry-run
+ *
+ * A release derives its URLs from the index; ops refreshes arbitrary ones directly:
+ *
+ *     node scripts/release/eo-cache.mjs --purge https://download.ovaijisuan.com/download
  */
 
 import { createHash, createHmac } from 'node:crypto'
@@ -122,15 +126,25 @@ export function planFromIndex(file) {
  * @param options - parsed command line plus credentials.
  * @returns nothing; failures are thrown.
  */
-async function run({ indexes, credentials, dryRun }) {
+/**
+ * Merge the URLs a release derives from its indexes with the ones ops names directly.
+ * @param indexes - index files to plan from.
+ * @param extraRefresh - URLs to refresh that no index mentions; trimmed, blanks dropped.
+ * @returns warm and refresh targets without duplicates, extra refreshes first.
+ */
+export function planTargets(indexes, extraRefresh = []) {
   const warm = []
-  const refresh = []
+  const refresh = extraRefresh.map(url => url.trim()).filter(url => url !== '')
   for (const file of indexes) {
     const plan = planFromIndex(file)
     warm.push(...plan.warm)
     refresh.push(...plan.refresh)
   }
-  const targets = { warm: [...new Set(warm)], refresh: [...new Set(refresh)] }
+  return { warm: [...new Set(warm)], refresh: [...new Set(refresh)] }
+}
+
+async function run({ indexes, extraRefresh, credentials, dryRun }) {
+  const targets = planTargets(indexes, extraRefresh)
   console.log(`eo cache: ${String(targets.warm.length)} to pre-warm, ${String(targets.refresh.length)} to refresh`)
   for (const url of targets.warm) console.log(`  warm    ${url}`)
   for (const url of targets.refresh) console.log(`  refresh ${url}`)
@@ -173,12 +187,16 @@ async function main() {
   const { values } = parseArgs({
     options: {
       index: { type: 'string', multiple: true, default: [] },
+      purge: { type: 'string', multiple: true, default: [] },
       'dry-run': { type: 'boolean', default: false },
     },
     allowPositionals: false,
   })
   const indexes = values.index
-  if (indexes.length === 0) throw new Error('eo cache: at least one --index <latest.json> is required')
+  const extraRefresh = values.purge
+  if (indexes.length === 0 && extraRefresh.every(url => url.trim() === '')) {
+    throw new Error('eo cache: give at least one --index <latest.json> or --purge <url>')
+  }
   const credentials = {
     secretId: process.env[CREDENTIALS.secretId]?.trim() ?? '',
     secretKey: process.env[CREDENTIALS.secretKey]?.trim() ?? '',
@@ -189,7 +207,7 @@ async function main() {
       if (value === '') throw new Error(`eo cache: ${CREDENTIALS[name]} is required unless --dry-run`)
     }
   }
-  await run({ indexes, credentials, dryRun: values['dry-run'] })
+  await run({ indexes, extraRefresh, credentials, dryRun: values['dry-run'] })
 }
 
 if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
