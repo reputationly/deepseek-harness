@@ -36,6 +36,7 @@ kind: "package-reference"
 - name: '@deepseek-ai/dsh-system-prompt'
   config:
     includeHarnessIdentity: true
+    identityBrand: '蒜狸小助手'
     includeRuntimeContext: true
     personaPrefix: 'You are the deployment assistant.'
     toolOrder: ['<unlisted-tools>']
@@ -43,7 +44,8 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `includeHarnessIdentity` | `true` | 是否包含顺序为 −1000 的第一方固定开场白 `You are an AI agent powered by DeepSeek Harness.`。仅当兼容性部署拥有完整系统提示词时设为 false。 |
+| `includeHarnessIdentity` | `true` | 是否包含顺序为 −1000 的第一方固定开场白 `You are an AI agent powered by <identityBrand>.`。仅当兼容性部署拥有完整系统提示词时设为 false。 |
+| `identityBrand` | `'蒜狸小助手'` | 开场白中署名的产品名称；发布其他产品名的部署在此改写 |
 | `includeRuntimeContext` | `true` | 是否在组装中包含可选的有序动态 runtime 上下文 |
 | `personaPrefix` | `''` | 全局 persona 前缀模板，顺序为 `0`，位于第一方指导之前 |
 | `personaSuffix` | `''` | 全局 `deployment:persona-suffix` 模板，顺序为 `10200`，位于第一方指导之后 |
@@ -144,7 +146,7 @@ ctx.systemPrompt.variable('response_language', () => 'English')
 ##### harness 身份
 
 ```markdown
-You are an AI agent powered by DeepSeek Harness.
+You are an AI agent powered by 蒜狸小助手.
 ```
 
 #### Token 影响

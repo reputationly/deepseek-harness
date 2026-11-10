@@ -781,22 +781,30 @@
 .footArea {
   flex: none;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
 }
 
-.settingsArea,
+/* Settings owns the row's free space and the footer actions sit at its end. */
+.settingsArea {
+  order: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .footerActions {
+  order: 2;
+  display: flex;
   flex: none;
   min-width: 0;
-  width: 100%;
 }
 
-.footerActions {
-  display: flex;
-}
-
+/* The 56px rail keeps the same occupants stacked, one centred icon or dot each. */
 .collapsed .footArea {
+  flex-direction: column;
   align-items: center;
+  gap: 0;
 }
 
 .collapsed .settingsArea,

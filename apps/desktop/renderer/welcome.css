@@ -309,6 +309,9 @@ body {
 
 .key-field {
   position: relative;
+  /* Reserve the error line inside the field: the actions row below is used up by
+     its two buttons, so an out-of-flow error would land under the primary one. */
+  padding-bottom: 30px;
   width: 100%;
 }
 
@@ -341,9 +344,10 @@ body {
 
 .key-error {
   position: absolute;
-  top: 100%;
-  width: 100%;
-  margin: 8px 0 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0;
   color: var(--dsw-alias-label-primary);
   font-size: 14px;
   line-height: 22px;

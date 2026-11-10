@@ -1008,10 +1008,12 @@ function useInstallComposition(active: boolean) {
  */
 function InstallDialog({
   install, t, onClose, onEditSpec, onRun, onCancel, onReconcile, onToggleDetails, onEnableNow, onApproveBuilds,
-  onToggleRegistry, onChooseRegistry, onChangeRegistry, onUseGithubMirror,
+  onToggleRegistry, onChooseRegistry, onChangeRegistry, onUseGithubMirror, guideNotice,
 }: {
   readonly install: InstallState
   readonly t: Translate
+  /** Whether the footer shows the notice box above Install, from the plugin's `installGuideNotice`. */
+  readonly guideNotice: boolean
   readonly onClose: () => void
   readonly onEditSpec: (text: string) => void
   readonly onRun: () => void
@@ -1141,13 +1143,17 @@ function InstallDialog({
         contentClassName={css.installContent as string}
         footer={(
           <div className={css.installFooter}>
-            <p className={css.installSafety} role="note">
-              <IconWarningOutlineRegular size={14} aria-hidden="true" />
-              <span className={css.installSafetyText}>
-                <span>{t('installGuideSafety')}</span>
-                <span>{t('installUpgradeNotice')}</span>
-              </span>
-            </p>
+            {guideNotice
+              ? (
+                <p className={css.installSafety} role="note">
+                  <IconWarningOutlineRegular size={14} aria-hidden="true" />
+                  <span className={css.installSafetyText}>
+                    <span>{t('installGuideSafety')}</span>
+                    <span>{t('installUpgradeNotice')}</span>
+                  </span>
+                </p>
+              )
+              : null}
             <Button variant="primary" className={css.wide} disabled={checking || empty} aria-busy={checking} onClick={onRun}>
               {checking ? <StateDot state="ongoing" /> : null}
               {t(checking ? 'installChecking' : 'installRun')}
@@ -1881,6 +1887,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
         onChooseRegistry={props.chooseRegistry}
         onChangeRegistry={props.changeRegistry}
         onUseGithubMirror={props.useGithubMirror}
+        guideNotice={props.installGuideNotice}
       />
       {state.confirm === null
         ? null

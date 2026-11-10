@@ -12,7 +12,7 @@ import type { PromptContextOrderName, PromptSectionOrderName } from '@deepseek-a
  * their own sections; the built-ins' behavior is pinned by its own describe.
  */
 const BUILT_IN = ['harness:identity', 'deployment:persona-prefix', 'deployment:persona-suffix']
-const IDENTITY = 'You are an AI agent powered by DeepSeek Harness.'
+const IDENTITY = 'You are an AI agent powered by 蒜狸小助手.'
 const SECTION_ORDER_NAMES = [
   'HARNESS_IDENTITY', 'DEPLOYMENT_PERSONA_PREFIX',
   'PLAN_POLICY', 'TEAM_POLICY', 'PTC_ONLY', 'FILE_REFERENCE', 'TOOL_BASH',
@@ -237,6 +237,12 @@ describe('SystemPrompt', () => {
       const ctx = new Context()
       await ctx.plugin(SystemPrompt)
       expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe(IDENTITY)
+    })
+
+    it('credits the product name the deployment configures', async () => {
+      const ctx = new Context()
+      await ctx.plugin(SystemPrompt, { identityBrand: '蒜狸小助手' })
+      expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe('You are an AI agent powered by 蒜狸小助手.')
     })
 
     it('can omit the harness identity for a deployment that owns the complete persona', async () => {

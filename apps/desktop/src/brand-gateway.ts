@@ -157,6 +157,15 @@ export function gatewayProfilePatch(gateway: BrandGateway, productName?: string,
     '- id: ui-sidebar-canvas',
     '  disabled: false',
     '',
+    '# The footer connection light probes this same endpoint with the stored key. The row',
+    '# exists only where a gateway is configured, so no bundle ships it disabled.',
+    '- insert:',
+    '    - id: gateway-status',
+    "      name: '@deepseek-ai/dsh-api-gateway-status'",
+    '      config:',
+    `        baseURL: ${scalar(gateway.baseURL)}`,
+    `        apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
+    '',
   ].join('\n')
 }
 

@@ -36,6 +36,7 @@ The config owns the fixed opener, runtime context, deployment persona prefix and
 - name: '@deepseek-ai/dsh-system-prompt'
   config:
     includeHarnessIdentity: true
+    identityBrand: '蒜狸小助手'
     includeRuntimeContext: true
     personaPrefix: 'You are the deployment assistant.'
     toolOrder: ['<unlisted-tools>']
@@ -43,7 +44,8 @@ The config owns the fixed opener, runtime context, deployment persona prefix and
 
 | Field | Default | Meaning |
 |---|---|---|
-| `includeHarnessIdentity` | `true` | Include the fixed `You are an AI agent powered by DeepSeek Harness.` first-party opener at order −1000. Set false only when a compatibility deployment owns the complete system prompt. |
+| `includeHarnessIdentity` | `true` | Include the fixed `You are an AI agent powered by <identityBrand>.` first-party opener at order −1000. Set false only when a compatibility deployment owns the complete system prompt. |
+| `identityBrand` | `'蒜狸小助手'` | Product name the opener credits; a deployment shipping another product name restates it |
 | `includeRuntimeContext` | `true` | Include optional ordered dynamic runtime context in assembly |
 | `personaPrefix` | `''` | Global persona prefix template at order `0`, before first-party guidance |
 | `personaSuffix` | `''` | Global `deployment:persona-suffix` template at order `10200`, after first-party guidance |
@@ -144,7 +146,7 @@ First-party sections render the harness identity, deployment persona prefix (inc
 ##### Harness identity
 
 ```markdown
-You are an AI agent powered by DeepSeek Harness.
+You are an AI agent powered by 蒜狸小助手.
 ```
 
 #### Token effect

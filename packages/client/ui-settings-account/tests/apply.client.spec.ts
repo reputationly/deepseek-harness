@@ -12,6 +12,7 @@ import type { ThemeRuntime } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { Config as OnboardingConfig } from '../src/index.ts'
+import { apply, inject } from '../src/client/index.ts'
 import { ChatSettingsSchema as ChatConfig } from '../../ui-chat/src/chat-settings.ts'
 import { DeveloperToolsSettingsSchema as SettingsConfig } from '../../ui-settings/src/developer-tools-settings.ts'
 import type { DesktopOnboardingInjected } from '../src/client/DesktopOnboardingEntry.tsx'
@@ -25,6 +26,14 @@ import type { AccountQuotaNoticeInjected } from '../src/client/AccountQuotaNotic
 const it = createClientTest({ roster: webApp })
 const withoutAccountAccess = createClientTest({ roster: webApp }, { access: action => action !== 'account/watch' })
 const SELF = '@deepseek-ai/dsh-client-ui-settings-account'
+/**
+ * The same shipped composition with the deployment's gateway-key choice applied to the
+ * account row: the row keeps every other registration and only drops the settings entry.
+ */
+const withoutAccountEntry = createClientTest({
+  roster: webApp,
+  provide: { [SELF]: { inject, apply: (ctx) => { apply(ctx, { accountSettingsEntry: false }) } } },
+})
 const view: AccountView = {
   status: 'signed-out', attempt: null,
   links: { usageUrl: 'https://platform.deepseek.com/usage', topUpUrl: 'https://platform.deepseek.com/top_up' },
@@ -85,6 +94,21 @@ withoutAccountAccess('opens no account stream and registers no account surface w
   expect(quotaNoticeEntry(c)).toBeUndefined()
   expect(c.ctx.slots.entries('settings.models.sign-in')).toHaveLength(0)
   expect(c.ctx.slots.entries('settings.section').some(entry => entry.options.id === 'account')).toBe(false)
+}, 60_000)
+
+withoutAccountEntry('keeps the account row but registers no settings entry for a deployment with its own gateway key', async ({ start }) => {
+  const c = await start()
+  expect(c.ctx.slots.entries('settings.launcher')).toHaveLength(0)
+  // The rest of the surface stays: model sign-in and the balance notice still own their slots.
+  expect(c.ctx.slots.entries('settings.models.sign-in')).toHaveLength(1)
+  expect(quotaNoticeEntry(c)).toBeDefined()
+}, 60_000)
+
+it('registers no settings entry when the shipped client build hides it', async ({ start }) => {
+  vi.stubEnv('DSH_CLIENT_ACCOUNT_ENTRY', 'hidden')
+  const c = await start()
+  expect(c.ctx.slots.entries('settings.launcher')).toHaveLength(0)
+  expect(c.ctx.slots.entries('settings.models.sign-in')).toHaveLength(1)
 }, 60_000)
 
 it('claims account balance notices from the frame-wide quota chain and declines generic quota', async ({ start }) => {

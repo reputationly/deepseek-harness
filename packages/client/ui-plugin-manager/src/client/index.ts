@@ -9,6 +9,7 @@
 import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 // Type-only: the root `main` keyed slot the page registers into, declared by
 // ui-layout with the panel id brand, and the `sidebar.panellist` list the
 // entry registers into, declared by ui-sidebar.
@@ -91,7 +92,24 @@ export const inject = ['slots', 'locale', 'remote', 'remote.pluginManager', 'rem
  * Peer may list the installed bundles.
  * @param ctx - the browser plugin context.
  */
-export function apply(ctx: ClientContext): void {
+/** Deployment choice for the plugin page's install guidance. */
+export interface Config {
+  /**
+   * Show the install dialog's notice box above Install, which warns that installed plugins
+   * run with the user's permissions and explains how plugins are upgraded (default true).
+   * A deployment that only lists the plugins it ships turns it off.
+   */
+  installGuideNotice?: boolean
+}
+/** Validated plugin-page options. */
+export const Config: z<Config> = z.object({ installGuideNotice: z.boolean().default(true) })
+
+/**
+ * Register the plugins page.
+ * @param ctx - client plugin context.
+ * @param config - validated plugin-page options.
+ */
+export function apply(ctx: ClientContext, config: Config = Config({})): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-plugin-manager: dictionaries')
   const t = ctx.locale.bind(NS)
   const controller = new PluginManagerController(ctx)
@@ -102,7 +120,12 @@ export function apply(ctx: ClientContext): void {
   // the page's own; a plugin's configuration arrives through the slots the
   // page declares here, so the page never names a configurable plugin.
   const configLedger = configLedgerSource(ctx)
-  const face = controller.inject(configLedger, tabLedgerSource(ctx), text => ctx.locale.resolveText(text))
+  // The product ships the choice as a public build value: a Client row's `config` never
+  // reaches this plugin, so the shipped build hides the box here.
+  const guideNotice = (config.installGuideNotice ?? true) && process.env.DSH_CLIENT_INSTALL_NOTICE !== 'hidden'
+  const face = controller.inject(
+    configLedger, tabLedgerSource(ctx), text => ctx.locale.resolveText(text), guideNotice,
+  )
   ctx.remoteAccess.whenAccess('pluginManager/listBundles', function* () {
     // The Host says when what is installed, enabled, or composed changed — from
     // this page, the CLI, or another browser — and streams install output.
