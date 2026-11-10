@@ -27,6 +27,7 @@ const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_TITLE: BRAND.productName,
   // The product conversation hides the model; settings own the default model and effort.
   DSH_CLIENT_MODEL_SEAT: 'hidden',
+  DSH_CLIENT_HERO_PREVIEW: 'hidden',
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
@@ -216,6 +217,7 @@ export function resolveClientBuildEnvironment(
         // Unsigned product releases build with this profile, so it names the product too.
         DSH_CLIENT_TITLE: BRAND.productName,
         DSH_CLIENT_MODEL_SEAT: 'hidden',
+        DSH_CLIENT_HERO_PREVIEW: 'hidden',
         ...(environment.DSH_CLIENT_GIT_DIRTY === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
       }),
     }

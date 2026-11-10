@@ -420,6 +420,17 @@ function mount(
 }
 
 describe('Hero chrome', () => {
+  it('omits the preview badge from product builds', () => {
+    vi.stubEnv('DSH_CLIENT_HERO_PREVIEW', 'hidden')
+    try {
+      const view = render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={(() => null) as never} />)
+      expect(view.getByText('Into the Unknown')).toBeTruthy()
+      expect(view.queryByText('Preview')).toBeNull()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('renders the English preview badge through the hero locale seat', () => {
     const renderSlot = vi.fn<(key: string, owner: object, opts?: { fallback?: ReactNode }) => ReactNode>(() => null)
     const view = render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={renderSlot as never} />)

@@ -79,14 +79,14 @@ describe('official browser-brand plugin', () => {
     for (const hole of HOLES) expect(after.slots.entries(hole)).toHaveLength(1)
   })
 
-  it('leaves the conversation hero on its declaring fallback even in official builds', async () => {
+  it('replaces the conversation hero fallback with the product mark', async () => {
     vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', 'official')
     const subject = await bench()
     await subject.ctx.plugin({ inject: [...inject], apply }).await()
-    expect(subject.slots.entries(HERO_HOLE)).toHaveLength(0)
+    expect(subject.slots.entries(HERO_HOLE)).toHaveLength(1)
   })
 
-  it('registers the whale as a self-contained frame layer without replacing the hero mark', async () => {
+  it('registers the whale as a self-contained frame layer beside the hero mark', async () => {
     vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', 'official')
     const subject = await bench()
     const fiber = subject.ctx.plugin({ inject: [...inject], apply })
@@ -95,7 +95,7 @@ describe('official browser-brand plugin', () => {
       const [entry] = subject.slots.entries('conversation.hero.frame')
       expect(entry?.options.id).toBe('pixel-whale')
       expect(entry?.inject).toBeUndefined()
-      expect(subject.slots.entries(HERO_HOLE)).toHaveLength(0)
+      expect(subject.slots.entries(HERO_HOLE)).toHaveLength(1)
     } finally {
       await fiber.dispose()
     }
@@ -107,9 +107,10 @@ describe('official browser-brand plugin', () => {
     expect(name.container.textContent).toBe('Aurora')
     name.unmount()
 
-    const mark = render(<OfficialBrandMark size={34} />)
-    expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('34')
+    const mark = render(<OfficialBrandMark size={34} className="hero" />)
+    expect(mark.container.querySelector('img')?.getAttribute('width')).toBe('34')
+    expect(mark.container.querySelector('img')?.className).toBe('hero')
     mark.rerender(<OfficialBrandMark size={24} />)
-    expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('24')
+    expect(mark.container.querySelector('img')?.getAttribute('width')).toBe('24')
   })
 })
