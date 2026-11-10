@@ -206,6 +206,8 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'goals/edit': 'owner-only', // owner edits a goal
   'goals/pause': 'owner-only', // owner pauses a goal
   'goals/resume': 'owner-only', // owner resumes a goal
+  'canvas/apply': 'owner-only', // owner edits the project canvas
+  'canvas/get': 'owner-only', // node media is read through owner-only Workspace file access
   'pluginInventory/list': 'owner-only', // owner plugin inventory
   'mcpManager/probe': 'owner-only', // owner MCP server management
   'mcpManager/restart': 'owner-only', // owner MCP server management

@@ -17,6 +17,7 @@ Registers four tools that produce media through the deployment's gateway: `gener
 - [Understand the implementation](#understand-the-implementation)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
 <a id="use-this-package"></a>
 ## Use this package
@@ -47,14 +48,53 @@ Speech and music return `{ path, model }`; the gateway's media URLs expire, so t
 
 Image and video return `{ status, model, path?, choices? }`. A parameter the user stated and the catalog accepts is used as is. A parameter with more than one accepted value that nobody stated (image: aspect ratio and resolution; video: ratio, resolution, and duration), or a stated value the catalog does not accept, produces `status: needs_choice` with the accepted options and a recommendation; nothing is generated, and the model asks the user through `ask_user_question` before calling again. Reference images fix the canvas, so image edits and frame-driven videos never ask for or send a ratio. Video sends the resolution tier word as the final `size`, so a tier at or below the generation stage skips an aggregate model's upscale stage.
 
+When the [canvas](../canvas/README.md) service is present, image and video also accept canvas node ids: `generate_image` takes `referenceNodes`, and `generate_video` takes `firstFrameNode`, `lastFrameNode`, and `referenceNodes`. An image node stands for its file and a group for all of its image members in reading order; an unknown node, a node that is not an image or a group, or a group without images fails before any gateway request. A successful call adds a result node with derivation edges from its sources and returns `nodeId`. When the file was written but the node could not be added, the result keeps `path` and reports `canvasError`. Without the service the tools work on files only and reject node ids.
+
 <a id="model-experience"></a>
 ## Model Experience
 
-The tools add four model-visible capabilities with no system-prompt change. A failed gateway call surfaces the gateway's own message, which names the missing or invalid parameter; a missing key reports the credential reference and how to store it.
+### Tool schemas
+
+#### What the model sees
+
+The model sees the generated [`generate_image`, `generate_video`, `generate_speech`, and `generate_music` schemas](../../../docs/tool-catalog.md#deepseek-aidsh-tool-media). The schemas name no model and list no accepted parameter values; those come from the gateway catalog at call time. The tools add nothing to the system prompt.
+
+#### Token effect
+
+Fixed schema cost on every request where the tools are visible; the descriptions and schemas do not vary with the catalog or the canvas.
+
+#### KV Cache effect
+
+Prefix-stable while the definitions and their visibility are unchanged.
+
+### Tool-call history and results
+
+#### What the model sees
+
+Speech and music return the written file's `path` and the `model`. Image and video return `status`, `model`, and either `path` with `nodeId` when a canvas node was added, or `choices` when `status` is `needs_choice`. A result whose file was written but not placed on the canvas carries `canvasError` beside `path`. A failed gateway call surfaces the gateway's own message, which names the missing or invalid parameter; a missing key reports the credential reference and how to store it.
+
+#### Token effect
+
+A result is a few short fields. A `needs_choice` result grows with the number of parameters to choose and the values the catalog accepts for each. Generated media bytes never enter the result.
+
+#### KV Cache effect
+
+Append-only; calls and results follow the reusable request prefix and do not invalidate existing KV-cache entries.
+
+## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
-## Known Limitations and Deferred Work
 
 - Speech synthesis requires a reference voice source; the gateway rejects preset voice names, so the model must be given an audio URL or data URI.
 - Speech and music models are configuration rather than discovery; only image and video follow the capability catalog.
 - Video and music run inside the tool budget, so very long renders need a larger `taskTimeoutMs` rather than a background job.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

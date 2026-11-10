@@ -567,6 +567,54 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'canvas',
+    summary: 'Owns every project\'s canvas document.',
+    description: 'Owns every project\'s canvas document.',
+    methods: [
+      {
+        signature: 'directoryOf(session: Session): string',
+        description: 'Project directory whose canvas a Session edits.',
+        parameters: [{ name: 'session', description: 'Session opened on the project.' }],
+        returns: 'the Session\'s original directory, or its current one when the header records none.',
+      },
+      {
+        signature: 'read(session: Session): Promise<CanvasDocument>',
+        description: 'Read the canvas of a Session\'s project.',
+        parameters: [{ name: 'session', description: 'Session opened on the project.' }],
+        returns: 'the validated document; an empty canvas when the project has none.',
+        throws: ['`CanvasCorruptError` when the canvas file is not a valid document.'],
+      },
+      {
+        signature: 'async edit(session: Session, operations: readonly CanvasOperation[]): Promise<CanvasEditResult>',
+        description: 'Apply operations to the canvas of a Session\'s project in one write.',
+        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'operations', description: 'ordered operations; relative media paths resolve against the project directory.' }],
+        returns: 'assigned ids and the operations that were skipped with their reasons.',
+        throws: ['`CanvasCorruptError` when the canvas file is not a valid document.'],
+      },
+      {
+        signature: 'async resolveImages(session: Session, ids: readonly string[]): Promise<string[]>',
+        description: 'Resolve nodes and groups to the image files they stand for as generation inputs.',
+        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'ids', description: 'image node ids or group ids; a group stands for its image members in reading order (top to bottom, then left to right).' }],
+        returns: 'absolute image paths in input order, without duplicates.',
+        throws: ['{@link CanvasInputError} when an id is unknown, is not an image or group, or is a group without images.'],
+      },
+      {
+        signature: '@Remote(\'get\') async get(session: Session): Promise<CanvasView>',
+        description: 'Read the canvas shown for a Session.',
+        parameters: [{ name: 'session', description: 'Session opened on the project.' }],
+        returns: 'the project directory and its canvas document.',
+        throws: ['RemoteError `canvas/corrupt` when the canvas file is not a valid document.'],
+      },
+      {
+        signature: '@Remote(\'apply\') apply(session: Session, operations: CanvasOperation[]): Promise<CanvasEditResult>',
+        description: 'Apply a user\'s edits to the canvas shown for a Session.',
+        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'operations', description: 'ordered operations.' }],
+        returns: 'assigned ids and the operations that were skipped with their reasons.',
+        throws: ['RemoteError `canvas/corrupt` when the canvas file is not a valid document.'],
+      },
+    ],
+  },
+  {
     key: 'claudeCodeMods',
     summary: 'The bridge service: loaded mods, their hooks, and the harness listeners that raise their events.',
     description: 'The bridge service: loaded mods, their hooks, and the harness listeners that raise their events. Mods join through ClaudeCodeMods.add, which defineMod calls when a mod plugin mounts. The Remote methods let a Client draw each session\'s band above the prompt and press its buttons.',
@@ -4886,6 +4934,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'key', description: 'the credential record the finished attempt was authorizing.' }, { name: 'settlement', description: 'how it ended, including the `failed` case its caller sees as a thrown error.' }],
   },
   {
+    name: 'canvas/change',
+    mode: 'emit',
+    signature: '\'canvas/change\'(change: CanvasChange): void',
+    summary: 'A project\'s canvas document was rewritten.',
+    description: 'A project\'s canvas document was rewritten.',
+    parameters: [{ name: 'change', description: 'the project directory whose canvas changed.' }],
+  },
+  {
     name: 'commands/change',
     mode: 'emit',
     signature: '\'commands/change\'(): void',
@@ -5816,6 +5872,50 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ButtonProps',
     declaration: 'export interface ButtonProps {\n    readonly label: string;\n    readonly hotkey?: string | undefined;\n    readonly disabled?: boolean | undefined;\n    readonly onPress?: (() => unknown) | undefined;\n}',
+  },
+  {
+    name: 'CanvasChange',
+    declaration: 'export interface CanvasChange {\n    readonly directory: string;\n}',
+  },
+  {
+    name: 'CanvasContentType',
+    declaration: 'export type CanvasContentType = Exclude<CanvasNodeType, \'group\'>;',
+  },
+  {
+    name: 'CanvasDocument',
+    declaration: 'export interface CanvasDocument {\n    readonly version: 1;\n    readonly nextId: number;\n    readonly nodes: readonly CanvasNode[];\n    readonly edges: readonly CanvasEdge[];\n}',
+  },
+  {
+    name: 'CanvasEdge',
+    declaration: 'export interface CanvasEdge {\n    readonly id: string;\n    readonly source: string;\n    readonly target: string;\n    readonly kind: CanvasEdgeKind;\n}',
+  },
+  {
+    name: 'CanvasEdgeKind',
+    declaration: 'export type CanvasEdgeKind = \'derivation\' | \'reference\';',
+  },
+  {
+    name: 'CanvasEditResult',
+    declaration: 'export interface CanvasEditResult {\n    readonly refs: Readonly<Record<string, string>>;\n    readonly created: readonly string[];\n    readonly skipped: readonly CanvasSkippedOperation[];\n}',
+  },
+  {
+    name: 'CanvasNode',
+    declaration: 'export interface CanvasNode {\n    readonly id: string;\n    readonly type: CanvasNodeType;\n    readonly title: string;\n    readonly x: number;\n    readonly y: number;\n    readonly width: number;\n    readonly height: number;\n    readonly path?: string;\n    readonly text?: string;\n    readonly prompt?: string;\n    readonly model?: string;\n    readonly group?: string;\n    readonly placed?: boolean;\n}',
+  },
+  {
+    name: 'CanvasNodeType',
+    declaration: 'export type CanvasNodeType = \'image\' | \'video\' | \'audio\' | \'text\' | \'group\';',
+  },
+  {
+    name: 'CanvasOperation',
+    declaration: 'export type CanvasOperation = {\n    readonly op: \'add\';\n    readonly ref?: string;\n    readonly type: CanvasContentType;\n    readonly title?: string;\n    readonly path?: string;\n    readonly text?: string;\n    readonly prompt?: string;\n    readonly model?: string;\n    readonly group?: string;\n} | {\n    readonly op: \'update\';\n    readonly node: string;\n    readonly title?: string;\n    readonly text?: string;\n    readonly path?: string;\n} | {\n    readonly op: \'remove\';\n    readonly node: string;\n} | {\n    readonly op: \'connect\';\n    readonly from: string;\n    readonly to: string;\n    readonly kind?: CanvasEdgeKind;\n} | {\n    readonly op: \'disconnect\';\n    readonly from: string;\n    readonly to: string;\n} | {\n    readonly op: \'group\';\n    readonly ref?: string;\n    readonly title?: string;\n    readonly nodes: readonly string[];\n} | {\n    readonly op: \'ungroup\';\n    readonly node: string;\n} | {\n    readonly op: \'move\';\n    readonly node: string;\n    readonly x: number;\n    readonly y: number;\n} | {\n    readonly op: \'resize\';\n    readonly node: string;\n    readonly width: number;\n    readonly height: number;\n};',
+  },
+  {
+    name: 'CanvasSkippedOperation',
+    declaration: 'export interface CanvasSkippedOperation {\n    readonly index: number;\n    readonly op: CanvasOperation[\'op\'];\n    readonly reason: string;\n}',
+  },
+  {
+    name: 'CanvasView',
+    declaration: 'export interface CanvasView {\n    readonly directory: string;\n    readonly document: CanvasDocument;\n}',
   },
   {
     name: 'ChangeRequestCheck',

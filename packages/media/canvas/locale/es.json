@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Lienzo del proyecto",
+    "description": "Mantiene el documento del lienzo del proyecto para que el modelo coloque, conecte y agrupe nodos y use nodos o grupos como entradas de generación."
+  }
+}

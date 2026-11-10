@@ -120,6 +120,7 @@
     "@deepseek-ai/dsh-tool-subagent-control": "workspace:*",
     "@deepseek-ai/dsh-tool-todo": "workspace:*",
     "@deepseek-ai/dsh-tool-web": "workspace:*",
+    "@deepseek-ai/dsh-canvas": "workspace:*",
     "@deepseek-ai/dsh-tool-media": "workspace:*",
     "@deepseek-ai/dsh-tool-workflow": "workspace:*",
     "@deepseek-ai/dsh-tool-working-directory": "workspace:*",

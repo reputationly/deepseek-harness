@@ -264,7 +264,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-session-controller`
 
 - `inject`: `agentDefaultModel` · `agents` · `attachments` · `fileUploads` · `fs` · `llm` · `remoteAccess` · `sessions` · `sessionProjections` · `sessionQuery` · `typert` · `typertGateway` · `workspaceRegistry`
-- `source`: [`packages/api/session-controller/src/index.ts:110`](../packages/api/session-controller/src/index.ts)
+- `source`: [`packages/api/session-controller/src/index.ts:111`](../packages/api/session-controller/src/index.ts)
 
 ```ts config-catalog
 /** Session Controller deployment policy. */
@@ -1943,6 +1943,8 @@ export interface Config extends Omit<ProtocolConfig, 'models'>, ModelListingConf
 export interface Config extends ProtocolConfig, ModelListingConfig {
   /** Credential reference resolved per request; defaults to DEEPSEEK_API_KEY. */
   apiKeyEnv: Volatile<string>
+  /** Provider name shown in model menus and settings; defaults to DeepSeek. */
+  displayName: string
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-llm-deepseek-api-key -->
@@ -4239,6 +4241,45 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-lsp -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-media -->
+<a id="deepseek-aidsh-tool-media"></a>
+
+## `@deepseek-ai/dsh-tool-media`
+
+- `inject`: `tools`
+- `source`: [`packages/media/tool-media/src/index.ts:34`](../packages/media/tool-media/src/index.ts)
+
+```ts config-catalog
+/** Config for one deployment's media gateway. */
+export interface Config {
+  /** Gateway root including its API prefix. */
+  baseURL: string
+  /** Credential reference resolved per call; never the key itself. */
+  apiKeyEnv?: string
+  /** Image model id. */
+  imageModel?: string
+  /** Speech model id. */
+  speechModel?: string
+  /** Music model id. */
+  musicModel?: string
+  /** Video model id. */
+  videoModel?: string
+  /** Directory for generated files; relative paths resolve against the process working directory. */
+  outputDir?: string
+  /** Budget for one asynchronous task, including polling. */
+  taskTimeoutMs?: number
+  /** Delay between task polls. */
+  pollIntervalMs?: number
+  /** Read models and parameter values from the gateway's capability catalog. */
+  catalog?: boolean
+  /** Disk mirror of the capability catalog; defaults under the Harness home. */
+  catalogCacheFile?: string
+  /** Video length recommended when the user names none, in seconds. */
+  videoDefaultDuration?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-media -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-present -->
 <a id="deepseek-aidsh-tool-present"></a>
 
@@ -4901,6 +4942,7 @@ export interface Config {
 | `@deepseek-ai/dsh-api-remotes` | `typertGateway` | [`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts) |
 | `@deepseek-ai/dsh-authorization` | `credentials` | [`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts) |
 | `@deepseek-ai/dsh-browser-use` | — | [`packages/browser-use/browser-use/src/index.ts`](../packages/browser-use/browser-use/src/index.ts) |
+| `@deepseek-ai/dsh-canvas` | `tools` · `workingDirectory` | [`packages/media/canvas/src/index.ts`](../packages/media/canvas/src/index.ts) |
 | `@deepseek-ai/dsh-client-file-upload` | `agents` · `attachments` · `commands` · `connection` | [`packages/client/file-upload/src/index.ts`](../packages/client/file-upload/src/index.ts) |
 | `@deepseek-ai/dsh-client-locale` | — | [`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts) |
 | `@deepseek-ai/dsh-client-modules` | `loader` | [`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts) |
@@ -4951,6 +4993,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-shortcuts` | — | [`packages/client/ui-shortcuts/src/index.ts`](../packages/client/ui-shortcuts/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar` | — | [`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-browser` | — | [`packages/client/ui-sidebar-browser/src/index.ts`](../packages/client/ui-sidebar-browser/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-sidebar-canvas` | — | [`packages/client/ui-sidebar-canvas/src/index.ts`](../packages/client/ui-sidebar-canvas/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-files` | — | [`packages/client/ui-sidebar-files/src/index.ts`](../packages/client/ui-sidebar-files/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-right` | — | [`packages/client/ui-sidebar-right/src/index.ts`](../packages/client/ui-sidebar-right/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-terminal` | — | [`packages/client/ui-sidebar-terminal/src/index.ts`](../packages/client/ui-sidebar-terminal/src/index.ts) |

@@ -303,6 +303,11 @@
 
     - id: ui-sidebar-terminal
       name: '@deepseek-ai/dsh-client-ui-sidebar-terminal'
+
+    # The project canvas tab; a deployment that enables the `canvas` Host row enables this one with it.
+    - id: ui-sidebar-canvas
+      name: '@deepseek-ai/dsh-client-ui-sidebar-canvas'
+      disabled: true
     # The right Sidebar's workspace file tree tab type.
     - id: ui-sidebar-files
       name: '@deepseek-ai/dsh-client-ui-sidebar-files'

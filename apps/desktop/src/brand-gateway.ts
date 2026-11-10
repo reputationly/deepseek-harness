@@ -150,6 +150,13 @@ export function gatewayProfilePatch(gateway: BrandGateway, productName?: string,
     `    baseURL: ${scalar(gateway.baseURL)}`,
     `    apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
     '',
+    '# Project canvas that generated media is placed on; shipped disabled like the media tools.',
+    '- id: canvas',
+    '  disabled: false',
+    '',
+    '- id: ui-sidebar-canvas',
+    '  disabled: false',
+    '',
   ].join('\n')
 }
 

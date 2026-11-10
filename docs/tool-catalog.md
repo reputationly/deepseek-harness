@@ -50,6 +50,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
+| `@deepseek-ai/dsh-canvas` | `canvas_edit`, `canvas_get` | `ctx.workingDirectory`, `ctx.tools`, `an owning Agent session` | `tool/call`, `tool/result`, `the project canvas file` | - | The canvas belongs to the project directory of the calling Session; Web ui-sidebar-canvas shows it. |
+| `@deepseek-ai/dsh-tool-media` | `generate_image`, `generate_music`, `generate_speech`, `generate_video` | `ctx.tools`, `ctx.credentials`, `ctx.canvas for node inputs and result nodes` | `tool/call`, `tool/result`, `generated media files`, `the project canvas file` | - | Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema. |
 
 <a id="deepseek-aidsh-plugin-manager"></a>
 
@@ -2697,3 +2699,288 @@ Search the web for current information. Returns an optional summary answer and a
 Source: [`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.
+
+<a id="deepseek-aidsh-canvas"></a>
+
+## `@deepseek-ai/dsh-canvas`
+
+### `canvas_edit`
+
+Edit the project canvas with an ordered list of operations applied together. Nodes are positioned automatically. An operation that cannot apply is skipped and reported while the others still apply.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "operations": {
+      "type": "array",
+      "description": "Operations in the order they apply.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "type": "string",
+            "description": "add creates a node from type plus text or path. update changes title, text, or path of node. remove deletes node. connect and disconnect take from and to. group frames nodes under title. ungroup dissolves the group node and keeps its members.",
+            "enum": [
+              "add",
+              "update",
+              "remove",
+              "connect",
+              "disconnect",
+              "group",
+              "ungroup"
+            ]
+          },
+          "ref": {
+            "type": "string",
+            "description": "Name for the node that add or group creates, usable wherever a node id is expected in later operations of this call."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "image",
+              "video",
+              "audio",
+              "text"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Short label shown on the node or group."
+          },
+          "text": {
+            "type": "string",
+            "description": "Content of a text node."
+          },
+          "path": {
+            "type": "string",
+            "description": "File of an image, video, or audio node."
+          },
+          "group": {
+            "type": "string",
+            "description": "Existing group that the added node joins."
+          },
+          "node": {
+            "type": "string",
+            "description": "Node that update, remove, or ungroup acts on."
+          },
+          "from": {
+            "type": "string",
+            "description": "Node or group the edge starts at: the input or source material."
+          },
+          "to": {
+            "type": "string",
+            "description": "Node or group the edge points to: what was made from, or depends on, from."
+          },
+          "nodes": {
+            "type": "array",
+            "description": "Nodes that the new group frames.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "op"
+        ]
+      }
+    }
+  },
+  "required": [
+    "operations"
+  ]
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `canvas_get`
+
+Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "description": "Node or group ids to read in full. Omit to list the whole canvas with long text and prompts shortened.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+The canvas belongs to the project directory of the calling Session; Web ui-sidebar-canvas shows it.
+
+<a id="deepseek-aidsh-tool-media"></a>
+
+## `@deepseek-ai/dsh-tool-media`
+
+### `generate_image`
+
+Generate an image from a text prompt, or edit and combine local reference images. When the result has status needs_choice nothing was generated: ask the user the listed questions, then call again.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "What the image should show, or how to change the references."
+    },
+    "referenceImages": {
+      "type": "array",
+      "description": "Local image files to edit or combine. Omit to generate from the prompt alone.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "referenceNodes": {
+      "type": "array",
+      "description": "Canvas image nodes or groups to edit or combine; a group stands for all of its images.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "aspectRatio": {
+      "type": "string",
+      "description": "Aspect ratio such as 16:9, 9:16, 1:1, or adaptive. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "resolution": {
+      "type": "string",
+      "description": "Resolution tier such as 1K or 2K. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/visual-tools.ts`](../packages/media/tool-media/src/visual-tools.ts)
+
+### `generate_music`
+
+Generate a music track. The prompt must describe genre, instrumentation, tempo, and mood.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "What to produce, including style, instruments, tempo, and mood for music."
+    },
+    "lyrics": {
+      "type": "string",
+      "description": "Optional lyrics for a music request."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/index.ts`](../packages/media/tool-media/src/index.ts)
+
+### `generate_speech`
+
+Synthesize speech from text with a reference voice sample.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "Text to speak."
+    },
+    "voice": {
+      "type": "string",
+      "description": "Reference voice: an audio file path, HTTP(S) URL, or data URI. The clip must be 30 seconds or shorter."
+    }
+  },
+  "required": [
+    "text",
+    "voice"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/index.ts`](../packages/media/tool-media/src/index.ts)
+
+### `generate_video`
+
+Generate a short video from a text prompt, from a first frame (and optional last frame), or from reference images. When the result has status needs_choice nothing was generated: ask the user the listed questions, then call again.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "What happens in the video: subject, motion, camera, and style."
+    },
+    "aspectRatio": {
+      "type": "string",
+      "description": "Aspect ratio such as 16:9, 9:16, 1:1, or adaptive. Ignored with frames. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "resolution": {
+      "type": "string",
+      "description": "Resolution tier such as 768P or 2K. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "duration": {
+      "type": "string",
+      "description": "Length in seconds, such as 5. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "audio": {
+      "type": "boolean",
+      "description": "Whether the video has sound. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+    },
+    "firstFrame": {
+      "type": "string",
+      "description": "Local image file used as the first frame."
+    },
+    "lastFrame": {
+      "type": "string",
+      "description": "Local image file used as the last frame; needs firstFrame."
+    },
+    "referenceImages": {
+      "type": "array",
+      "description": "Local image files whose subject or product the video keeps consistent; not combined with frames.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "firstFrameNode": {
+      "type": "string",
+      "description": "Canvas image node used as the first frame, instead of firstFrame."
+    },
+    "lastFrameNode": {
+      "type": "string",
+      "description": "Canvas image node used as the last frame, instead of lastFrame."
+    },
+    "referenceNodes": {
+      "type": "array",
+      "description": "Canvas image nodes or groups used like referenceImages; a group stands for all of its images.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/visual-tools.ts`](../packages/media/tool-media/src/visual-tools.ts)
+
+Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema.

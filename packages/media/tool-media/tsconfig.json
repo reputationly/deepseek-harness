@@ -8,7 +8,9 @@
   "references": [
     { "path": "../../../vendor/cordis" },
     { "path": "../../../vendor/schemastery" },
+    { "path": "../../core/session" },
     { "path": "../../core/tools" },
+    { "path": "../canvas" },
     { "path": "../../util/launch-environment" },
     { "path": "../../credentials/credentials" },
     { "path": "../../util/values" }
