@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { EXECUTABLE_NAME } from '../scripts/desktop-brand.mjs'
 import {
   createMacOSAppUpdateConfig,
   resolveMacOSAppUpdateFeed,
@@ -15,7 +16,7 @@ const update = { publicUrl: 'https://desktop-updates.example.com/dsh-desk/feeds/
 async function fixture(): Promise<{ appPath: string; resourcesDir: string }> {
   const root = await mkdtemp(join(tmpdir(), 'desktop-macos-update-config-'))
   roots.push(root)
-  const appPath = join(root, 'DeepSeek Harness.app')
+  const appPath = join(root, `${EXECUTABLE_NAME}.app`)
   const resourcesDir = join(appPath, 'Contents', 'Resources')
   await mkdir(resourcesDir, { recursive: true })
   return { appPath, resourcesDir }

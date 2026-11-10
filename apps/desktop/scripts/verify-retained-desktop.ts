@@ -1,6 +1,6 @@
 /** Recheck distribution signatures on retained installers without signing credentials. */
 import { execFileSync } from 'node:child_process'
-import { PRODUCT_NAME } from './desktop-brand.mjs'
+import { EXECUTABLE_NAME } from './desktop-brand.mjs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -40,6 +40,6 @@ export async function verifyRetainedDesktopSignatures(
   const extracted = await mkdtemp(join(tmpdir(), 'desktop-publish-verify-'))
   try {
     run('/usr/bin/ditto', ['-x', '-k', zipPath, extracted])
-    verifyMacOSNotarizedApplication(join(extracted, `${PRODUCT_NAME}.app`), config.macOS)
+    verifyMacOSNotarizedApplication(join(extracted, `${EXECUTABLE_NAME}.app`), config.macOS)
   } finally { await rm(extracted, { recursive: true, force: true }) }
 }

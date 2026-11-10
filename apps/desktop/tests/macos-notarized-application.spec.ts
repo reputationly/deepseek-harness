@@ -2,6 +2,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { EXECUTABLE_NAME } from '../scripts/desktop-brand.mjs'
 import { verifyMacOSNotarizedApplication } from '../scripts/verify-macos-signature.mjs'
 
 vi.mock('node:child_process', async importOriginal => ({
@@ -10,7 +11,7 @@ vi.mock('node:child_process', async importOriginal => ({
 }))
 
 const expected = { signingIdentity: 'Example Company (TEAMID1234)', teamId: 'TEAMID1234' }
-const appPath = '/private build/DeepSeek Harness.app'
+const appPath = `/private build/${EXECUTABLE_NAME}.app`
 const commands = [
   ['/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath]],
   ['/usr/bin/codesign', ['--display', '--verbose=4', appPath]],

@@ -60,8 +60,5 @@ export const PACKAGE_NAME = BRAND.packageName
  */
 export const ARTIFACT_BASENAME = BRAND.packageName
 
-/**
- * Windows executable and macOS bundle binary file name, matching electron-builder's `executableName`.
- * Display names stay {@link PRODUCT_NAME}; only filesystem and command paths use this.
- */
+/** Windows executable and macOS .app bundle name; electron-builder derives `productFilename` from `executableName`. */
 export const EXECUTABLE_NAME = ARTIFACT_BASENAME
