@@ -1,4 +1,4 @@
-You are an AI agent powered by DeepSeek Harness.
+You are an AI agent powered by 蒜狸小助手.
 
 You are a coding agent powered by the deepseek-v4-flash model.
 

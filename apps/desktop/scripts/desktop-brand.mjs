@@ -51,3 +51,17 @@ export const URL_SCHEME = BRAND.urlScheme
 
 /** Packaged application manifest name; Electron derives the userData directory from it. */
 export const PACKAGE_NAME = BRAND.packageName
+
+/**
+ * ASCII name shared by every packaged filename: installers, updater payloads, blockmaps,
+ * retained release objects, and the version listing that skips published builds. It stays
+ * separate from {@link PRODUCT_NAME} because artifact names reach URLs and update feeds,
+ * where only `[a-z0-9-]` is safe.
+ */
+export const ARTIFACT_BASENAME = BRAND.packageName
+
+/**
+ * Windows executable and macOS bundle binary file name, matching electron-builder's `executableName`.
+ * Display names stay {@link PRODUCT_NAME}; only filesystem and command paths use this.
+ */
+export const EXECUTABLE_NAME = ARTIFACT_BASENAME

@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/desktop-artifact-and-executable-rename/guide.md
+/:
+  en: 216d0c1d81da2db1
+  zh: c836d73ee045da32
+/desktop-artifacts-and-the-executable-use-suanli-assistant:
+  en: d68d539dcbb58c48
+  zh: 613df39bacb4b917
+/desktop-artifacts-and-the-executable-use-suanli-assistant/change:
+  en: c4990fa0c5f330a0
+  zh: 57c7f941dfbbeb3a
+/desktop-artifacts-and-the-executable-use-suanli-assistant/migration:
+  en: 5bcdf24f07854641
+  zh: 6502d883cd528f3b

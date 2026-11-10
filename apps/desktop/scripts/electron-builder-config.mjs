@@ -36,7 +36,7 @@ import {
   verifyMacOSAppUpdateConfig,
   writeMacOSAppUpdateConfig,
 } from './macos-app-update-config.mjs'
-import { PACKAGE_NAME, PRODUCT_NAME, URL_SCHEME } from './desktop-brand.mjs'
+import { ARTIFACT_BASENAME, PACKAGE_NAME, PRODUCT_NAME, URL_SCHEME } from './desktop-brand.mjs'
 
 /**
  * Create electron-builder configuration from one release environment.
@@ -127,10 +127,13 @@ export function createElectronBuilderConfig(
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
     },
     productName: PRODUCT_NAME,
+    // The bundle binary and Windows executable take the ASCII slug so launcher scripts,
+    // shortcuts, and logs never depend on the non-ASCII display name.
+    executableName: ARTIFACT_BASENAME,
     // The default copyright uses author.name; this line names the product instead.
     copyright: `Copyright © ${new Date().getFullYear()} \${productName}`,
     // Unsigned builds carry their own suffix so a shared file can never pass for a release artifact.
-    artifactName: `deepseek-harness-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
+    artifactName: `${ARTIFACT_BASENAME}-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
     directories: { output: output.directory },
     asar: true,
     electronDist: buildPaths.electron,

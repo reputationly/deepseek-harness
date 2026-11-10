@@ -1,7 +1,7 @@
 /** Build the ZIP and DMG from separate signed application copies with overlapping notarization. */
 
 import { execFile } from 'node:child_process'
-import { PRODUCT_NAME } from './desktop-brand.mjs'
+import { ARTIFACT_BASENAME, PRODUCT_NAME } from './desktop-brand.mjs'
 import { mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { promisify } from 'node:util'
@@ -111,7 +111,7 @@ export async function packageMacOSArtifacts(
     await verifyMacOSAppUpdateConfig(dmgApp, update)
     apple.verifySignature(zipApp, expected)
     apple.verifySignature(dmgApp, expected)
-    const base = `deepseek-harness-${version}-mac-${arch}`
+    const base = `${ARTIFACT_BASENAME}-${version}-mac-${arch}`
     const artifacts = [
       [dmgOutput, `${base}.dmg`],
       [zipOutput, `${base}.zip`],

@@ -29,3 +29,9 @@ export declare const URL_SCHEME: string
 
 /** Packaged application manifest name; Electron derives the userData directory from it. */
 export declare const PACKAGE_NAME: string
+
+/** ASCII name shared by packaged artifact filenames, update-feed objects, and the version listing. */
+export declare const ARTIFACT_BASENAME: string
+
+/** Windows executable and macOS bundle binary file name (electron-builder `executableName`). */
+export declare const EXECUTABLE_NAME: string
