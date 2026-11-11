@@ -24,6 +24,12 @@ import { isExperimentalPackageName } from './experimental-package-policy.ts'
 // The independently published entry package owns platform-engine dependencies.
 const EXTERNAL_KIT_PACKAGES = new Set(['@deepseek-ai/libreoffice-kit'])
 const PROFILE_SOURCE = 'packages/util/official-bundles/src/bundles.ts'
+const DEFAULT_WECHAT_BUNDLE = '@deepseek-ai/dsh-wechat-bundle'
+const WECHAT_COMPOSITION_PACKAGES = new Set([
+  DEFAULT_WECHAT_BUNDLE,
+  '@deepseek-ai/dsh-wechat',
+  '@deepseek-ai/dsh-client-ui-wechat',
+])
 const PRESET_PATTERN = 'packages/bundle/web-app/presets/*.patch.yml'
 const RUNTIME_SECTIONS = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const
 
@@ -109,8 +115,13 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
   let webPluginCount = 0
   const isExperimental = (pkg: Package): boolean => isExperimentalPackageName(pkg.manifest.name)
     || display(pkg.directory).startsWith('packages/experimental/')
-  const add = (pkg: Package, origin: string): void => {
-    if (isExperimental(pkg)) {
+  const isApprovedWechatReference = (name: string, origin: string, owner?: Package): boolean =>
+    WECHAT_COMPOSITION_PACKAGES.has(name)
+    && (origin === PROFILE_SOURCE
+      || origin.startsWith('packages/experimental/wechat-bundle/')
+      || owner?.manifest.name === DEFAULT_WECHAT_BUNDLE)
+  const add = (pkg: Package, origin: string, approvedWechat = false): void => {
+    if (isExperimental(pkg) && !approvedWechat) {
       failures.push(`${origin} -> ${pkg.manifest.name}: default product must not include experimental packages`)
     } else if (!visited.has(pkg.directory)) {
       visited.add(pkg.directory)
@@ -132,16 +143,17 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       const target = name.startsWith('file://') ? fileURLToPath(name)
         : resolve(owner?.directory ?? root, name.replace(/^(?:file|link):/, ''))
       const pkg = directories.get(target) ?? ownerOf(target)
-      if (pkg !== undefined) add(pkg, origin)
+      if (pkg !== undefined) add(pkg, origin, isApprovedWechatReference(pkg.manifest.name, origin, owner))
       return
     }
     const packageName = barePackageName(name)
-    if (isExperimentalPackageName(packageName)) {
+    const approvedWechat = isApprovedWechatReference(packageName, origin, owner)
+    if (isExperimentalPackageName(packageName) && !approvedWechat) {
       failures.push(`${origin} -> ${name}: default product must not include experimental packages`)
       return
     }
     const pkg = packages.get(packageName)
-    if (pkg !== undefined) add(pkg, origin)
+    if (pkg !== undefined) add(pkg, origin, approvedWechat)
     else if (EXTERNAL_KIT_PACKAGES.has(packageName)) return
     else if (packageName.startsWith('@deepseek-ai/')) failures.push(`${origin}: unknown workspace package ${name}`)
   }
@@ -174,7 +186,10 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       const target = resolveSource(local)
       const resolved = target ?? local
       const owner = directories.get(resolved) ?? ownerOf(resolved)
-      if (owner !== undefined && isExperimental(owner)) add(owner, display(path))
+      if (owner !== undefined && isExperimental(owner)) {
+        const origin = display(path)
+        add(owner, origin, isApprovedWechatReference(owner.manifest.name, origin, ownerOf(path)))
+      }
       if (/cordis[^/]*\.ya?ml$/.test(basename(resolved))) scanConfig(resolved)
       if (followLocal && target !== undefined) scanSource(target, true)
     }
@@ -246,7 +261,9 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       if (packages.get(name)?.manifest.dsh?.bundle?.patch === undefined) {
         failures.push(`${PROFILE_SOURCE}: default bundle ${name} must declare dsh.bundle.patch`)
       }
-      if (optionalBundles.has(name)) failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must not be a default bundle`)
+      if (optionalBundles.has(name) && name !== DEFAULT_WECHAT_BUNDLE) {
+        failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must not be a default bundle`)
+      }
     }
     const webLayers = selection.webBundles.flatMap((name) => {
       const pkg = packages.get(name)

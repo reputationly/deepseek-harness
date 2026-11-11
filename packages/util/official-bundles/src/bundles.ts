@@ -12,13 +12,13 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
   },
   web: {
-    // The product composition adds the plugin market and voice input so a fresh install can browse
-    // community plugins and dictate without a second setup step.
+    // WeChat is the fork's default messaging integration and remains switchable from the plugin manager.
     bundles: [
       '@deepseek-ai/dsh-base',
       '@deepseek-ai/dsh-web-app',
       '@deepseek-ai/dsh-experimental-plugin-market-bundle',
       '@deepseek-ai/dsh-experimental-voice-input-bundle',
+      '@deepseek-ai/dsh-wechat-bundle',
     ],
   },
   headless: {
@@ -36,10 +36,18 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
  * Installation-owned bundle tuples that an earlier release wrote into a shipped profile; app-boot replaces an exact
  * match with the {@link PROFILE_TEMPLATES} entry of the same name and leaves every other list untouched.
  */
-export const INSTALLATION_OWNED_PROFILE_TUPLES: Readonly<Record<string, readonly string[]>> = {
-  headless: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'],
-  // Profiles created before the market and voice bundles joined the Web composition.
-  web: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
+export const INSTALLATION_OWNED_PROFILE_TUPLES: Readonly<Record<string, readonly (readonly string[])[]>> = {
+  headless: [['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless']],
+  // Profiles created before the market, voice input, and WeChat bundles joined the Web composition.
+  web: [
+    ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
+    [
+      '@deepseek-ai/dsh-base',
+      '@deepseek-ai/dsh-web-app',
+      '@deepseek-ai/dsh-experimental-plugin-market-bundle',
+      '@deepseek-ai/dsh-experimental-voice-input-bundle',
+    ],
+  ],
 }
 
 /** Bundles an earlier release shipped and the installation no longer carries; app-boot removes them from profiles. */
@@ -56,8 +64,8 @@ export const DEFAULT_PROFILE_BUNDLES: readonly string[] = ['@deepseek-ai/dsh-bas
 /**
  * The bundles the dsh installation ships for a person to switch on: each a
  * runtime dependency of the installation that declares `dsh.bundle.patch`,
- * an `icon`, and `./locale/*.json` display metadata, selected by no shipped
- * template, and offered switched off by the plugin manager except persistent
+ * an `icon`, and `./locale/*.json` display metadata, and offered by the plugin
+ * manager except persistent
  * terminals, which have no page switch
  * ([rationale](../../../../.agents/notes/implemented/process/2026-09-15-shipped-optional-bundles.md),
  * [admission](../../../../.agents/notes/implemented/architecture/2026-09-21-experimental-capabilities-as-optional-bundles.md)).
@@ -78,6 +86,7 @@ export const OPTIONAL_BUNDLES: readonly string[] = [
   '@deepseek-ai/dsh-experimental-plugin-market-bundle',
   '@deepseek-ai/dsh-experimental-tool-worktree',
   '@deepseek-ai/dsh-experimental-forge-bundle',
+  '@deepseek-ai/dsh-wechat-bundle',
 ]
 
 /** Public DSH release members available through the ordinary on-demand bundle installer. */

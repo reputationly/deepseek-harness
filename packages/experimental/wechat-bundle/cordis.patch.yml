@@ -1,0 +1,5 @@
+- insert:
+    - id: wechat
+      name: '@deepseek-ai/dsh-wechat'
+    - id: client-ui-wechat
+      name: '@deepseek-ai/dsh-client-ui-wechat'

@@ -1,0 +1,8 @@
+Protocol reference attribution:
+
+The iLink request shapes, message item fields, QR status handling, and media
+upload/download flow were implemented with reference to Tencent's
+@tencent-weixin/openclaw-weixin 2.4.10 SDK, Copyright Tencent, MIT License.
+The DSH agent/session integration was informed by dsh-weixin-ilink 0.10.3,
+Copyright its respective authors, MIT License. No community feature modules
+were copied.

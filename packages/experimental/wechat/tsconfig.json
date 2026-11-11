@@ -1,0 +1,25 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.tsbuildinfo"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../../vendor/schemastery" },
+    { "path": "../../core/agent" },
+    { "path": "../../core/agent-default-model" },
+    { "path": "../../core/session" },
+    { "path": "../../core/tools" },
+    { "path": "../../llm/llm" },
+    { "path": "../../media/canvas" },
+    { "path": "../../session/session-title" },
+    { "path": "../../preset/agent-preset-registry" },
+    { "path": "../../typert/protocol" },
+    { "path": "../../workspace/workspace" },
+    { "path": "../../interaction/permission-presets" },
+    { "path": "../../interaction/user-approval" }
+  ]
+}
