@@ -14,6 +14,144 @@ import type { FakeIlinkRequest } from './fake-ilink-server.host.ts'
 
 const injectedServices = ['agents', 'workspaceRegistry', 'permissionPresets']
 
+it('connects and polls without fetching getConfig during transport startup', async () => {
+  let updateCalls = 0
+  let configCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) {
+      configCalls += 1
+      respond(response, { ret: -4 })
+    } else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, { ret: 0, get_updates_buf: 'startup-cursor', msgs: [] })
+    } else respond(response, { ret: 0 })
+  })
+  const cleanup: { home?: string; dispose?: () => Promise<void> } = {}
+  onTestFinished(async () => {
+    await cleanup.dispose?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-getconfig-startup-'))
+  cleanup.home = home
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const harness = await fixture(fake.url, store, { sleep: async () => {} })
+  cleanup.dispose = () => harness.ctx.fiber.dispose()
+
+  await vi.waitFor(async () => {
+    expect((await harness.service.getStatus()).status.state).toBe('connected')
+    expect(updateCalls).toBeGreaterThan(0)
+  })
+  expect(configCalls).toBe(0)
+})
+
+it('gets a typing ticket with the inbound message context token', async () => {
+  let updateCalls = 0
+  const inputs: string[] = []
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0, typing_ticket: 'inbound-ticket' })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'typing-cursor',
+        msgs: [{
+          message_id: 89,
+          from_user_id: 'owner-id',
+          context_token: 'inbound-context-token',
+          create_time_ms: Date.now() + 60_000,
+          item_list: [{ type: 1, text_item: { text: 'hello from WeChat' } }],
+        }],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const cleanup: {
+    home?: string
+    dispose?: () => Promise<void>
+    disposeAgents?: () => Promise<void>
+  } = {}
+  onTestFinished(async () => {
+    await cleanup.dispose?.()
+    await cleanup.disposeAgents?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-getconfig-context-'))
+  cleanup.home = home
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const agents = createFakeAgents(() => {}, async (_agent, message, events) => {
+    inputs.push(userText(message))
+    events.push({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'ack' }] } } })
+  })
+  const harness = await fixture(fake.url, store, { sleep: async () => {}, agents: agents.service })
+  cleanup.dispose = () => harness.ctx.fiber.dispose()
+  cleanup.disposeAgents = () => agents.dispose()
+
+  await vi.waitFor(() => {
+    const config = fake.requests.find(request => request.path.endsWith('/getconfig'))
+    expect(config?.body.context_token).toBe('inbound-context-token')
+    expect(inputs).toEqual(['hello from WeChat'])
+    expect(fake.requests.some(request => (
+      request.path.endsWith('/sendtyping') && request.body.typing_ticket === 'inbound-ticket'
+    ))).toBe(true)
+  })
+})
+
+it('continues processing an inbound message when getConfig fails', async () => {
+  let updateCalls = 0
+  const inputs: string[] = []
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: -4, errmsg: 'private config failure' })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'typing-failure-cursor',
+        msgs: [{
+          message_id: 90,
+          from_user_id: 'owner-id',
+          context_token: 'failure-context-token',
+          create_time_ms: Date.now() + 60_000,
+          item_list: [{ type: 1, text_item: { text: 'keep processing this' } }],
+        }],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const cleanup: {
+    home?: string
+    dispose?: () => Promise<void>
+    disposeAgents?: () => Promise<void>
+  } = {}
+  onTestFinished(async () => {
+    await cleanup.dispose?.()
+    await cleanup.disposeAgents?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-getconfig-failure-'))
+  cleanup.home = home
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const agents = createFakeAgents(() => {}, async (_agent, message, events) => {
+    inputs.push(userText(message))
+    events.push({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'ack' }] } } })
+  })
+  const harness = await fixture(fake.url, store, { sleep: async () => {}, agents: agents.service })
+  cleanup.dispose = () => harness.ctx.fiber.dispose()
+  cleanup.disposeAgents = () => agents.dispose()
+
+  await vi.waitFor(() => {
+    expect(inputs).toEqual(['keep processing this'])
+    expect(fake.requests.some(request => request.path.endsWith('/getconfig'))).toBe(true)
+  })
+  expect(fake.requests.some(request => request.path.endsWith('/sendtyping'))).toBe(false)
+})
+
 it('stores and forwards image attachments when no canvas service is installed', async () => {
   const image = Buffer.from('wechat image bytes')
   let updateCalls = 0

@@ -88,6 +88,7 @@ export class WechatService extends TypertRemoteService {
   private currentHandle: AgentHandle | undefined
   private ownedHandle: AgentHandle | undefined
   private activeContextToken: string | undefined
+  private typingTicket: string | undefined
   private currentTyping: ReturnType<typeof setInterval> | undefined
   private readonly pendingApprovals = new Map<SessionIdType, PendingApproval>()
   private readonly seen = new Set<string>()
@@ -174,6 +175,7 @@ export class WechatService extends TypertRemoteService {
     await this.store.removeCredentialsAndCursor()
     this.credentials = undefined
     this.client = undefined
+    this.typingTicket = undefined
     this.cursor = ''
     this.setStatus({ state: 'logged-out' })
     return this.snapshot()
@@ -314,6 +316,7 @@ export class WechatService extends TypertRemoteService {
           const confirmedBase = typeof response.baseurl === 'string' ? response.baseurl : baseUrl
           const credentials = { token, baseUrl: normalizeConfirmedBase(confirmedBase), botId, ownerUserId }
           await this.store.writeCredentials(credentials)
+          this.typingTicket = undefined
           this.credentials = credentials
           this.client = this.createClient(credentials.baseUrl, credentials.token)
           this.loginController = undefined
@@ -359,18 +362,19 @@ export class WechatService extends TypertRemoteService {
     let failures = 0
     let firstBatch = true
     let cursor = this.cursor
+    let step = 'ilink/bot/msg/notifystart'
     while (!signal.aborted) {
       try {
+        step = 'ilink/bot/msg/notifystart'
         await client.notifyStart(signal)
-        const config = await client.getConfig(credentials.ownerUserId, undefined, signal)
-        const typingTicket = typeof config.typing_ticket === 'string' ? config.typing_ticket : undefined
+        this.lastError = undefined
+        this.setStatus({ state: 'connected', botId: maskId(credentials.botId) })
+        step = 'wechat.ensureDefaultProject'
         await this.ensureDefaultProject()
-        if (this.status.state === 'connecting') {
-          this.setStatus({ state: 'connected', botId: maskId(credentials.botId) })
-        }
         while (!signal.aborted) {
           let batch: IlinkEnvelope
           try {
+            step = 'ilink/bot/getupdates'
             batch = await client.getUpdates(cursor, signal)
           } catch (error) {
             if (isAborted(signal)) return
@@ -396,21 +400,27 @@ export class WechatService extends TypertRemoteService {
               && createdBefore(message, startedAt)
           })
           if (firstBatch && cursor && pendingMessages.length > 0) {
+            step = 'ilink/bot/sendmessage (offline notice)'
             await this.sendText(`补收到 ${pendingMessages.length} 条离线消息，开始处理`)
           }
           firstBatch = false
           for (const message of messages) {
             if (isAborted(signal)) return
-            await this.receiveMessage(message, typingTicket)
+            step = 'wechat.receiveMessage'
+            await this.receiveMessage(message, signal)
           }
           if (typeof batch.get_updates_buf === 'string') {
             cursor = batch.get_updates_buf
             this.cursor = cursor
+            step = 'wechat.persistCursor'
             await this.store.writeCursor(cursor)
           }
         }
       } catch (error) {
         if (isAborted(signal)) return
+        const ret = error instanceof IlinkApiError ? numericApiCode(error.ret) : 'none'
+        const errcode = error instanceof IlinkApiError ? numericApiCode(error.errcode) : 'none'
+        this.ctx.logger.warn(`wechat: transport ${step} failed (ret=${ret} errcode=${errcode})`)
         if (isExpiredSession(error)) {
           await this.expireSession()
           return
@@ -421,12 +431,13 @@ export class WechatService extends TypertRemoteService {
         const wait = failures >= RETRY_LIMIT
           ? Math.min(3_000 * 2 ** (failures - RETRY_LIMIT), 60_000)
           : 1_000
+        step = 'wechat.retryDelay'
         await this.sleep(wait, signal)
       }
     }
   }
 
-  private async receiveMessage(message: IlinkMessage, typingTicket?: string): Promise<void> {
+  private async receiveMessage(message: IlinkMessage, signal: AbortSignal): Promise<void> {
     const credentials = this.credentials
     if (credentials === undefined) return
     const from = message.from_user_id ?? ''
@@ -436,6 +447,8 @@ export class WechatService extends TypertRemoteService {
       return
     }
     if (!id || this.seen.has(id) || this.state.processedMessageIds.includes(id)) return
+    const typingTicket = await this.getTypingTicket(message, signal)
+    if (signal.aborted) return
     this.seen.add(id)
     const text = messageText(message).trim()
     const pending = this.pendingApprovals.values().next().value
@@ -484,6 +497,23 @@ export class WechatService extends TypertRemoteService {
     })
     await this.markProcessed(id)
     this.startQueue(typingTicket)
+  }
+
+  private async getTypingTicket(message: IlinkMessage, signal: AbortSignal): Promise<string | undefined> {
+    const credentials = this.credentials
+    const client = this.client
+    if (credentials === undefined || client === undefined) return undefined
+    try {
+      const config = await client.getConfig(credentials.ownerUserId, message.context_token, signal)
+      const ticket = typeof config.typing_ticket === 'string' && config.typing_ticket !== ''
+        ? config.typing_ticket
+        : undefined
+      if (ticket !== undefined) this.typingTicket = ticket
+      return ticket ?? this.typingTicket
+    } catch (error) {
+      this.ctx.logger.debug(`wechat: typing ticket unavailable (${safePublicError(error)})`)
+      return undefined
+    }
   }
 
   private async buildAgentInput(
@@ -940,6 +970,7 @@ export class WechatService extends TypertRemoteService {
     await this.store.removeCredentialsAndCursor()
     this.credentials = undefined
     this.client = undefined
+    this.typingTicket = undefined
     this.cursor = ''
     this.setStatus({ state: 'logged-out' })
   }
@@ -1095,6 +1126,12 @@ function safePublicError(error: unknown): string {
   if (error instanceof IlinkApiError) return '微信服务暂时不可用，请稍后重试'
   if (error instanceof Error && error.message.startsWith('微信')) return redact(error.message)
   return '微信连接失败，请检查网络后重试'
+}
+
+function numericApiCode(value: IlinkApiError['ret']): string {
+  if (typeof value === 'number' && Number.isInteger(value)) return String(value)
+  if (typeof value === 'string' && /^-?\d+$/.test(value)) return value
+  return 'none'
 }
 
 function normalizeConfirmedBase(value: string): string {
