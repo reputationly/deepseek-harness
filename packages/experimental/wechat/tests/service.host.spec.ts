@@ -477,22 +477,143 @@ it('processes commands FIFO and reports the saved path when a workspace file exc
   expect(agents.toolDisposals).toBe(2)
 })
 
-it('disposes the previous owned handle on /new and the current one on service disposal', async () => {
+it('keeps WeChat-owned Agents live while switching sessions and disposes them on service stop', async () => {
+  const messages = ['/new', '/new', '/use 2', 'message to first', '/use 2', 'message to second']
+  const firstStarted = deferred()
+  const releaseFirst = deferred()
+  const followups: Array<{ agent: FakeAgent; text: string }> = []
+  let updateCalls = 0
   const fake = await createFakeIlinkServer((request, response) => {
     if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
     else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
-    else if (request.path.endsWith('/getupdates')) respond(response, {
-      ret: 0,
-      get_updates_buf: 'new-session-cursor',
-      msgs: ['/new', '/new'].map((text, index) => ({
-        message_id: index + 60,
-        from_user_id: 'owner-id',
-        item_list: [{ type: 1, text_item: { text } }],
-      })),
-    })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      respond(response, {
+        ret: 0,
+        get_updates_buf: 'new-session-cursor',
+        msgs: updateCalls === 1 ? messages.map((text, index) => ({
+          message_id: index + 60,
+          from_user_id: 'owner-id',
+          item_list: [{ type: 1, text_item: { text } }],
+        })) : [],
+      })
+    }
     else respond(response, { ret: 0 })
   })
   const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-owned-handles-'))
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const agents = createFakeAgents(() => {}, async (agent, message) => {
+    const text = userText(message)
+    followups.push({ agent, text })
+    if (text === 'message to first') {
+      firstStarted.resolve()
+      await releaseFirst.promise
+    }
+  })
+  const harness = await fixture(fake.url, store, { sleep: async () => {}, agents: agents.service })
+  onTestFinished(async () => {
+    releaseFirst.resolve()
+    await harness.ctx.fiber.dispose()
+    await agents.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await firstStarted.promise
+  const first = agents.createdAgents[0]
+  const second = agents.createdAgents[1]
+  expect(first).toBeDefined()
+  expect(second).toBeDefined()
+  if (first === undefined || second === undefined) throw new Error('WeChat did not create both test sessions')
+  const desktopHeldAgent = second
+  expect(agents.getAgent(desktopHeldAgent.session.id)).toBe(desktopHeldAgent)
+  expect(agents.handleDisposals).toBe(0)
+  releaseFirst.resolve()
+
+  await vi.waitFor(() => { expect(sentTexts(fake.requests)).toHaveLength(6) })
+  expect(followups.map(({ agent, text }) => [agent.session.id, text])).toEqual([
+    [first.session.id, 'message to first'],
+    [second.session.id, 'message to second'],
+  ])
+  expect(agents.createCalls).toBe(2)
+  expect(agents.resumeCalls).toBe(0)
+  expect(agents.handleDisposals).toBe(0)
+  expect(agents.getAgent(first.session.id)).toBe(first)
+  expect(agents.getAgent(second.session.id)).toBe(desktopHeldAgent)
+  expect((await store.readState()).currentSessionId).toBe(second.session.id)
+  await harness.ctx.fiber.dispose()
+  expect(agents.handleDisposals).toBe(2)
+  expect(agents.getAgent(first.session.id)).toBeUndefined()
+  expect(agents.getAgent(second.session.id)).toBeUndefined()
+})
+
+it('reports an error-ended turn without claiming it completed', async () => {
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      respond(response, {
+        ret: 0,
+        get_updates_buf: 'error-turn-cursor',
+        msgs: updateCalls === 1 ? [{
+          message_id: 301,
+          from_user_id: 'owner-id',
+          item_list: [{ type: 1, text_item: { text: 'missing credentials' } }],
+        }] : [],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-error-turn-'))
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const agents = createFakeAgents(() => {}, async (_agent, _message, events) => {
+    events.push({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Partial answer' }] } } })
+    events.push({
+      type: 'turn/end',
+      data: {
+        turn: 1,
+        reason: { kind: 'error', error: { code: 'MISSING_CREDENTIAL', message: 'Missing credential' } },
+      },
+    })
+  })
+  const harness = await fixture(fake.url, store, { sleep: async () => {}, agents: agents.service })
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await agents.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await vi.waitFor(() => {
+    expect(sentTexts(fake.requests)).toEqual([
+      'Partial answer',
+      '这一轮没有完成，请在电脑上打开这个会话查看原因',
+    ])
+  })
+})
+
+it('keeps the completed confirmation for an empty turn', async () => {
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      respond(response, {
+        ret: 0,
+        get_updates_buf: 'empty-turn-cursor',
+        msgs: updateCalls === 1 ? [{
+          message_id: 302,
+          from_user_id: 'owner-id',
+          item_list: [{ type: 1, text_item: { text: 'empty turn' } }],
+        }] : [],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-empty-turn-'))
   const store = new WechatStore(home)
   await seedCredentials(store, join(store.directory, 'project'))
   const agents = createFakeAgents(() => {})
@@ -504,11 +625,66 @@ it('disposes the previous owned handle on /new and the current one on service di
     await rm(home, { recursive: true, force: true })
   })
 
-  await vi.waitFor(() => { expect(sentTexts(fake.requests)).toHaveLength(2) })
-  expect(agents.createCalls).toBe(2)
-  expect(agents.handleDisposals).toBe(1)
-  await harness.ctx.fiber.dispose()
-  expect(agents.handleDisposals).toBe(2)
+  await vi.waitFor(() => { expect(sentTexts(fake.requests)).toEqual(['已完成']) })
+})
+
+it('sends only the cancel confirmation when /cancel interrupts a running tool turn', async () => {
+  const toolStarted = deferred()
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer(async (request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) {
+        respond(response, {
+          ret: 0,
+          get_updates_buf: 'cancel-tool-cursor',
+          msgs: [{
+            message_id: 303,
+            from_user_id: 'owner-id',
+            item_list: [{ type: 1, text_item: { text: 'start a running tool' } }],
+          }],
+        })
+      } else if (updateCalls === 2) {
+        await toolStarted.promise
+        respond(response, {
+          ret: 0,
+          get_updates_buf: 'cancel-tool-cursor',
+          msgs: [{
+            message_id: 304,
+            from_user_id: 'owner-id',
+            item_list: [{ type: 1, text_item: { text: '/cancel' } }],
+          }],
+        })
+      } else respond(response, { ret: 0, get_updates_buf: 'cancel-tool-cursor', msgs: [] })
+    } else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-cancel-tool-turn-'))
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const agents = createFakeAgents(() => {}, async (agent, _message, events) => {
+    events.push({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'partial tool answer' }] } } })
+    events.push({ type: 'tool/call', data: { callId: 'running-tool', name: 'wait_for_cancel' } })
+    toolStarted.resolve()
+    const signal = agent.signal
+    if (signal === undefined) throw new Error('running tool signal is unavailable')
+    await new Promise<void>((resolveWait) => {
+      const onAbort = (): void => { resolveWait() }
+      if (signal.aborted) onAbort()
+      else signal.addEventListener('abort', onAbort, { once: true })
+    })
+    events.push({ type: 'turn/end', data: { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } } })
+  })
+  const harness = await fixture(fake.url, store, { sleep: async () => {}, agents: agents.service })
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await agents.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await vi.waitFor(() => { expect(sentTexts(fake.requests)).toEqual(['已取消当前任务']) })
 })
 
 it('configures and attaches a desktop-preloaded Agent only once across WeChat messages', async () => {
@@ -881,7 +1057,7 @@ it('resumes a session with its recorded preset and default model', async () => {
   expect(attachSession).toHaveBeenNthCalledWith(2, legacySessionId)
 })
 
-it('clears and releases a current session when the default project changes', async () => {
+it('clears the current session when the default project changes without releasing owned handles', async () => {
   let updateCalls = 0
   let pendingPoll: import('node:http').ServerResponse | undefined
   const fake = await createFakeIlinkServer((request, response) => {
@@ -935,7 +1111,7 @@ it('clears and releases a current session when the default project changes', asy
   const previous = (await store.readState()).currentSessionId
   expect(previous).toBeDefined()
   await harness.service.setDefaultProject(secondProject)
-  expect(agents.handleDisposals).toBe(1)
+  expect(agents.handleDisposals).toBe(0)
   expect(await store.readState()).toMatchObject({ defaultProjectPath: secondProject })
   expect(await store.readState()).not.toHaveProperty('currentSessionId')
   await vi.waitFor(() => { expect(pendingPoll).toBeDefined() })
@@ -953,6 +1129,8 @@ it('clears and releases a current session when the default project changes', asy
   })
   await vi.waitFor(() => { expect(agents.createdProjectPaths).toEqual([firstProject, secondProject]) })
   expect((await store.readState()).currentSessionId).not.toBe(previous)
+  await harness.ctx.fiber.dispose()
+  expect(agents.handleDisposals).toBe(2)
 })
 
 it('loads persisted state only once across logout and later status reads', async () => {
@@ -1603,6 +1781,8 @@ it('does not send a turn-failure message when disposal aborts a WeChat turn', as
   expect(streamError?.name).toBe('AbortError')
   await ctx.fiber.dispose()
   expect(sentTexts(fake.requests)).not.toContain('微信消息处理失败，请稍后重试')
+  expect(sentTexts(fake.requests)).not.toContain('这一轮没有完成，请在电脑上打开这个会话查看原因')
+  expect(sentTexts(fake.requests)).not.toContain('已完成')
 })
 
 it('does not forward a desktop-driven approval for a recent WeChat session', async () => {
@@ -1919,22 +2099,27 @@ function createFakeAgents(
   readonly service: object
   readonly toolDisposals: number
   readonly createCalls: number
+  readonly resumeCalls: number
   readonly handleDisposals: number
   readonly createdProjectPaths: string[]
   readonly createOptions: FakeCreateOptions[]
+  readonly createdAgents: FakeAgent[]
   readonly createErrors: string[]
   readonly registeredToolNames: string[]
+  getAgent(sessionId: string): FakeAgent | undefined
   dispose(): Promise<void>
 } {
   const agents = new Map<string, FakeAgent>()
   const contexts: Context[] = []
   let toolDisposals = 0
   let createCalls = 0
+  let resumeCalls = 0
   let handleDisposals = 0
   const createErrors: string[] = []
   const registeredToolNames: string[] = []
   const createdProjectPaths: string[] = []
   const createOptions: FakeCreateOptions[] = []
+  const createdAgents: FakeAgent[] = []
   let disposed = false
   return {
     service: {
@@ -1960,6 +2145,9 @@ function createFakeAgents(
             const controller = new AbortController()
             activeTurn = controller
             activity = Promise.resolve(onFollowup?.(agent, message, events)).then(() => {
+              if (!events.slice(firstNewEvent).some(value => asRecord(value)?.type === 'turn/end')) {
+                events.push({ type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
+              }
               for (let index = firstNewEvent; index < events.length; index += 1) {
                 const value = asRecord(events[index])
                 if (value === undefined) continue
@@ -1992,6 +2180,7 @@ function createFakeAgents(
           throw error
         }
         agents.set(String(options.sessionId), agent)
+        createdAgents.push(agent)
         return {
           agent,
           dispose: async () => {
@@ -2001,15 +2190,21 @@ function createFakeAgents(
           },
         }
       },
-      resume: async () => { throw new Error('unexpected agent resume') },
+      resume: async () => {
+        resumeCalls += 1
+        throw new Error('unexpected agent resume')
+      },
     },
     get toolDisposals() { return toolDisposals },
     get createCalls() { return createCalls },
+    get resumeCalls() { return resumeCalls },
     get handleDisposals() { return handleDisposals },
     createdProjectPaths,
     createOptions,
+    createdAgents,
     createErrors,
     registeredToolNames,
+    getAgent: sessionId => agents.get(sessionId),
     dispose: async () => {
       if (disposed) return
       disposed = true

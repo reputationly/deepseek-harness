@@ -14,7 +14,7 @@ import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { Session, SessionId as SessionIdType, SessionEvent } from '@deepseek-ai/dsh-session'
+import type { Session, SessionId as SessionIdType, SessionEvent, TurnEndReason } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -89,7 +89,7 @@ export class WechatService extends TypertRemoteService {
   private readonly queue: QueuedMessage[] = []
   private queueTask: Promise<void> | undefined
   private currentHandle: AgentHandle | undefined
-  private ownedHandle: AgentHandle | undefined
+  private readonly ownedHandles = new Map<SessionIdType, AgentHandle>()
   private activeContextToken: string | undefined
   private typingTicket: string | undefined
   private currentTyping: ReturnType<typeof setInterval> | undefined
@@ -194,9 +194,10 @@ export class WechatService extends TypertRemoteService {
     if (project === undefined) throw new Error('请选择一个已存在的项目')
     const currentSessionId = this.state.currentSessionId
     const currentRecent = this.state.recentSessions.find(item => item.sessionId === currentSessionId)
-    const currentHandle = this.ownedHandle?.agent.session.id === currentSessionId
-      ? this.ownedHandle
-      : this.currentHandle?.agent.session.id === currentSessionId ? this.currentHandle : undefined
+    const currentHandle = currentSessionId === undefined
+      ? undefined
+      : this.ownedHandles.get(currentSessionId)
+        ?? (this.currentHandle?.agent.session.id === currentSessionId ? this.currentHandle : undefined)
     const currentProjectPath = currentRecent?.projectPath ?? currentHandle?.agent.session.header.cwd
     const switchesSession = currentSessionId !== undefined && currentProjectPath !== project.path
     this.state = switchesSession
@@ -207,10 +208,6 @@ export class WechatService extends TypertRemoteService {
       }
       : { ...this.state, defaultProjectPath: project.path }
     await this.persistState()
-    if (switchesSession) {
-      await this.queueTask
-      await this.releaseOwnedHandle(currentSessionId)
-    }
     return this.snapshot()
   }
 
@@ -259,7 +256,7 @@ export class WechatService extends TypertRemoteService {
       for (const pending of this.pendingApprovals.values()) pending.decide('rejected')
       this.pendingApprovals.clear()
       await this.queueTask
-      await this.releaseOwnedHandle()
+      await this.releaseOwnedHandles()
     }
   }
 
@@ -653,13 +650,35 @@ export class WechatService extends TypertRemoteService {
     session: Session,
     contextToken?: string,
   ): Promise<void> {
+    let turnEndReason: TurnEndReason | undefined
+    for (const event of events) {
+      if (event.type === 'turn/end') turnEndReason = event.data.reason
+    }
+    switch (turnEndReason?.kind) {
+      case 'aborted':
+        return
+      default:
+        // Merge-extensible turn reasons continue through normal delivery.
+        break
+    }
     const texts = events.flatMap(event => event.type === 'assistant/message'
       ? event.data.message.content.filter(block => block.type === 'text').map(block => block.text)
       : [])
     const text = plainText(texts.join('\n').trim())
     if (text) {
       for (const part of splitText(text, 2_000)) await this.sendText(part, contextToken)
-    } else await this.sendText('已完成', contextToken)
+    }
+    switch (turnEndReason?.kind) {
+      case 'error':
+        await this.sendText('这一轮没有完成，请在电脑上打开这个会话查看原因', contextToken)
+        break
+      case 'completed':
+        if (!text) await this.sendText('已完成', contextToken)
+        break
+      default:
+        // Plugin-defined end reasons are not success confirmations.
+        if (turnEndReason === undefined && !text) await this.sendText('已完成', contextToken)
+    }
 
     const tools = new Map<string, string>()
     const paths = new Set<string>()
@@ -751,11 +770,11 @@ export class WechatService extends TypertRemoteService {
   private async ensureCurrentSession(projectPath: string): Promise<AgentHandle> {
     const current = this.state.currentSessionId
     if (current !== undefined) {
-      if (this.ownedHandle?.agent.session.id === current) return this.ownedHandle
+      const ownedHandle = this.liveOwnedHandle(current)
+      if (ownedHandle !== undefined) return ownedHandle
       const agent = this.ctx.agents.get(current)
       if (agent !== undefined) {
         await this.configureReusedAgent(agent, projectPath)
-        await this.releaseOwnedHandle()
         return { agent, dispose: async () => {} }
       }
       try {
@@ -770,9 +789,9 @@ export class WechatService extends TypertRemoteService {
   }
 
   private async ensureSession(sessionId: SessionIdType, projectPath: string): Promise<AgentHandle> {
-    if (this.ownedHandle?.agent.session.id === sessionId) return this.ownedHandle
+    const ownedHandle = this.liveOwnedHandle(sessionId)
+    if (ownedHandle !== undefined) return ownedHandle
     const active = this.ctx.agents.get(sessionId)
-    await this.releaseOwnedHandle()
     if (active !== undefined) {
       await this.configureReusedAgent(active, projectPath)
       return { agent: active, dispose: async () => {} }
@@ -787,14 +806,13 @@ export class WechatService extends TypertRemoteService {
       agentOptions: this.agentOptions(),
       setup: this.agentSetup(projectPath, agentPreset),
     })
-    this.ownedHandle = handle
+    this.ownedHandles.set(sessionId, handle)
     if (await this.attachSessionToWorkspace(sessionId, projectPath)) this.workspaceAttachedAgents.add(handle.agent)
     await this.updateRecent(handle.agent.session, projectPath, agentPreset)
     return handle
   }
 
   private async createSession(projectPath: string): Promise<AgentHandle> {
-    await this.releaseOwnedHandle()
     const sessionId = SessionId(randomUUID())
     const presets = this.ctx.get('agentPresets')
     const agentPreset = presets === undefined ? undefined : (await presets.resolve(undefined)).id
@@ -804,7 +822,7 @@ export class WechatService extends TypertRemoteService {
       meta: { cwd: projectPath, ...(agentPreset === undefined ? {} : { agentPreset }) },
       setup: this.agentSetup(projectPath, agentPreset),
     })
-    this.ownedHandle = handle
+    this.ownedHandles.set(sessionId, handle)
     if (await this.attachSessionToWorkspace(sessionId, projectPath)) this.workspaceAttachedAgents.add(handle.agent)
     this.ctx.get('sessionTitle')?.rename(handle.agent.session, DEFAULT_WECHAT_TITLE)
     await this.updateRecent(handle.agent.session, projectPath, agentPreset)
@@ -891,14 +909,22 @@ export class WechatService extends TypertRemoteService {
     if (firstLine.trim() !== '') titles.rename(session, `微信 · ${firstLine}`)
   }
 
-  private async releaseOwnedHandle(sessionId?: SessionIdType): Promise<void> {
-    const handle = this.ownedHandle
-    if (handle === undefined || (sessionId !== undefined && handle.agent.session.id !== sessionId)) return
-    this.ownedHandle = undefined
-    try {
-      await handle.dispose()
-    } catch (error) {
-      this.ctx.logger.warn(`wechat: agent handle disposal failed (${safePublicError(error)})`)
+  private liveOwnedHandle(sessionId: SessionIdType): AgentHandle | undefined {
+    const handle = this.ownedHandles.get(sessionId)
+    if (handle === undefined || this.ctx.agents.get(sessionId) === handle.agent) return handle
+    this.ownedHandles.delete(sessionId)
+    return undefined
+  }
+
+  private async releaseOwnedHandles(): Promise<void> {
+    const handles = [...this.ownedHandles.values()]
+    this.ownedHandles.clear()
+    for (const handle of handles) {
+      try {
+        await handle.dispose()
+      } catch (error) {
+        this.ctx.logger.warn(`wechat: agent handle disposal failed (${safePublicError(error)})`)
+      }
     }
   }
 
