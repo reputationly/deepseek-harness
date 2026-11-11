@@ -29,13 +29,14 @@ it('distinguishes missing files from absent fields without creating a file durin
   await expect(readFile(file.path)).rejects.toMatchObject({ code: 'ENOENT' })
   await file.saveUpdates({})
   expect(await file.read()).toMatchObject({ kind: 'ready', fields: {
-    channel: { kind: 'absent' }, allowTestAuthPopupWindow: { kind: 'absent' },
+    channel: { kind: 'absent' }, allowTestAuthPopupWindow: { kind: 'absent' }, preventSleep: { kind: 'absent' },
   } })
 })
 
 it.each([
   ['{secret-value', 'json'], ['null', 'structure'], ['[]', 'structure'],
   ['{"updates":null}', 'structure'], ['{"updates":[]}', 'structure'], ['{"updates":true}', 'structure'],
+  ['{"power":null}', 'structure'], ['{"power":[]}', 'structure'],
 ])('classifies malformed documents and refuses to replace them: %s', async (raw, reason) => {
   const { file } = await fixture(raw)
   const result = await file.initialize()
@@ -43,6 +44,39 @@ it.each([
   expect(JSON.stringify(result)).not.toContain('secret-value')
   await expect(file.saveUpdates({ channel: 'stable' })).rejects.toMatchObject({ problem: { kind: 'invalid', reason } })
   expect(await readFile(file.path, 'utf8')).toBe(raw)
+})
+
+it('reads absent, valid, and invalid power fields independently', async () => {
+  const { file } = await fixture('{"updates":{"channel":"stable"},"power":{"other":1}}')
+  expect(await file.read()).toMatchObject({ kind: 'ready', fields: {
+    channel: { kind: 'valid', value: 'stable' }, preventSleep: { kind: 'absent' },
+  } })
+  await file.savePower({ preventSleep: true })
+  expect(await file.read()).toMatchObject({ kind: 'ready', fields: { preventSleep: { kind: 'valid', value: true } } })
+  const invalid = await fixture('{"power":{"preventSleep":"yes"}}')
+  expect(await invalid.file.read()).toMatchObject({ kind: 'ready', fields: {
+    preventSleep: { kind: 'invalid', error: { problem: { kind: 'invalid', reason: 'field', field: 'preventSleep' } } },
+  } })
+})
+
+it('defaults invalid persisted power preferences to off and logs only the settings path', async () => {
+  const { root, file } = await fixture('{"power":{"preventSleep":"private-value"}}')
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  expect((await readDesktopSettings(root)).power).toEqual({ preventSleep: false })
+  expect(warning).toHaveBeenCalledExactlyOnceWith(`desktop settings: ${file.path}: using default power preferences`)
+  expect(JSON.stringify(warning.mock.calls)).not.toContain('private-value')
+})
+
+it('patches power while preserving updates and unknown fields, and updates while preserving power', async () => {
+  const { file } = await fixture('{"other":{"keep":true},"updates":{"channel":"stable","future":2},"power":{"futurePower":"yes"}}')
+  await file.savePower({ preventSleep: true })
+  expect(JSON.parse(await readFile(file.path, 'utf8'))).toEqual({
+    other: { keep: true }, updates: { channel: 'stable', future: 2 }, power: { futurePower: 'yes', preventSleep: true },
+  })
+  await file.saveUpdates({ channel: 'nightly' })
+  expect(JSON.parse(await readFile(file.path, 'utf8'))).toEqual({
+    other: { keep: true }, updates: { channel: 'nightly', future: 2 }, power: { futurePower: 'yes', preventSleep: true },
+  })
 })
 
 it('keeps an invalid channel independent from the popup preference and repairs only the selected field', async () => {

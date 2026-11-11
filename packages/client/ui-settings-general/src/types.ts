@@ -72,3 +72,30 @@ export interface DesktopChannelBridge {
    */
   subscribe(listener: (state: DesktopChannelState) => void): () => void
 }
+
+/** Current system-suspension preference and whether a save is in progress. */
+export interface DesktopPowerState {
+  readonly preventSleep: boolean
+  readonly changing: boolean
+}
+
+/** Outcome of persisting and applying the system-suspension preference. */
+export type DesktopPowerChangeResult =
+  | { readonly kind: 'applied'; readonly state: DesktopPowerState }
+  | { readonly kind: 'failed'; readonly state: DesktopPowerState }
+
+/** Desktop-only power preference operations exposed by the isolated preload. */
+export interface DesktopPowerBridge {
+  /** @returns Current shell-owned power preference. */
+  get(): Promise<DesktopPowerState>
+  /**
+   * @param preventSleep - Whether to prevent system suspension while the app runs.
+   * @returns The resulting preference or the unchanged state after failure.
+   */
+  set(preventSleep: boolean): Promise<DesktopPowerChangeResult>
+  /**
+   * @param listener - Receives changes from any Desktop window.
+   * @returns Removes this window's subscription.
+   */
+  subscribe(listener: (state: DesktopPowerState) => void): () => void
+}

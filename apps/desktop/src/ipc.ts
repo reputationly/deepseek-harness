@@ -2,7 +2,8 @@ import type { DesktopFileActions } from '@deepseek-ai/dsh-client-ui-file-actions
 /** Typed preload operations exposed only by the Electron shell. */
 
 export type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
-import type { DesktopChannelBridge, DesktopChannelState } from '@deepseek-ai/dsh-client-ui-settings-general/types'
+export type { DesktopPowerState, DesktopPowerChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
+import type { DesktopChannelBridge, DesktopChannelState, DesktopPowerBridge } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import type { DesktopKeyboardApi, DesktopShortcutsApi } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
@@ -40,6 +41,9 @@ export const DESKTOP_IPC = {
   updatesStatus: 'dsh-desktop:updates-status',
   updatesOpen: 'dsh-desktop:updates-open',
   updatesPresentation: 'dsh-desktop:updates-presentation',
+  powerGet: 'dsh-desktop:power-get',
+  powerSet: 'dsh-desktop:power-set',
+  powerChanged: 'dsh-desktop:power-changed',
   nativeThemeSet: 'dsh-desktop:native-theme-set',
   windowFullscreen: 'dsh-desktop:window-fullscreen',
   windowsAppearance: 'dsh-desktop:windows-appearance',
@@ -108,6 +112,7 @@ export interface DshDesktopProductApi {
     open(): Promise<void>
     subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void
   }
+  readonly power: DesktopPowerBridge
 }
 
 /** Scheme of Desktop-owned application documents. */

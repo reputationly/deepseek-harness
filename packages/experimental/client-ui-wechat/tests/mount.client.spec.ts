@@ -7,6 +7,8 @@ import type { WechatSnapshot, WechatStatus } from '@deepseek-ai/dsh-wechat/types
 import { inject, apply } from '../src/client/index.ts'
 import { WechatSettings } from '../src/client/WechatSettings.tsx'
 import { WechatSettingsIcon } from '../src/client/WechatSettingsIcon.tsx'
+import type { WechatPowerState } from '../src/client/desktop-power-source.ts'
+import type { WechatSettingsInjected } from '../src/client/WechatSettings.tsx'
 
 const snapshot: WechatSnapshot = {
   status: { state: 'idle' },
@@ -19,7 +21,21 @@ it('mounts the generated Remote, status stream, localized settings slot and disp
   onTestFinished(async () => { await ctx.fiber.dispose() })
   const unmountRemote = vi.fn(async () => {})
   const streamDispose = vi.fn()
+  const unsubscribePower = vi.fn()
+  let powerListener: ((state: WechatPowerState) => void) | undefined
   const calls: string[] = []
+  const powerSet = vi.fn(async (preventSleep: boolean) => ({
+    kind: 'applied' as const, state: { preventSleep, changing: false },
+  }))
+  vi.stubGlobal('dshDesktop', { protocolVersion: 1, power: {
+    get: async (): Promise<WechatPowerState> => ({ preventSleep: false, changing: false }),
+    set: powerSet,
+    subscribe(listener: (state: WechatPowerState) => void) {
+      powerListener = listener
+      return unsubscribePower
+    },
+  } })
+  onTestFinished(() => { vi.unstubAllGlobals() })
   const contribution: TypertRemoteContribution = { package: '@deepseek-ai/dsh-wechat', descriptors: [] }
   class TestRemote extends Service {
     constructor() { super(ctx, 'remote') }
@@ -59,11 +75,22 @@ it('mounts the generated Remote, status stream, localized settings slot and disp
   expect(iconEntry?.component).toBe(WechatSettingsIcon)
   expect(operation).toHaveBeenCalledOnce()
   expect(typeof ctx.locale.bind('wechat')('title')).toBe('string')
+  const injected = entry?.inject?.()
+  const powerAvailable = injected?.powerAvailable
+  const setPreventSleep = injected?.setPreventSleep as WechatSettingsInjected['setPreventSleep']
+  const powerHooks = injected?.hooks as WechatSettingsInjected['hooks']
+  expect(powerAvailable).toBe(true)
+  await setPreventSleep(true)
+  expect(powerSet).toHaveBeenCalledWith(true)
+  expect(powerHooks.power.getSnapshot().state).toEqual({ preventSleep: true, changing: false })
+  powerListener?.({ preventSleep: false, changing: false })
+  expect(powerHooks.power.getSnapshot().state).toEqual({ preventSleep: false, changing: false })
 
   await fiber.dispose()
   expect(ctx.slots.entries('settings.section')).toHaveLength(0)
   expect(ctx.slots.entries('settings.section.icon')).toHaveLength(0)
   expect(streamDispose).toHaveBeenCalledOnce()
+  expect(unsubscribePower).toHaveBeenCalledOnce()
   expect(unmountRemote).toHaveBeenCalledOnce()
   expect(calls).toEqual(['$mount'])
 })

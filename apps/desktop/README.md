@@ -281,6 +281,8 @@ The [shell configuration decision](../../.agents/notes/implemented/architecture/
 
 The Electron main process reads `app.getPath('userData')/desktop/settings.json` once at startup, independently of Host and Cordis configuration. The default packaged paths are `%APPDATA%\@deepseek-ai\dsh-desktop\desktop\settings.json` on Windows and `~/Library/Application Support/@deepseek-ai/dsh-desktop/desktop/settings.json` on macOS. Development uses the `userData` path printed by its launcher. `DSH_HOME` does not relocate this file.
 
+The optional `power.preventSleep` preference defaults to off. When enabled, Electron's `prevent-app-suspension` blocker keeps the system awake while Desktop runs; the display may still turn off according to system settings. The preference is applied at startup, saved through the same atomic settings writer, and released when the app quits.
+
 On first launch, including after an upgrade, Desktop creates this document if it is absent:
 
 ```json

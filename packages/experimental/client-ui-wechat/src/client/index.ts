@@ -9,10 +9,11 @@ import wechatRemote from '@deepseek-ai/dsh-wechat/remote'
 import type { WechatSnapshot } from '@deepseek-ai/dsh-wechat/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { NS, en, zh } from './locales.ts'
+import { NS, de, en, es, fr, ja, pt, ru, zh } from './locales.ts'
 import { WechatSettings } from './WechatSettings.tsx'
 import { WechatSettingsIcon } from './WechatSettingsIcon.tsx'
 import type { WechatSettingsInjected } from './WechatSettings.tsx'
+import { WechatDesktopPowerSource, type WechatPowerBridge } from './desktop-power-source.ts'
 import { inject, mountWechat } from './mount.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -69,9 +70,18 @@ async function registerUi(ctx: Context): Promise<void> {
       await watching
     }
   }, 'wechat-settings: status stream')
-  ctx.effect(() => ctx.locale.register(NS, { en, zh }))
+  const desktop = (globalThis as typeof globalThis & { dshDesktop?: {
+    protocolVersion: number
+    power?: WechatPowerBridge
+  } }).dshDesktop
+  const powerBridge = desktop?.protocolVersion === 1 ? desktop.power : undefined
+  const power = new WechatDesktopPowerSource(powerBridge)
+  ctx.effect(() => () => { power.dispose() }, 'wechat settings: Desktop power')
+  ctx.effect(() => ctx.locale.register(NS, { de, en, es, fr, ja, pt, ru, zh }))
   const injected: WechatSettingsInjected = {
-    hooks: { snapshot: status },
+    hooks: { snapshot: status, power: power.store },
+    powerAvailable: powerBridge !== undefined,
+    setPreventSleep: value => power.setPreventSleep(value),
     startLogin: async () =>{  await update(() => ctx.remote.wechat.startLogin()) },
     cancelLogin: async () =>{  await update(() => ctx.remote.wechat.cancelLogin()) },
     disconnect: async () =>{  await update(() => ctx.remote.wechat.disconnect()) },

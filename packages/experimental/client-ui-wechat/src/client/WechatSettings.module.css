@@ -74,6 +74,30 @@
   width: fit-content;
 }
 
+.power {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.powerText {
+  min-width: 0;
+}
+
+.powerTitle {
+  color: var(--dsw-alias-label-primary);
+}
+
+.powerDescription {
+  margin-top: 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .project {
   display: grid;
   gap: 8px;
