@@ -1,0 +1,11 @@
+# 发布流水线 POST /suanli-assistant/__sync 后写这个标记，由本单元立刻拉起同步，
+# 不必等 15 分钟的定时器。
+[Unit]
+Description=Trigger the installer sync as soon as a release asks for it
+
+[Path]
+PathChanged=/run/suanli/sync.request
+Unit=suanli-installer-sync.service
+
+[Install]
+WantedBy=paths.target

@@ -1,0 +1,36 @@
+[Unit]
+Description=Serve the synced 蒜狸小助手 installers to EdgeOne
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=suanli-files
+Group=suanli-files
+EnvironmentFile=/etc/suanli/files.env
+RuntimeDirectory=suanli
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/sbin/suanli-files-server
+Restart=always
+RestartSec=5
+Nice=5
+
+# 只读、无特权：即便这个进程被攻破，也只能读 /srv/downloads 里的公开安装包
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/srv/downloads
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+TasksMax=64
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

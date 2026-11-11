@@ -1,0 +1,26 @@
+# 源站机器上的 Caddy 片段：同一个 443 站点既跑 umami，也把安装包路径反代给文件服务。
+# 关键点：必须关掉 Caddy 自动插入的 80→443 跳转，否则它会抢在下面 :80 站点的 handle 之前，
+# 让 EO 的回源请求收到 308 而不是文件。
+{
+	auto_https disable_redirects
+}
+
+<origin-host> {
+	handle /suanli-assistant/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:<existing-service-port>
+	}
+}
+
+:80 {
+	handle /suanli-assistant/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}

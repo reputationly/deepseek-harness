@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep the 蒜狸小助手 installers current on the origin host
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/suanli-installer-sync
+TimeoutStartSec=2h
+Nice=15
+IOSchedulingClass=idle
