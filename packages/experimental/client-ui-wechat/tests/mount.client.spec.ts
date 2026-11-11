@@ -6,6 +6,7 @@ import { expect, it, onTestFinished, vi } from 'vitest'
 import type { WechatSnapshot, WechatStatus } from '@deepseek-ai/dsh-wechat/types'
 import { inject, apply } from '../src/client/index.ts'
 import { WechatSettings } from '../src/client/WechatSettings.tsx'
+import { WechatSettingsIcon } from '../src/client/WechatSettingsIcon.tsx'
 
 const snapshot: WechatSnapshot = {
   status: { state: 'idle' },
@@ -46,18 +47,22 @@ it('mounts the generated Remote, status stream, localized settings slot and disp
   await ctx.plugin(SlotRegistry)
   ctx.slots.register({ name: 'root', children: {
     'settings.section': { kind: 'list', scope: 'root' },
+    'settings.section.icon': { kind: 'list', scope: 'root', inline: true },
   } } as never, () => null)
 
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber
   const entry = ctx.slots.entries('settings.section').find(item => item.options.id === 'wechat')
+  const iconEntry = ctx.slots.entries('settings.section.icon').find(item => item.options.id === 'wechat')
   expect(entry).toMatchObject({ locale: 'wechat', options: { id: 'wechat' } })
   expect(entry?.component).toBe(WechatSettings)
+  expect(iconEntry?.component).toBe(WechatSettingsIcon)
   expect(operation).toHaveBeenCalledOnce()
   expect(typeof ctx.locale.bind('wechat')('title')).toBe('string')
 
   await fiber.dispose()
   expect(ctx.slots.entries('settings.section')).toHaveLength(0)
+  expect(ctx.slots.entries('settings.section.icon')).toHaveLength(0)
   expect(streamDispose).toHaveBeenCalledOnce()
   expect(unmountRemote).toHaveBeenCalledOnce()
   expect(calls).toEqual(['$mount'])

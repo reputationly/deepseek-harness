@@ -31,28 +31,29 @@ export function WechatSettings(props: WechatSettingsProps) {
           : status.state === 'logged-out' ? t('loggedOut')
             : t('waiting')
 
-  return <section className={css.card} aria-labelledby="wechat-settings-title">
-    <h2 id="wechat-settings-title">{t(connected ? 'connected' : 'title')}</h2>
-    {!connected && <p className={css.description}>{t('description')}</p>}
+  return <section className={css.section} aria-labelledby="wechat-settings-title">
+    <h2 className={css.title} id="wechat-settings-title">{t(connected ? 'connected' : 'title')}</h2>
+    {!connected && <p className={css.intro}>{t('description')}</p>}
     {waiting && <div className={css.qr}>
       <img src={status.qrDataUrl} alt={t('waiting')} />
-      <p role="status">{label}</p>
+      <p className={css.status} role="status">{label}</p>
     </div>}
     {!waiting && !connected && (snapshot.hasCredentials || status.state !== 'idle' && status.state !== 'logged-out')
-      && <p role="status">{label}</p>}
+      && <p className={css.status} role="status">{label}</p>}
     {snapshot.error && <p role="status" className={css.error}>{snapshot.error}</p>}
     {connected && <p className={css.connected}><span aria-hidden="true" />{t('connectedState')}</p>}
-    {!snapshot.hasCredentials && !connected && (status.state === 'idle' || status.state === 'logged-out') && <Button onClick={() => { void props.startLogin() }}>
-      {t('add')}
-    </Button>}
-    {waiting && <Button variant="outline" onClick={() => { void props.cancelLogin() }}>{t('cancel')}</Button>}
-    {snapshot.hasCredentials && <div className={css.actions}>
-      {connected && <Button variant="outline" onClick={() => { void props.disconnect() }}>{t('disconnect')}</Button>}
-      <Button variant="outline" onClick={() => { void props.reconnect() }}>{t('reconnect')}</Button>
-      <Button variant="outline" onClick={() => {
-        if (window.confirm(t('confirmLogout')) && window.confirm(t('confirmLogoutAgain'))) void props.logout()
-      }}>{t('logout')}</Button>
-    </div>}
+    <div className={css.actions}>
+      {!snapshot.hasCredentials && !connected && (status.state === 'idle' || status.state === 'logged-out')
+        && <Button variant="primary" onClick={() => { void props.startLogin() }}>{t('add')}</Button>}
+      {waiting && <Button variant="outline" onClick={() => { void props.cancelLogin() }}>{t('cancel')}</Button>}
+      {snapshot.hasCredentials && <>
+        {connected && <Button variant="outline" onClick={() => { void props.disconnect() }}>{t('disconnect')}</Button>}
+        <Button variant="outline" onClick={() => { void props.reconnect() }}>{t('reconnect')}</Button>
+        <Button variant="outline" onClick={() => {
+          if (window.confirm(t('confirmLogout')) && window.confirm(t('confirmLogoutAgain'))) void props.logout()
+        }}>{t('logout')}</Button>
+      </>}
+    </div>
     {connected && <div className={css.project}>
       <label htmlFor="wechat-project">{t('project')}</label>
       <select id="wechat-project" value={snapshot.defaultProjectPath ?? ''}
@@ -60,7 +61,7 @@ export function WechatSettings(props: WechatSettingsProps) {
         {snapshot.projects.map(project => <option key={project.path} value={project.path}>{project.title}</option>)}
         {snapshot.projects.length === 0 && <option value="">{t('noProjects')}</option>}
       </select>
-      <p>{t('projectHint')}</p>
+      <p className={css.projectHint}>{t('projectHint')}</p>
     </div>}
     {connected && <div className={css.usage}>
       <p>{t('usage')}</p>

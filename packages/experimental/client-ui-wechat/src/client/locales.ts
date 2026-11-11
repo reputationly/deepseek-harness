@@ -7,7 +7,7 @@ export const NS = 'wechat'
 export const en = {
   nav: 'WeChat',
   title: 'WeChat',
-  description: 'Connect your WeChat account to chat with a local DSH agent.',
+  description: 'Chat with the agent on this computer from WeChat.',
   add: 'Add WeChat',
   connected: 'WeChat ClawBot · Connected',
   connectedState: 'Connected',
@@ -41,7 +41,7 @@ export const en = {
 export const zh = {
   nav: '微信',
   title: '微信',
-  description: '扫码绑定微信，让本机 DSH 智能体接收并回复消息。',
+  description: '在微信里和这台电脑上的智能体对话',
   add: '添加微信',
   connected: '微信 ClawBot · 已连接',
   connectedState: '已连接',
@@ -49,8 +49,8 @@ export const zh = {
   scanned: '已扫码，请在手机上确认',
   connecting: '正在连接微信…',
   reconnecting: '正在重新连接微信…',
-  disconnected: '微信已断开连接。',
-  loggedOut: '微信登录已失效，请重新扫码绑定。',
+  disconnected: '微信已断开连接',
+  loggedOut: '微信登录已失效，请重新扫码绑定',
   cancel: '取消',
   disconnect: '断开连接',
   reconnect: '重新连接',
@@ -58,8 +58,8 @@ export const zh = {
   confirmLogout: '确定退出此微信账号吗？',
   confirmLogoutAgain: '再次确认：从这台电脑删除已保存的微信登录吗？',
   project: '默认项目',
-  projectHint: '新的微信消息会继续发送到此项目。',
-  usage: '在微信里找到 ClawBot 直接对话；使用时保持蒜狸小助手打开、电脑不要睡眠。',
+  projectHint: '新的微信消息会继续发送到此项目',
+  usage: '在微信里找到 ClawBot 直接对话；使用时保持蒜狸小助手打开、电脑不要睡眠',
   commands: '命令',
   commandNew: '/new — 开始新会话',
   commandList: '/list — 列出最近会话',
@@ -67,8 +67,8 @@ export const zh = {
   commandProject: '/项目 [名称|序号] — 切换项目（/project）',
   commandCancel: '/cancel — 中断当前一轮',
   commandHelp: '/help — 查看命令帮助',
-  failed: '微信操作失败，请检查连接后重试。',
-  noProjects: '没有可用项目。',
+  failed: '微信操作失败，请检查连接后重试',
+  noProjects: '没有可用项目',
 }
 
 /** Locale key union shared by settings components. */

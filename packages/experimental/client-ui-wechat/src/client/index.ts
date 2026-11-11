@@ -11,6 +11,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { NS, en, zh } from './locales.ts'
 import { WechatSettings } from './WechatSettings.tsx'
+import { WechatSettingsIcon } from './WechatSettingsIcon.tsx'
 import type { WechatSettingsInjected } from './WechatSettings.tsx'
 import { inject, mountWechat } from './mount.ts'
 
@@ -86,4 +87,9 @@ async function registerUi(ctx: Context): Promise<void> {
     locale: NS,
     inject: () => injected,
   }, WechatSettings)))
+  ctx.effect(() => ctx.slots.inject('settings.section.icon', () => ctx.slots.register({
+    name: 'settings.section.icon',
+    id: 'wechat',
+    order: 40,
+  }, WechatSettingsIcon)))
 }

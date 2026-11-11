@@ -1,22 +1,28 @@
-.card {
-  display: grid;
+.section {
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  max-width: 620px;
+  max-width: 720px;
   padding: 20px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: var(--surface-raised);
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
 }
 
-.card h2,
-.card h3,
-.card p {
+.title {
   margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
 }
 
-.description,
-.project p {
-  color: var(--text-secondary);
+.intro {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .qr {
@@ -26,29 +32,46 @@
 }
 
 .qr img {
-  width: min(100%, 280px);
+  display: block;
+  box-sizing: border-box;
+  width: 200px;
+  max-width: 100%;
   aspect-ratio: 1;
-  border-radius: 8px;
-  background: #fff;
+  padding: 8px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-static-neutral-bluish-00);
+}
+
+.status {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
 }
 
 .connected {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
 }
 
 .connected span {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--status-success);
+  background: var(--dsw-alias-state-success-primary);
 }
 
 .actions {
   display: flex;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.actions > button {
+  flex: none;
+  width: fit-content;
 }
 
 .project {
@@ -57,19 +80,48 @@
   max-width: 420px;
 }
 
+.project label {
+  color: var(--dsw-alias-label-secondary);
+}
+
 .project select {
+  box-sizing: border-box;
+  width: 100%;
   min-height: 36px;
   padding: 6px 10px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  color: var(--text-primary);
-  background: var(--surface-base);
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  font: inherit;
+  cursor: pointer;
+}
+
+.project select:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.projectHint {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .usage {
   display: grid;
   gap: 8px;
-  color: var(--text-secondary);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.usage p,
+.usage h3 {
+  margin: 0;
+}
+
+.usage h3 {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
 .usage ul {
@@ -80,5 +132,6 @@
 }
 
 .error {
-  color: var(--text-danger);
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
 }
