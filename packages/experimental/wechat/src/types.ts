@@ -32,6 +32,8 @@ export interface WechatRecentSession {
   readonly title: string
   readonly projectPath: string
   readonly updatedAt: number
+  /** Preset applied when the session was created, when a registry was available. */
+  readonly agentPreset?: string
 }
 
 declare module '@deepseek-ai/cordis' {

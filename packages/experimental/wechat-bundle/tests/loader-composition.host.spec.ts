@@ -30,6 +30,9 @@ it('loads the bundle patch through Cordis Loader with its real Host and Client m
   ])
   const app = await boot('dsh', configPath, patches, (ctx) => {
     ctx.provide('agents', { get: () => undefined } as never)
+    ctx.provide('agentDefaultModel', {
+      currentSelection: () => ({ provider: 'fixture-provider', model: 'fixture-model' }),
+    } as never)
     ctx.provide('workspaceRegistry', {
       list: () => [],
       resolveByPath: async () => undefined,

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import type { AgentOptions } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { onTestFinished, expect, it, vi } from 'vitest'
@@ -12,7 +13,7 @@ import type { WechatStatus } from '../src/types.ts'
 import { createFakeIlinkServer, respond } from './fake-ilink-server.host.ts'
 import type { FakeIlinkRequest } from './fake-ilink-server.host.ts'
 
-const injectedServices = ['agents', 'workspaceRegistry', 'permissionPresets']
+const injectedServices = ['agents', 'agentDefaultModel', 'workspaceRegistry', 'permissionPresets']
 
 it('connects and polls without fetching getConfig during transport startup', async () => {
   let updateCalls = 0
@@ -553,6 +554,242 @@ it('gives new sessions distinct WeChat titles from their first user messages', a
   )
 })
 
+it('creates sessions with default model, resolved preset, and workspace membership', async () => {
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'agent-composition-cursor',
+        msgs: [{
+          message_id: 901,
+          from_user_id: 'owner-id',
+          context_token: 'composition-context',
+          create_time_ms: Date.now() + 60_000,
+          item_list: [{ type: 1, text_item: { text: 'start a WeChat session' } }],
+        }],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const cleanup: {
+    home?: string
+    dispose?: () => Promise<void>
+    disposeAgents?: () => Promise<void>
+  } = {}
+  onTestFinished(async () => {
+    await cleanup.dispose?.()
+    await cleanup.disposeAgents?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-agent-composition-'))
+  cleanup.home = home
+  const store = new WechatStore(home)
+  const projectPath = join(store.directory, 'project')
+  await seedCredentials(store, projectPath)
+  const attachSession = vi.fn(async (_sessionId: SessionId) => {})
+  const resolve = vi.fn(async (id?: string) => ({ id: id ?? 'wechat-default' }))
+  const mount = vi.fn(async (_agentCtx: Context, _id: string) => {})
+  const agents = createFakeAgents(() => {})
+  cleanup.disposeAgents = () => agents.dispose()
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents: agents.service,
+    agentDefaultModel: {
+      currentSelection: () => ({ provider: 'wechat-provider', model: 'wechat-model', reasoningEffort: 'high' }),
+    },
+    agentPresets: { resolve, mount },
+    workspaceRegistry: {
+      list: () => [{ id: 'wechat-project', path: projectPath, title: '微信' }],
+      create: async (path: string, title: string) => ({ id: 'wechat-project', path, title, attachSession }),
+      resolveByPath: async (path: string) => path === projectPath
+        ? { id: 'wechat-project', path, title: '微信', attachSession }
+        : undefined,
+    },
+  })
+  cleanup.dispose = () => harness.ctx.fiber.dispose()
+
+  await vi.waitFor(() => { expect(agents.createOptions).toHaveLength(1) })
+  const [created] = agents.createOptions
+  expect(created?.agentOptions.provider).toBe('wechat-provider')
+  expect(created?.agentOptions.model).toBe('wechat-model')
+  expect(created?.agentOptions.reasoningEffort).toBe('high')
+  expect(created?.meta.agentPreset).toBe('wechat-default')
+  expect(resolve).toHaveBeenCalledExactlyOnceWith(undefined)
+  expect(mount).toHaveBeenCalledExactlyOnceWith(expect.any(Context), 'wechat-default')
+  expect(attachSession).toHaveBeenCalledExactlyOnceWith(created?.sessionId)
+  await expect(store.readState()).resolves.toMatchObject({
+    recentSessions: [{ sessionId: created?.sessionId, agentPreset: 'wechat-default' }],
+  })
+})
+
+it('creates sessions without the optional agent preset service', async () => {
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'no-preset-cursor',
+        msgs: [{
+          message_id: 902,
+          from_user_id: 'owner-id',
+          context_token: 'no-preset-context',
+          create_time_ms: Date.now() + 60_000,
+          item_list: [{ type: 1, text_item: { text: 'create without presets' } }],
+        }],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const cleanup: {
+    home?: string
+    dispose?: () => Promise<void>
+    disposeAgents?: () => Promise<void>
+  } = {}
+  onTestFinished(async () => {
+    await cleanup.dispose?.()
+    await cleanup.disposeAgents?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-no-presets-'))
+  cleanup.home = home
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const agents = createFakeAgents(() => {})
+  cleanup.disposeAgents = () => agents.dispose()
+  const harness = await fixture(fake.url, store, { sleep: async () => {}, agents: agents.service })
+  cleanup.dispose = () => harness.ctx.fiber.dispose()
+
+  await vi.waitFor(() => { expect(agents.createOptions).toHaveLength(1) })
+  const [created] = agents.createOptions
+  expect(created?.agentOptions.provider).toBe('fixture-provider')
+  expect(created?.agentOptions.model).toBe('fixture-model')
+  expect(created?.meta).not.toHaveProperty('agentPreset')
+  await expect(store.readState()).resolves.toMatchObject({
+    recentSessions: [{ sessionId: created?.sessionId }],
+  })
+})
+
+it('resumes a session with its recorded preset and default model', async () => {
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'resume-composition-cursor',
+        msgs: [
+          {
+            message_id: 903,
+            from_user_id: 'owner-id',
+            context_token: 'resume-context',
+            create_time_ms: Date.now() + 60_000,
+            item_list: [{ type: 1, text_item: { text: 'continue this session' } }],
+          },
+          {
+            message_id: 904,
+            from_user_id: 'owner-id',
+            context_token: 'use-context',
+            create_time_ms: Date.now() + 60_000,
+            item_list: [{ type: 1, text_item: { text: '/use 2' } }],
+          },
+        ],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const cleanup: { home?: string; dispose?: () => Promise<void> } = {}
+  onTestFinished(async () => {
+    await cleanup.dispose?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-resume-composition-'))
+  cleanup.home = home
+  const store = new WechatStore(home)
+  const projectPath = join(store.directory, 'project')
+  await seedCredentials(store, projectPath)
+  const sessionId = SessionId('stored-wechat-session')
+  const legacySessionId = SessionId('legacy-wechat-session')
+  await store.writeState({
+    defaultProjectPath: projectPath,
+    currentSessionId: sessionId,
+    recentSessions: [{
+      sessionId, title: '微信 · Existing', projectPath, updatedAt: 1, agentPreset: 'stored-preset',
+    }, {
+      sessionId: legacySessionId, title: '微信 · Legacy', projectPath, updatedAt: 2,
+    }],
+    processedMessageIds: [],
+  })
+  const resumeOptions: Array<{
+    readonly resumeSessionId: SessionId
+    readonly agentOptions: AgentOptions
+    readonly setup: (ctx: Context, agent: never) => Promise<void>
+  }> = []
+  const agents = {
+    get: () => undefined,
+    create: async () => { throw new Error('unexpected session creation') },
+    resume: async (options: (typeof resumeOptions)[number]) => {
+      resumeOptions.push(options)
+      const agentContext = new Context()
+      agentContext.provide('tools', { register: () => () => {} } as never)
+      const resumedAgent = {
+        ctx: agentContext,
+        signal: undefined,
+        session: { id: options.resumeSessionId, header: { cwd: projectPath }, seq: 0 },
+        followup: () => {},
+        whenIdle: async () => {},
+        cancel: () => {},
+      }
+      await options.setup(agentContext, resumedAgent as never)
+      return {
+        agent: resumedAgent,
+        dispose: async () => agentContext.fiber.dispose(),
+      }
+    },
+  }
+  const attachSession = vi.fn(async (_id: SessionId) => {})
+  const resolve = vi.fn(async (id?: string) => ({ id: id ?? 'default-preset' }))
+  const mount = vi.fn(async (_agentCtx: Context, _id: string) => {})
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents,
+    agentDefaultModel: {
+      currentSelection: () => ({ provider: 'resume-provider', model: 'resume-model' }),
+    },
+    agentPresets: { resolve, mount },
+    workspaceRegistry: {
+      list: () => [{ id: 'wechat-project', path: projectPath, title: '微信' }],
+      create: async (path: string, title: string) => ({ id: 'wechat-project', path, title, attachSession }),
+      resolveByPath: async (path: string) => path === projectPath
+        ? { id: 'wechat-project', path, title: '微信', attachSession }
+        : undefined,
+    },
+  })
+  cleanup.dispose = () => harness.ctx.fiber.dispose()
+
+  await vi.waitFor(() => { expect(resumeOptions).toHaveLength(2) })
+  const [resumed, fallback] = resumeOptions
+  expect(resumed?.resumeSessionId).toBe(sessionId)
+  expect(resumed?.agentOptions.provider).toBe('resume-provider')
+  expect(resumed?.agentOptions.model).toBe('resume-model')
+  expect(fallback?.resumeSessionId).toBe(legacySessionId)
+  expect(fallback?.agentOptions.provider).toBe('resume-provider')
+  expect(fallback?.agentOptions.model).toBe('resume-model')
+  expect(resolve).toHaveBeenCalledExactlyOnceWith(undefined)
+  expect(mount).toHaveBeenNthCalledWith(1, expect.any(Context), 'stored-preset')
+  expect(mount).toHaveBeenNthCalledWith(2, expect.any(Context), 'default-preset')
+  expect(attachSession).toHaveBeenNthCalledWith(1, sessionId)
+  expect(attachSession).toHaveBeenNthCalledWith(2, legacySessionId)
+})
+
 it('clears and releases a current session when the default project changes', async () => {
   let updateCalls = 0
   let pendingPoll: import('node:http').ServerResponse | undefined
@@ -931,6 +1168,8 @@ async function fixture(
     readonly sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
     readonly schedule?: (callback: () => void, milliseconds: number) => ReturnType<typeof setTimeout>
     readonly agents?: object
+    readonly agentDefaultModel?: object
+    readonly agentPresets?: object
     readonly canvas?: boolean
     readonly createClient?: (baseUrl: string, token?: string) => IlinkClient
     readonly workspaceRegistry?: object
@@ -941,14 +1180,23 @@ async function fixture(
 ) {
   const ctx = new Context()
   const unlisten = onStatus === undefined ? () => {} : ctx.on('wechat/status', onStatus)
-  const { agents, canvas = true, createClient, workspaceRegistry, sessionTitle, ...serviceDependencies } = dependencies
+  const {
+    agents, agentDefaultModel, agentPresets, canvas = true, createClient, workspaceRegistry, sessionTitle,
+    ...serviceDependencies
+  } = dependencies
   ctx.provide('agents', (agents ?? { get: () => undefined, create: async () => { throw new Error('unexpected agent creation') } }) as never)
+  ctx.provide('agentDefaultModel', agentDefaultModel ?? {
+    currentSelection: () => ({ provider: 'fixture-provider', model: 'fixture-model' }),
+  } as never)
   ctx.provide('workspaceRegistry', workspaceRegistry ?? {
-    resolveByPath: async (path: string) => ({ id: 'wechat-project', path, title: '微信' }),
-    create: async (path: string, title: string) => ({ id: 'wechat-project', path, title }),
+    resolveByPath: async (path: string) => ({ id: 'wechat-project', path, title: '微信', attachSession: async () => {} }),
+    create: async (path: string, title: string) => ({
+      id: 'wechat-project', path, title, attachSession: async () => {},
+    }),
     list: () => [{ id: 'wechat-project', path: join(store.directory, 'project'), title: '微信' }],
   } as never)
   if (sessionTitle !== undefined) ctx.provide('sessionTitle', sessionTitle as never)
+  if (agentPresets !== undefined) ctx.provide('agentPresets', agentPresets as never)
   ctx.provide('permissionPresets', { set: async () => {} } as never)
   if (canvas) ctx.provide('canvas', { edit: async () => {} } as never)
   let service!: WechatService
@@ -1098,7 +1346,8 @@ interface FakeAgent {
 
 interface FakeCreateOptions {
   readonly sessionId: SessionId
-  readonly meta: { readonly cwd: string }
+  readonly agentOptions: AgentOptions
+  readonly meta: { readonly cwd: string; readonly agentPreset?: string }
   readonly setup: (ctx: Context, agent: never) => Promise<void>
 }
 
@@ -1111,6 +1360,7 @@ function createFakeAgents(
   readonly createCalls: number
   readonly handleDisposals: number
   readonly createdProjectPaths: string[]
+  readonly createOptions: FakeCreateOptions[]
   readonly createErrors: string[]
   readonly registeredToolNames: string[]
   dispose(): Promise<void>
@@ -1123,12 +1373,14 @@ function createFakeAgents(
   const createErrors: string[] = []
   const registeredToolNames: string[] = []
   const createdProjectPaths: string[] = []
+  const createOptions: FakeCreateOptions[] = []
   let disposed = false
   return {
     service: {
       get: (sessionId: string) => agents.get(sessionId),
       create: async (options: FakeCreateOptions) => {
         createCalls += 1
+        createOptions.push(options)
         createdProjectPaths.push(options.meta.cwd)
         const events: unknown[] = []
         const agentContext = new Context()
@@ -1194,6 +1446,7 @@ function createFakeAgents(
     get createCalls() { return createCalls },
     get handleDisposals() { return handleDisposals },
     createdProjectPaths,
+    createOptions,
     createErrors,
     registeredToolNames,
     dispose: async () => {

@@ -10,13 +10,16 @@ import { tmpdir } from 'node:os'
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
-import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
+import { installModelSelection } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session, SessionId as SessionIdType, SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-agent-default-model'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-canvas'
 import type {} from '@deepseek-ai/dsh-session-title'
 import type {} from '@deepseek-ai/dsh-permission-presets'
@@ -67,7 +70,7 @@ type QueuedMessage =
 
 /** Owns QR login, the durable iLink cursor, and the WeChat-to-Agent bridge. */
 export class WechatService extends TypertRemoteService {
-  static inject = ['agents', 'workspaceRegistry', 'permissionPresets']
+  static inject = ['agents', 'agentDefaultModel', 'workspaceRegistry', 'permissionPresets']
 
   private readonly store: Store
   private loadTask: Promise<void> | undefined
@@ -744,26 +747,64 @@ export class WechatService extends TypertRemoteService {
     const active = this.ctx.agents.get(sessionId)
     await this.releaseOwnedHandle()
     if (active !== undefined) return { agent: active, dispose: async () => {} }
+    const recent = this.state.recentSessions.find(item => item.sessionId === sessionId)
+    const presets = this.ctx.get('agentPresets')
+    const agentPreset = presets === undefined
+      ? undefined
+      : recent?.agentPreset ?? (await presets.resolve(undefined)).id
     const handle = await this.ctx.agents.resume({
       resumeSessionId: sessionId,
-      setup: (agentCtx, agent) => { this.configureAgent(agentCtx, agent, projectPath) },
+      agentOptions: this.agentOptions(),
+      setup: this.agentSetup(projectPath, agentPreset),
     })
     this.ownedHandle = handle
+    await this.attachSessionToWorkspace(sessionId, projectPath)
+    await this.updateRecent(handle.agent.session, projectPath, agentPreset)
     return handle
   }
 
   private async createSession(projectPath: string): Promise<AgentHandle> {
     await this.releaseOwnedHandle()
     const sessionId = SessionId(randomUUID())
+    const presets = this.ctx.get('agentPresets')
+    const agentPreset = presets === undefined ? undefined : (await presets.resolve(undefined)).id
     const handle = await this.ctx.agents.create({
       sessionId,
-      meta: { cwd: projectPath },
-      setup: (agentCtx, agent) => { this.configureAgent(agentCtx, agent, projectPath) },
+      agentOptions: this.agentOptions(),
+      meta: { cwd: projectPath, ...(agentPreset === undefined ? {} : { agentPreset }) },
+      setup: this.agentSetup(projectPath, agentPreset),
     })
     this.ownedHandle = handle
+    await this.attachSessionToWorkspace(sessionId, projectPath)
     this.ctx.get('sessionTitle')?.rename(handle.agent.session, DEFAULT_WECHAT_TITLE)
-    await this.updateRecent(handle.agent.session, projectPath)
+    await this.updateRecent(handle.agent.session, projectPath, agentPreset)
     return handle
+  }
+
+  private agentOptions(): AgentOptions {
+    const defaults = this.ctx.agentDefaultModel
+    return {
+      get provider() { return defaults.currentSelection().provider },
+      get model() { return defaults.currentSelection().model },
+      get reasoningEffort() { return defaults.currentSelection().reasoningEffort },
+    }
+  }
+
+  private agentSetup(projectPath: string, agentPreset: string | undefined) {
+    const presets = this.ctx.get('agentPresets')
+    return async (agentCtx: Context, agent: Agent): Promise<void> => {
+      installModelSelection(agentCtx)
+      if (presets !== undefined && agentPreset !== undefined) await presets.mount(agentCtx, agentPreset)
+      this.configureAgent(agentCtx, agent, projectPath)
+    }
+  }
+
+  private async attachSessionToWorkspace(sessionId: SessionIdType, projectPath: string): Promise<void> {
+    try {
+      await (await this.ctx.workspaceRegistry.resolveByPath(projectPath))?.attachSession(sessionId)
+    } catch (error: unknown) {
+      this.ctx.logger.warn(`wechat: Session ${sessionId} did not join the Workspace at ${projectPath}: ${String(error)}`)
+    }
   }
 
   private configureAgent(agentCtx: Context, agent: Agent, projectPath: string): void {
@@ -831,9 +872,17 @@ export class WechatService extends TypertRemoteService {
     }
   }
 
-  private async updateRecent(session: Session, projectPath: string): Promise<void> {
+  private async updateRecent(session: Session, projectPath: string, agentPreset?: string): Promise<void> {
     const title = this.ctx.get('sessionTitle')?.get(session)?.title ?? '微信 · 新会话'
-    const recent: WechatRecentSession = { sessionId: session.id, title, projectPath, updatedAt: Date.now() }
+    const previous = this.state.recentSessions.find(item => item.sessionId === session.id)
+    const resolvedPreset = agentPreset ?? previous?.agentPreset
+    const recent: WechatRecentSession = {
+      sessionId: session.id,
+      title,
+      projectPath,
+      updatedAt: Date.now(),
+      ...(resolvedPreset === undefined ? {} : { agentPreset: resolvedPreset }),
+    }
     this.state = {
       ...this.state,
       ...(this.state.defaultProjectPath === undefined || this.state.defaultProjectPath === projectPath
