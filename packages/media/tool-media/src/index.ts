@@ -185,6 +185,7 @@ export function apply(ctx: Context, config: Config): void {
         },
       },
       render: (_args, value) => [{ type: 'text', text: `Wrote ${value.path} with ${value.model}.` }],
+      presentationMeta: (_args, value) => value,
     },
     async execute(args, exec) {
       const input = args
@@ -215,6 +216,7 @@ export function apply(ctx: Context, config: Config): void {
         },
       },
       render: (_args: unknown, value: { path: string; model: string }) => [{ type: 'text' as const, text: `Wrote ${value.path} with ${value.model}.` }],
+      presentationMeta: (_args: unknown, value: { path: string; model: string }) => value,
     },
     async execute(args: unknown, exec: { signal: AbortSignal }) {
       const input = args as { prompt: string; lyrics?: string }

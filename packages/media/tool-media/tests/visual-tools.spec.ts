@@ -166,6 +166,23 @@ describe('visual tools on a canvas', () => {
     expect(refused.text).toContain('no canvas is available here; pass image files instead of canvas nodes')
   })
 
+  it('persists the generated artifact path as structured presentation metadata', async () => {
+    await setup(false)
+    fetchSpy.mockResolvedValueOnce(json({ data: [{ url: `data:image/png;base64,${PNG.toString('base64')}` }] }))
+    const result = await executeToolFixture(ctx, {
+      signal: new AbortController().signal,
+      callId: ToolCallId(`call-${String(++calls)}`),
+      name: 'generate_image',
+      arguments: { prompt: 'a cat' },
+      agent: { id: session.id, session } as never,
+    })
+    expect(result.meta).toMatchObject({
+      status: 'done',
+      model: 'image-model',
+      path: join(directory, 'image-1.out'),
+    })
+  })
+
   it('reports a written file that could not be placed', async () => {
     await setup(true)
     await writeFile(join(directory, '.canvas'), 'not a directory')

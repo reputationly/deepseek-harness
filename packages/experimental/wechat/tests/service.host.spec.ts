@@ -128,7 +128,7 @@ it('filters non-owner, bot-self and group messages, persists the cursor, and ded
       { message_id: 2, from_user_id: 'owner-id', group_id: 'group-id', create_time_ms: 2, item_list: [{ type: 1, text_item: { text: '/help' } }] },
       { message_id: 3, from_user_id: 'bot-id', create_time_ms: 3, item_list: [{ type: 1, text_item: { text: '/help' } }] },
       { message_id: 4, from_user_id: 'owner-id', create_time_ms: 4, item_list: [{ type: 1, text_item: { text: '/help' } }] },
-      { message_id: 5, from_user_id: 'owner-id', create_time_ms: 5, item_list: [{ type: 1, text_item: { text: '/project' } }] },
+      { message_id: 5, from_user_id: 'owner-id', create_time_ms: Date.now() + 1_000_000, item_list: [{ type: 1, text_item: { text: '/project' } }] },
       { message_id: 6, from_user_id: 'owner-id', create_time_ms: Date.now() + 1_000_000, item_list: [{ type: 1, text_item: { text: '/help' } }] },
     ],
   }
@@ -172,7 +172,7 @@ it('filters non-owner, bot-self and group messages, persists the cursor, and ded
     (request.body.msg as { item_list: Array<{ text_item: { text: string } }> }).item_list[0]?.text_item.text
   )))
     .toEqual([
-      '补收到 2 条离线消息，开始处理',
+      '补收到 1 条离线消息，开始处理',
       '/new · /list · /use <n> · /项目 [名称|序号]（/project）· /cancel · /help',
       '1. 微信',
       '/new · /list · /use <n> · /项目 [名称|序号]（/project）· /cancel · /help',
@@ -333,6 +333,321 @@ it('processes commands FIFO and reports the saved path when a workspace file exc
   expect(agents.toolDisposals).toBe(2)
 })
 
+it('disposes the previous owned handle on /new and the current one on service disposal', async () => {
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) respond(response, {
+      ret: 0,
+      get_updates_buf: 'new-session-cursor',
+      msgs: ['/new', '/new'].map((text, index) => ({
+        message_id: index + 60,
+        from_user_id: 'owner-id',
+        item_list: [{ type: 1, text_item: { text } }],
+      })),
+    })
+    else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-owned-handles-'))
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const agents = createFakeAgents(() => {})
+  const harness = await fixture(fake.url, store, { sleep: async () => {}, agents: agents.service })
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await agents.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await vi.waitFor(() => { expect(sentTexts(fake.requests)).toHaveLength(2) })
+  expect(agents.createCalls).toBe(2)
+  expect(agents.handleDisposals).toBe(1)
+  await harness.ctx.fiber.dispose()
+  expect(agents.handleDisposals).toBe(2)
+})
+
+it('gives new sessions distinct WeChat titles from their first user messages', async () => {
+  const messages = ['first topic', '/new', 'second topic', '/list']
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) respond(response, {
+      ret: 0,
+      get_updates_buf: 'title-cursor',
+      msgs: messages.map((text, index) => ({
+        message_id: index + 70,
+        from_user_id: 'owner-id',
+        item_list: [{ type: 1, text_item: { text } }],
+      })),
+    })
+    else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-titles-'))
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const titles = new Map<string, string>()
+  const sessionTitle = {
+    get: (session: { readonly id: string }) => ({ title: titles.get(session.id) ?? 'Automatic title' }),
+    rename: (session: { readonly id: string }, title: string) => {
+      titles.set(session.id, title)
+      return { title }
+    },
+  }
+  const agents = createFakeAgents(() => {}, async (_agent, _message, events) => {
+    events.push({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'reply' }] } } })
+  })
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents: agents.service,
+    sessionTitle,
+  })
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await agents.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await vi.waitFor(() => { expect(sentTexts(fake.requests)).toHaveLength(4) })
+  expect(sentTexts(fake.requests).at(-1)).toBe(
+    '1. 微信 · second topic · project\n2. 微信 · first topic · project',
+  )
+})
+
+it('clears and releases a current session when the default project changes', async () => {
+  let updateCalls = 0
+  let pendingPoll: import('node:http').ServerResponse | undefined
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'project-cursor-1',
+        msgs: [{
+          message_id: 80,
+          from_user_id: 'owner-id',
+          item_list: [{ type: 1, text_item: { text: 'first project message' } }],
+        }],
+      })
+      else pendingPoll = response
+    } else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-project-switch-'))
+  const store = new WechatStore(home)
+  const firstProject = join(store.directory, 'project')
+  const secondProject = join(home, 'second-project')
+  await mkdir(secondProject, { recursive: true })
+  await seedCredentials(store, firstProject)
+  const projects = [
+    { id: 'project-one', title: '第一项目', path: firstProject },
+    { id: 'project-two', title: '第二项目', path: secondProject },
+  ]
+  const workspaceRegistry = {
+    resolveByPath: async (path: string) => projects.find(project => project.path === path),
+    create: async (path: string, title: string) => ({ id: 'created', path, title }),
+    list: () => projects,
+  }
+  const agents = createFakeAgents(() => {}, async (_agent, _message, events) => {
+    events.push({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'reply' }] } } })
+  })
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents: agents.service,
+    workspaceRegistry,
+  })
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await agents.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await vi.waitFor(() => { expect(sentTexts(fake.requests)).toContain('reply') })
+  const previous = (await store.readState()).currentSessionId
+  expect(previous).toBeDefined()
+  await harness.service.setDefaultProject(secondProject)
+  expect(agents.handleDisposals).toBe(1)
+  expect(await store.readState()).toMatchObject({ defaultProjectPath: secondProject })
+  expect(await store.readState()).not.toHaveProperty('currentSessionId')
+  await vi.waitFor(() => { expect(pendingPoll).toBeDefined() })
+  const poll = pendingPoll
+  if (poll === undefined) throw new Error('the fake iLink server has no pending update poll')
+  pendingPoll = undefined
+  respond(poll, {
+    ret: 0,
+    get_updates_buf: 'project-cursor-2',
+    msgs: [{
+      message_id: 81,
+      from_user_id: 'owner-id',
+      item_list: [{ type: 1, text_item: { text: 'second project message' } }],
+    }],
+  })
+  await vi.waitFor(() => { expect(agents.createdProjectPaths).toEqual([firstProject, secondProject]) })
+  expect((await store.readState()).currentSessionId).not.toBe(previous)
+})
+
+it('loads persisted state only once across logout and later status reads', async () => {
+  class CountingStore extends WechatStore {
+    stateReads = 0
+
+    override async readState() {
+      this.stateReads += 1
+      return super.readState()
+    }
+  }
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) return
+    else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-load-once-'))
+  const store = new CountingStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  const harness = await fixture(fake.url, store, { sleep: async () => {} })
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await harness.service.getStatus()
+  expect(store.stateReads).toBe(1)
+  await harness.service.logout()
+  await harness.service.getStatus()
+  expect(store.stateReads).toBe(1)
+})
+
+it('sends generated tool-media artifacts from structured result metadata', async () => {
+  const image = Buffer.from('generated image')
+  const artifactPath = 'generated/image.png'
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'generated-media-cursor',
+        msgs: [{
+          message_id: 90,
+          from_user_id: 'owner-id',
+          item_list: [{ type: 1, text_item: { text: 'generate an image' } }],
+        }],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-generated-media-'))
+  const store = new WechatStore(home)
+  const projectPath = join(store.directory, 'project')
+  await seedCredentials(store, projectPath)
+  await mkdir(join(projectPath, 'generated'), { recursive: true })
+  await writeFile(join(projectPath, artifactPath), image)
+  const sentMedia: Array<{ readonly kind: string; readonly filename: string; readonly bytes: Uint8Array }> = []
+  const agents = createFakeAgents(() => {}, async (_agent, _message, events) => {
+    events.push(
+      { type: 'tool/call', data: { callId: 'image-call', name: 'generate_image' } },
+      {
+        type: 'tool/result',
+        data: {
+          message: { toolCallId: 'image-call', content: [{ type: 'text', text: `Wrote ${artifactPath}.` }] },
+          meta: { status: 'done', model: 'image-model', path: artifactPath, nodeId: 'image-node' },
+        },
+      },
+      { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Done' }] } } },
+    )
+  })
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents: agents.service,
+    createClient: (_baseUrl, token) => {
+      const client = new IlinkClient(fake.url, token)
+      vi.spyOn(client, 'sendMedia').mockImplementation(async (kind, filename, bytes) => {
+        sentMedia.push({ kind, filename, bytes })
+      })
+      return client
+    },
+  })
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await agents.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await vi.waitFor(() => { expect(sentMedia).toHaveLength(1) })
+  expect(sentMedia[0]).toMatchObject({ kind: 'image', filename: 'image.png' })
+  expect(sentMedia[0]?.bytes).toEqual(image)
+})
+
+it('compresses oversized videos in a temporary directory and removes the output after sending', async () => {
+  const video = Buffer.alloc(20 * 1024 * 1024 + 1)
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'compress-cursor',
+        msgs: [{
+          message_id: 91,
+          from_user_id: 'owner-id',
+          item_list: [{ type: 1, text_item: { text: '/new' } }],
+        }],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-video-compress-'))
+  const store = new WechatStore(home)
+  const projectPath = join(store.directory, 'project')
+  await seedCredentials(store, projectPath)
+  const videoPath = join(projectPath, 'large.mp4')
+  await mkdir(projectPath, { recursive: true })
+  await writeFile(videoPath, video)
+  let fileTool: FakeFileTool | undefined
+  let ffmpegArguments: readonly string[] | undefined
+  let compressedPath: string | undefined
+  const sentKinds: string[] = []
+  const agents = createFakeAgents((tool) => { fileTool = tool })
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents: agents.service,
+    runFfmpeg: async (arguments_) => {
+      ffmpegArguments = arguments_
+      compressedPath = arguments_.at(-1)
+      if (compressedPath === undefined) throw new Error('ffmpeg output path is missing')
+      await writeFile(compressedPath, Buffer.from('compressed video'))
+    },
+    createClient: (_baseUrl, token) => {
+      const client = new IlinkClient(fake.url, token)
+      vi.spyOn(client, 'sendMedia').mockImplementation(async (kind) => { sentKinds.push(kind) })
+      return client
+    },
+  })
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await agents.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await vi.waitFor(() => { expect(fileTool).toBeDefined() })
+  await fileTool!.execute({ path: videoPath })
+  expect(ffmpegArguments).toContain('-vf')
+  expect(ffmpegArguments).toContain('scale=-2:min(720,ih)')
+  expect(compressedPath).toBeDefined()
+  expect(compressedPath?.startsWith(projectPath)).toBe(false)
+  expect(sentKinds).toEqual(['video'])
+  if (compressedPath === undefined) throw new Error('ffmpeg output path was not captured')
+  await expect(readFile(compressedPath)).rejects.toMatchObject({ code: 'ENOENT' })
+})
+
 it('keeps incoming agent messages FIFO while the current WeChat turn is still running', async () => {
   let updateCalls = 0
   const fake = await createFakeIlinkServer((request, response) => {
@@ -399,68 +714,17 @@ it('keeps incoming agent messages FIFO while the current WeChat turn is still ru
 it.each([
   ['同意', 'allowed-once'],
   ['拒绝', 'rejected'],
-] as const)('forwards WeChat approval decision %s', async (decision, expected) => {
-  let pendingPoll: import('node:http').ServerResponse | undefined
-  const fake = await createFakeIlinkServer((request, response) => {
-    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
-    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
-    else if (request.path.endsWith('/getupdates')) pendingPoll = response
-    else if (request.path.endsWith('/sendmessage')) {
-      respond(response, { ret: 0 })
-      if (pendingPoll !== undefined) {
-        const poll = pendingPoll
-        pendingPoll = undefined
-        respond(poll, {
-          ret: 0,
-          get_updates_buf: 'approval-cursor',
-          msgs: [{
-            message_id: 44,
-            from_user_id: 'owner-id',
-            item_list: [{ type: 1, text_item: { text: decision } }],
-          }],
-        })
-      }
-    } else respond(response, { ret: 0 })
-  })
-  const cleanup: { home?: string; dispose?: () => Promise<void> } = {}
-  onTestFinished(async () => {
-    await cleanup.dispose?.()
-    await fake.close()
-    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
-  })
-  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-approval-'))
-  cleanup.home = home
-  const store = new WechatStore(home)
-  const projectPath = join(store.directory, 'project')
-  await seedCredentials(store, projectPath)
-  const sessionId = SessionId('approval-session')
-  await store.writeState({
-    defaultProjectPath: projectPath,
-    currentSessionId: sessionId,
-    recentSessions: [{ sessionId, title: '微信 · Approval', projectPath, updatedAt: 1 }],
-    processedMessageIds: [],
-  })
-  const harness = await fixture(fake.url, store, { sleep: async () => {} })
-  cleanup.dispose = () => harness.ctx.fiber.dispose()
-
-  await vi.waitFor(() => { expect(pendingPoll).toBeDefined() })
-  const request: ApprovalRequest = {
-    agent: { session: { id: sessionId } } as never,
-    toolName: 'write_file',
-    reason: 'Update the project file',
-  }
-  const result = harness.serviceContext.waterfall('approval/request', request, async (): Promise<ApprovalOutcome> => 'unavailable')
-  await vi.waitFor(() => { expect(sentTexts(fake.requests)).toContain('需要你确认：Update the project file\n回复「同意」或「拒绝」') })
-  await expect(result).resolves.toBe(expected)
+] as const)('forwards WeChat approval decision %s during the active WeChat turn', async (decision, expected) => {
+  const harness = await activeApprovalFixture(decision)
+  await expect(harness.result).resolves.toBe(expected)
+  expect(sentTexts(harness.fake.requests)).toContain('需要你确认：Update the project file\n回复「同意」或「拒绝」')
 })
 
-it('rejects a WeChat approval request after the five-minute deadline', async () => {
-  const scheduled: Array<() => void> = []
+it('does not forward a desktop-driven approval for a recent WeChat session', async () => {
   const fake = await createFakeIlinkServer((request, response) => {
     if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
     else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
     else if (request.path.endsWith('/getupdates')) return
-    else if (request.path.endsWith('/sendmessage')) respond(response, { ret: 0 })
     else respond(response, { ret: 0 })
   })
   const cleanup: { home?: string; dispose?: () => Promise<void> } = {}
@@ -469,37 +733,53 @@ it('rejects a WeChat approval request after the five-minute deadline', async () 
     await fake.close()
     if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
   })
-  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-approval-timeout-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-desktop-approval-'))
   cleanup.home = home
   const store = new WechatStore(home)
   const projectPath = join(store.directory, 'project')
   await seedCredentials(store, projectPath)
-  const sessionId = SessionId('approval-timeout-session')
+  const sessionId = SessionId('desktop-approval-session')
   await store.writeState({
     defaultProjectPath: projectPath,
     currentSessionId: sessionId,
-    recentSessions: [{ sessionId, title: '微信 · Approval', projectPath, updatedAt: 1 }],
+    recentSessions: [{ sessionId, title: '微信 · Existing', projectPath, updatedAt: 1 }],
     processedMessageIds: [],
   })
-  const harness = await fixture(fake.url, store, {
-    sleep: async () => {},
-    schedule: (callback, milliseconds) => {
-      expect(milliseconds).toBe(5 * 60_000)
-      scheduled.push(callback)
-      return setTimeout(() => {}, milliseconds)
-    },
-  })
+  const harness = await fixture(fake.url, store, { sleep: async () => {} })
   cleanup.dispose = () => harness.ctx.fiber.dispose()
   const request: ApprovalRequest = {
     agent: { session: { id: sessionId } } as never,
     toolName: 'write_file',
     reason: 'Update the project file',
   }
-  const result = harness.serviceContext.waterfall('approval/request', request, async (): Promise<ApprovalOutcome> => 'unavailable')
-  await vi.waitFor(() => { expect(sentTexts(fake.requests)).toContain('需要你确认：Update the project file\n回复「同意」或「拒绝」') })
+
+  await expect(harness.serviceContext.waterfall(
+    'approval/request',
+    request,
+    async (): Promise<ApprovalOutcome> => 'allowed-once',
+  )).resolves.toBe('allowed-once')
+  expect(sentTexts(fake.requests)).not.toContain('需要你确认：Update the project file\n回复「同意」或「拒绝」')
+})
+
+it('ends a pending WeChat approval immediately when the Agent is cancelled', async () => {
+  const harness = await activeApprovalFixture('/cancel')
+  await expect(harness.result).resolves.toBe('rejected')
+  expect(sentTexts(harness.fake.requests)).not.toContain('审批已超时，按拒绝处理')
+})
+
+it('rejects an active WeChat approval after the five-minute deadline', async () => {
+  const scheduled: Array<() => void> = []
+  const harness = await activeApprovalFixture(undefined, (callback, milliseconds) => {
+    expect(milliseconds).toBe(5 * 60_000)
+    scheduled.push(callback)
+    return setTimeout(() => {}, milliseconds)
+  })
+  await vi.waitFor(() => {
+    expect(sentTexts(harness.fake.requests)).toContain('需要你确认：Update the project file\n回复「同意」或「拒绝」')
+  })
   scheduled[0]?.()
-  await expect(result).resolves.toBe('rejected')
-  expect(sentTexts(fake.requests)).toContain('审批已超时，按拒绝处理')
+  await expect(harness.result).resolves.toBe('rejected')
+  expect(sentTexts(harness.fake.requests)).toContain('审批已超时，按拒绝处理')
 })
 
 async function fixture(
@@ -511,18 +791,22 @@ async function fixture(
     readonly agents?: object
     readonly canvas?: boolean
     readonly createClient?: (baseUrl: string, token?: string) => IlinkClient
+    readonly workspaceRegistry?: object
+    readonly sessionTitle?: object
+    readonly runFfmpeg?: (arguments_: readonly string[]) => Promise<void>
   },
   onStatus?: (status: WechatStatus) => void,
 ) {
   const ctx = new Context()
   const unlisten = onStatus === undefined ? () => {} : ctx.on('wechat/status', onStatus)
-  const { agents, canvas = true, createClient, ...serviceDependencies } = dependencies
+  const { agents, canvas = true, createClient, workspaceRegistry, sessionTitle, ...serviceDependencies } = dependencies
   ctx.provide('agents', (agents ?? { get: () => undefined, create: async () => { throw new Error('unexpected agent creation') } }) as never)
-  ctx.provide('workspaceRegistry', {
+  ctx.provide('workspaceRegistry', workspaceRegistry ?? {
     resolveByPath: async (path: string) => ({ id: 'wechat-project', path, title: '微信' }),
     create: async (path: string, title: string) => ({ id: 'wechat-project', path, title }),
     list: () => [{ id: 'wechat-project', path: join(store.directory, 'project'), title: '微信' }],
   } as never)
+  if (sessionTitle !== undefined) ctx.provide('sessionTitle', sessionTitle as never)
   ctx.provide('permissionPresets', { set: async () => {} } as never)
   if (canvas) ctx.provide('canvas', { edit: async () => {} } as never)
   let service!: WechatService
@@ -542,6 +826,106 @@ async function fixture(
   return { ctx, service, serviceContext, unlisten }
 }
 
+async function activeApprovalFixture(
+  decision?: string,
+  schedule?: (callback: () => void, milliseconds: number) => ReturnType<typeof setTimeout>,
+) {
+  let updateCalls = 0
+  let pendingPoll: import('node:http').ServerResponse | undefined
+  let pendingDecision: string | undefined
+  let decisionDelivered = false
+  const deliverDecision = (): void => {
+    if (decision === undefined || decisionDelivered) return
+    const poll = pendingPoll
+    if (poll === undefined) {
+      pendingDecision = decision
+      decisionDelivered = true
+      return
+    }
+    pendingPoll = undefined
+    decisionDelivered = true
+    respond(poll, {
+      ret: 0,
+      get_updates_buf: 'approval-cursor',
+      msgs: [{
+        message_id: 44,
+        from_user_id: 'owner-id',
+        item_list: [{ type: 1, text_item: { text: decision } }],
+      }],
+    })
+  }
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) {
+        respond(response, {
+          ret: 0,
+          get_updates_buf: 'initial-cursor',
+          msgs: [{
+            message_id: 43,
+            from_user_id: 'owner-id',
+            item_list: [{ type: 1, text_item: { text: 'please proceed' } }],
+          }],
+        })
+      } else if (pendingDecision !== undefined) {
+        const value = pendingDecision
+        pendingDecision = undefined
+        pendingPoll = response
+        deliverDecisionFor(response, value)
+      } else {
+        pendingPoll = response
+      }
+    } else if (request.path.endsWith('/sendmessage')) {
+      respond(response, { ret: 0 })
+      deliverDecision()
+    } else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-active-approval-'))
+  const store = new WechatStore(home)
+  await seedCredentials(store, join(store.directory, 'project'))
+  let resolveServiceContext!: (ctx: Context) => void
+  const serviceContext = new Promise<Context>((resolve) => { resolveServiceContext = resolve })
+  let resolveResult!: (outcome: ApprovalOutcome) => void
+  const result = new Promise<ApprovalOutcome>((resolveResultPromise) => { resolveResult = resolveResultPromise })
+  const agents = createFakeAgents(() => {}, async (agent) => {
+    const signal = agent.signal
+    const approval = (await serviceContext).waterfall('approval/request', {
+      agent: agent as never,
+      toolName: 'write_file',
+      reason: 'Update the project file',
+      ...(signal === undefined ? {} : { signal }),
+    }, async (): Promise<ApprovalOutcome> => 'unavailable')
+    resolveResult(await approval)
+  })
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents: agents.service,
+    ...(schedule === undefined ? {} : { schedule }),
+  })
+  resolveServiceContext(harness.serviceContext)
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await agents.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+  return { fake, result }
+}
+
+function deliverDecisionFor(response: import('node:http').ServerResponse, decision: string): void {
+  respond(response, {
+    ret: 0,
+    get_updates_buf: 'approval-cursor',
+    msgs: [{
+      message_id: 44,
+      from_user_id: 'owner-id',
+      item_list: [{ type: 1, text_item: { text: decision } }],
+    }],
+  })
+}
+
 async function seedCredentials(store: WechatStore, projectPath: string): Promise<void> {
   await store.writeCredentials({ token: 'private-token', baseUrl: 'https://ilink.example', botId: 'bot-id', ownerUserId: 'owner-id' })
   await store.writeState({ defaultProjectPath: projectPath, recentSessions: [], processedMessageIds: [] })
@@ -559,6 +943,7 @@ interface FakeFileTool {
 
 interface FakeAgent {
   readonly ctx: Context
+  readonly signal: AbortSignal | undefined
   readonly session: {
     readonly id: SessionId
     readonly header: { readonly cwd: string }
@@ -582,6 +967,8 @@ function createFakeAgents(
   readonly service: object
   readonly toolDisposals: number
   readonly createCalls: number
+  readonly handleDisposals: number
+  readonly createdProjectPaths: string[]
   readonly createErrors: string[]
   readonly registeredToolNames: string[]
   dispose(): Promise<void>
@@ -590,19 +977,24 @@ function createFakeAgents(
   const contexts: Context[] = []
   let toolDisposals = 0
   let createCalls = 0
+  let handleDisposals = 0
   const createErrors: string[] = []
   const registeredToolNames: string[] = []
+  const createdProjectPaths: string[] = []
   let disposed = false
   return {
     service: {
       get: (sessionId: string) => agents.get(sessionId),
       create: async (options: FakeCreateOptions) => {
         createCalls += 1
+        createdProjectPaths.push(options.meta.cwd)
         const events: unknown[] = []
         const agentContext = new Context()
         let activity = Promise.resolve()
+        let activeTurn: AbortController | undefined
         const agent: FakeAgent = {
           ctx: agentContext,
+          get signal() { return activeTurn?.signal },
           session: {
             id: options.sessionId,
             header: { cwd: options.meta.cwd },
@@ -610,6 +1002,8 @@ function createFakeAgents(
           },
           followup: (message) => {
             const firstNewEvent = events.length
+            const controller = new AbortController()
+            activeTurn = controller
             activity = Promise.resolve(onFollowup?.(agent, message, events)).then(() => {
               for (let index = firstNewEvent; index < events.length; index += 1) {
                 const value = asRecord(events[index])
@@ -618,10 +1012,12 @@ function createFakeAgents(
                 events[index] = event
                 agentContext.emit('session/event', agent.session as never, event as never)
               }
+            }).finally(() => {
+              if (activeTurn === controller) activeTurn = undefined
             })
           },
           whenIdle: () => activity,
-          cancel: () => {},
+          cancel: () => { activeTurn?.abort() },
         }
         contexts.push(agentContext)
         agentContext.provide('tools', {
@@ -641,12 +1037,21 @@ function createFakeAgents(
           throw error
         }
         agents.set(String(options.sessionId), agent)
-        return { agent, dispose: async () => { await agentContext.fiber.dispose() } }
+        return {
+          agent,
+          dispose: async () => {
+            handleDisposals += 1
+            agents.delete(String(options.sessionId))
+            await agentContext.fiber.dispose()
+          },
+        }
       },
       resume: async () => { throw new Error('unexpected agent resume') },
     },
     get toolDisposals() { return toolDisposals },
     get createCalls() { return createCalls },
+    get handleDisposals() { return handleDisposals },
+    createdProjectPaths,
     createErrors,
     registeredToolNames,
     dispose: async () => {

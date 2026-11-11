@@ -5,7 +5,8 @@
 
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
@@ -39,6 +40,7 @@ const RETRY_LIMIT = 5
 const TYPING_INTERVAL_MS = 7_000
 const APPROVAL_TIMEOUT_MS = 5 * 60_000
 const HISTORY_LIMIT = 500
+const DEFAULT_WECHAT_TITLE = '微信 · 新会话'
 const FILE_TOOL_DESCRIPTION = "Send a file from the workspace to the user's WeChat. Only available in sessions that came from WeChat. Images are sent as images, videos as videos, anything else as a file. Images, videos and audio produced by generation tools in this turn are sent automatically at turn end; do not send them again. Limit 20 MB per file; larger videos are compressed first and otherwise rejected."
 
 interface WechatServiceDependencies {
@@ -46,6 +48,7 @@ interface WechatServiceDependencies {
   readonly createClient?: (baseUrl: string, token?: string) => IlinkClient
   readonly sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>
   readonly schedule?: (callback: () => void, milliseconds: number) => ReturnType<typeof setTimeout>
+  readonly runFfmpeg?: (arguments_: readonly string[]) => Promise<void>
 }
 
 interface PendingApproval {
@@ -53,7 +56,13 @@ interface PendingApproval {
 }
 
 type QueuedMessage =
-  | { readonly kind: 'agent'; readonly message: IlinkMessage; readonly text: string; readonly contextToken?: string }
+  | {
+    readonly kind: 'agent'
+    readonly message: IlinkMessage
+    readonly text: string
+    readonly imageAttachments: readonly string[]
+    readonly contextToken?: string
+  }
   | { readonly kind: 'command'; readonly text: string; readonly contextToken?: string }
 
 /** Owns QR login, the durable iLink cursor, and the WeChat-to-Agent bridge. */
@@ -61,6 +70,7 @@ export class WechatService extends TypertRemoteService {
   static inject = ['agents', 'workspaceRegistry', 'permissionPresets']
 
   private readonly store: Store
+  private loadTask: Promise<void> | undefined
   private status: WechatStatus = { state: 'idle' }
   private lastError: string | undefined
   private credentials: WechatCredentials | undefined
@@ -76,6 +86,7 @@ export class WechatService extends TypertRemoteService {
   private readonly queue: QueuedMessage[] = []
   private queueTask: Promise<void> | undefined
   private currentHandle: AgentHandle | undefined
+  private ownedHandle: AgentHandle | undefined
   private activeContextToken: string | undefined
   private currentTyping: ReturnType<typeof setInterval> | undefined
   private readonly pendingApprovals = new Map<SessionIdType, PendingApproval>()
@@ -83,6 +94,7 @@ export class WechatService extends TypertRemoteService {
   private readonly createClient: (baseUrl: string, token?: string) => IlinkClient
   private readonly sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
   private readonly schedule: (callback: () => void, milliseconds: number) => ReturnType<typeof setTimeout>
+  private readonly runFfmpeg: (arguments_: readonly string[]) => Promise<void>
 
   constructor(ctx: Context, dependencies: WechatServiceDependencies = {}) {
     super(ctx, 'wechat')
@@ -90,6 +102,8 @@ export class WechatService extends TypertRemoteService {
     this.createClient = dependencies.createClient ?? ((baseUrl, token) => new IlinkClient(baseUrl, token))
     this.sleep = dependencies.sleep ?? delay
     this.schedule = dependencies.schedule ?? setTimeout
+    this.runFfmpeg = dependencies.runFfmpeg
+      ?? (arguments_ => execFileAsync('ffmpeg', [...arguments_], { timeout: 120_000 }).then(() => undefined))
     ctx.effect(() => this.activate(), 'wechat iLink lifecycle')
     ctx.on('approval/request', (request, next) => this.onApproval(request, next))
   }
@@ -170,8 +184,25 @@ export class WechatService extends TypertRemoteService {
   async setDefaultProject(projectPath: string): Promise<WechatSnapshot> {
     const project = await this.ctx.workspaceRegistry.resolveByPath(projectPath)
     if (project === undefined) throw new Error('请选择一个已存在的项目')
-    this.state = { ...this.state, defaultProjectPath: project.path }
+    const currentSessionId = this.state.currentSessionId
+    const currentRecent = this.state.recentSessions.find(item => item.sessionId === currentSessionId)
+    const currentHandle = this.ownedHandle?.agent.session.id === currentSessionId
+      ? this.ownedHandle
+      : this.currentHandle?.agent.session.id === currentSessionId ? this.currentHandle : undefined
+    const currentProjectPath = currentRecent?.projectPath ?? currentHandle?.agent.session.header.cwd
+    const switchesSession = currentSessionId !== undefined && currentProjectPath !== project.path
+    this.state = switchesSession
+      ? {
+        defaultProjectPath: project.path,
+        recentSessions: this.state.recentSessions,
+        processedMessageIds: this.state.processedMessageIds,
+      }
+      : { ...this.state, defaultProjectPath: project.path }
     await this.persistState()
+    if (switchesSession) {
+      await this.queueTask
+      await this.releaseOwnedHandle(currentSessionId)
+    }
     return this.snapshot()
   }
 
@@ -219,11 +250,17 @@ export class WechatService extends TypertRemoteService {
       for (const pending of this.pendingApprovals.values()) pending.decide('rejected')
       this.pendingApprovals.clear()
       await this.queueTask
+      await this.releaseOwnedHandle()
     }
   }
 
-  private async ensureLoaded(): Promise<void> {
-    if (this.credentials !== undefined || this.client !== undefined) return
+  private ensureLoaded(): Promise<void> {
+    if (this.loadTask !== undefined) return this.loadTask
+    this.loadTask = this.loadState()
+    return this.loadTask
+  }
+
+  private async loadState(): Promise<void> {
     await this.store.ensureDirectory()
     try {
       this.credentials = await this.store.readCredentials()
@@ -358,7 +395,7 @@ export class WechatService extends TypertRemoteService {
               && id !== '' && !this.seen.has(id) && !this.state.processedMessageIds.includes(id)
               && createdBefore(message, startedAt)
           })
-          if (firstBatch && cursor && pendingMessages.length > 1) {
+          if (firstBatch && cursor && pendingMessages.length > 0) {
             await this.sendText(`补收到 ${pendingMessages.length} 条离线消息，开始处理`)
           }
           firstBatch = false
@@ -432,8 +469,8 @@ export class WechatService extends TypertRemoteService {
     }
     if (typingTicket) void this.client?.sendTyping(credentials.ownerUserId, typingTicket)
       .catch((error: unknown) => { this.ctx.logger.debug(`wechat: typing update failed (${safePublicError(error)})`) })
-    const contentText = await this.buildAgentInput(message)
-    if (contentText === undefined) {
+    const input = await this.buildAgentInput(message)
+    if (input === undefined) {
       await this.sendText('没听清，请再说一次或打字', message.context_token)
       await this.markProcessed(id)
       return
@@ -441,17 +478,20 @@ export class WechatService extends TypertRemoteService {
     this.queue.push({
       kind: 'agent',
       message,
-      text: contentText,
+      text: input.text,
+      imageAttachments: input.imageAttachments,
       ...(message.context_token === undefined ? {} : { contextToken: message.context_token }),
     })
     await this.markProcessed(id)
     this.startQueue(typingTicket)
   }
 
-  private async buildAgentInput(message: IlinkMessage): Promise<string | undefined> {
+  private async buildAgentInput(
+    message: IlinkMessage,
+  ): Promise<{ readonly text: string; readonly imageAttachments: readonly string[] } | undefined> {
     const project = await this.ensureDefaultProject()
-    const sessionHandle = await this.ensureCurrentSession(project.path)
     const attachments: string[] = []
+    const imageAttachments: string[] = []
     let voiceWithoutTranscript = false
     const date = new Date()
     const day = date.toISOString().slice(0, 10)
@@ -469,19 +509,7 @@ export class WechatService extends TypertRemoteService {
         await writeFile(path, bytes, { flag: 'wx', mode: 0o600 })
         const workspacePath = relative(project.path, path).split(sep).join('/')
         attachments.push(workspacePath)
-        if (type === ITEM_TYPE.image) {
-          const canvas = this.ctx.get('canvas')
-          if (canvas === undefined) {
-            this.ctx.logger.debug('wechat: canvas service unavailable; skipping image placement')
-          } else {
-            await canvas.edit(sessionHandle.agent.session, [{
-              op: 'add',
-              type: 'image',
-              title: `微信 · ${name}`,
-              path: workspacePath,
-            }])
-          }
-        }
+        if (type === ITEM_TYPE.image) imageAttachments.push(workspacePath)
         if (type === ITEM_TYPE.voice && !voiceTranscript(message).trim()) voiceWithoutTranscript = true
       } catch {
         attachments.push('附件下载失败')
@@ -493,7 +521,8 @@ export class WechatService extends TypertRemoteService {
       .filter(Boolean)
       .join('\n')
     const mediaText = attachments.map(path => `附件：${path}`).join('\n')
-    return [text, mediaText].filter(Boolean).join('\n') || undefined
+    const input = [text, mediaText].filter(Boolean).join('\n')
+    return input === '' ? undefined : { text: input, imageAttachments }
   }
 
   private startQueue(typingTicket?: string): void {
@@ -531,6 +560,24 @@ export class WechatService extends TypertRemoteService {
           }, TYPING_INTERVAL_MS)
         }
         const session = handle.agent.session
+        if (next.imageAttachments.length > 0) {
+          const canvas = this.ctx.get('canvas')
+          if (canvas === undefined) {
+            this.ctx.logger.debug('wechat: canvas service unavailable; skipping image placement')
+          } else {
+            try {
+              await canvas.edit(session, next.imageAttachments.map(path => ({
+                op: 'add' as const,
+                type: 'image' as const,
+                title: `微信 · ${basename(path)}`,
+                path,
+              })))
+            } catch (error) {
+              this.ctx.logger.debug(`wechat: inbound image canvas placement failed (${safePublicError(error)})`)
+            }
+          }
+        }
+        this.titleFirstWechatMessage(session, next.text)
         const afterSeq = session.seq
         const events: SessionEvent[] = []
         const stopObserving = handle.agent.ctx.on('session/event', (observed, event) => {
@@ -577,10 +624,8 @@ export class WechatService extends TypertRemoteService {
     for (const event of events) {
       if (event.type === 'tool/call') tools.set(event.data.callId, event.data.name)
       if (event.type !== 'tool/result' || !['generate_image', 'generate_video', 'generate_music', 'generate_speech'].includes(tools.get(event.data.message.toolCallId) ?? '')) continue
-      for (const path of extractPaths(event.data.message.content)) paths.add(path)
-      if (event.data.meta !== undefined) {
-        for (const path of extractPaths([{ type: 'text', text: JSON.stringify(event.data.meta) }])) paths.add(path)
-      }
+      const path = generatedArtifactPath(event.data.meta)
+      if (path !== undefined) paths.add(path)
     }
     const root = session.header.cwd
     if (root === undefined) return
@@ -647,8 +692,12 @@ export class WechatService extends TypertRemoteService {
   private async ensureCurrentSession(projectPath: string): Promise<AgentHandle> {
     const current = this.state.currentSessionId
     if (current !== undefined) {
+      if (this.ownedHandle?.agent.session.id === current) return this.ownedHandle
       const agent = this.ctx.agents.get(current)
-      if (agent !== undefined) return { agent, dispose: async () => {} }
+      if (agent !== undefined) {
+        await this.releaseOwnedHandle()
+        return { agent, dispose: async () => {} }
+      }
       try {
         return await this.ensureSession(current, projectPath)
       } catch (error) {
@@ -661,22 +710,28 @@ export class WechatService extends TypertRemoteService {
   }
 
   private async ensureSession(sessionId: SessionIdType, projectPath: string): Promise<AgentHandle> {
+    if (this.ownedHandle?.agent.session.id === sessionId) return this.ownedHandle
     const active = this.ctx.agents.get(sessionId)
+    await this.releaseOwnedHandle()
     if (active !== undefined) return { agent: active, dispose: async () => {} }
     const handle = await this.ctx.agents.resume({
       resumeSessionId: sessionId,
-      setup: (agentCtx, agent) =>{  this.configureAgent(agentCtx, agent, projectPath) },
+      setup: (agentCtx, agent) => { this.configureAgent(agentCtx, agent, projectPath) },
     })
+    this.ownedHandle = handle
     return handle
   }
 
   private async createSession(projectPath: string): Promise<AgentHandle> {
+    await this.releaseOwnedHandle()
     const sessionId = SessionId(randomUUID())
     const handle = await this.ctx.agents.create({
       sessionId,
       meta: { cwd: projectPath },
-      setup: (agentCtx, agent) =>{  this.configureAgent(agentCtx, agent, projectPath) },
+      setup: (agentCtx, agent) => { this.configureAgent(agentCtx, agent, projectPath) },
     })
+    this.ownedHandle = handle
+    this.ctx.get('sessionTitle')?.rename(handle.agent.session, DEFAULT_WECHAT_TITLE)
     await this.updateRecent(handle.agent.session, projectPath)
     return handle
   }
@@ -707,11 +762,26 @@ export class WechatService extends TypertRemoteService {
         return { sent: true, fileName: basename(args.path) }
       },
     })))
-    const titles = this.ctx.get('sessionTitle')
-    const current = titles?.get(agent.session)?.title ?? '会话'
-    if (!current.startsWith('微信 · ')) titles?.rename(agent.session, `微信 · ${current}`)
     if (agent.session.header.cwd !== projectPath) {
       throw new Error('微信会话所属项目与所选项目不一致')
+    }
+  }
+
+  private titleFirstWechatMessage(session: Session, text: string): void {
+    const titles = this.ctx.get('sessionTitle')
+    if (titles?.get(session)?.title !== DEFAULT_WECHAT_TITLE) return
+    const firstLine = Array.from(text.replace(/[\r\n]/g, '')).slice(0, 20).join('')
+    if (firstLine.trim() !== '') titles.rename(session, `微信 · ${firstLine}`)
+  }
+
+  private async releaseOwnedHandle(sessionId?: SessionIdType): Promise<void> {
+    const handle = this.ownedHandle
+    if (handle === undefined || (sessionId !== undefined && handle.agent.session.id !== sessionId)) return
+    this.ownedHandle = undefined
+    try {
+      await handle.dispose()
+    } catch (error) {
+      this.ctx.logger.warn(`wechat: agent handle disposal failed (${safePublicError(error)})`)
     }
   }
 
@@ -736,8 +806,9 @@ export class WechatService extends TypertRemoteService {
     const recent: WechatRecentSession = { sessionId: session.id, title, projectPath, updatedAt: Date.now() }
     this.state = {
       ...this.state,
-      currentSessionId: session.id,
-      defaultProjectPath: projectPath,
+      ...(this.state.defaultProjectPath === undefined || this.state.defaultProjectPath === projectPath
+        ? { currentSessionId: session.id, defaultProjectPath: projectPath }
+        : {}),
       recentSessions: [recent, ...this.state.recentSessions.filter(item => item.sessionId !== session.id)]
         .slice(0, MAX_RECENT_SESSIONS),
     }
@@ -760,44 +831,58 @@ export class WechatService extends TypertRemoteService {
     const info = await stat(source)
     if (!info.isFile()) throw new Error('请选择一个普通文件')
     if (caption) await this.sendText(caption, contextToken)
-    let filePath = source
-    let size = info.size
-    const extension = extname(source).toLowerCase()
-    let kind: 'image' | 'video' | 'file' = imageExtensions.has(extension) ? 'image' : videoExtensions.has(extension) ? 'video' : 'file'
-    if (size > MAX_OUTBOUND_BYTES && kind === 'video') {
-      const compressed = `${source}.wechat-compressed.mp4`
-      try {
-        await execFileAsync('ffmpeg', ['-y', '-i', source, '-vcodec', 'libx264', '-crf', '28', '-preset', 'fast',
-          '-acodec', 'aac', '-b:a', '128k', '-movflags', '+faststart', compressed], { timeout: 120_000 })
-        const compressedStat = await stat(compressed)
-        if (compressedStat.size < size) {
-          filePath = compressed
-          size = compressedStat.size
-          kind = 'video'
+    let temporaryDirectory: string | undefined
+    try {
+      let filePath = source
+      let size = info.size
+      const extension = extname(source).toLowerCase()
+      let kind: 'image' | 'video' | 'file' = imageExtensions.has(extension) ? 'image' : videoExtensions.has(extension) ? 'video' : 'file'
+      if (size > MAX_OUTBOUND_BYTES && kind === 'video') {
+        try {
+          temporaryDirectory = await mkdtemp(join(tmpdir(), 'dsh-wechat-video-'))
+          const compressed = join(temporaryDirectory, 'compressed.mp4')
+          await this.runFfmpeg([
+            '-y', '-i', source, '-vf', 'scale=-2:min(720,ih)', '-vcodec', 'libx264', '-crf', '28', '-preset', 'fast',
+            '-acodec', 'aac', '-b:a', '128k', '-movflags', '+faststart', compressed,
+          ])
+          const compressedStat = await stat(compressed)
+          if (compressedStat.size < size) {
+            filePath = compressed
+            size = compressedStat.size
+            kind = 'video'
+          }
+        } catch (error) {
+          this.ctx.logger.debug(`wechat: ffmpeg compression unavailable (${safePublicError(error)})`)
         }
-      } catch (error) {
-        this.ctx.logger.debug(`wechat: ffmpeg compression unavailable (${safePublicError(error)})`)
+      }
+      if (size > MAX_OUTBOUND_BYTES) {
+        const project = this.projects().find(entry => entry.path === projectPath)
+        const megabytes = (info.size / 1024 / 1024).toFixed(1)
+        await this.sendText(`文件太大（${megabytes} MB），没法通过微信发送，已保存在电脑上：项目「${project?.title ?? basename(projectPath)}」/${relativePath.split(sep).join('/')}`, contextToken)
+        return false
+      }
+      const bytes = await readFile(filePath)
+      const filename = safeFilename(basename(filePath), 'file')
+      let finalError: unknown
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const client = this.client
+          const credentials = this.credentials
+          if (client === undefined || credentials === undefined) throw new Error('微信尚未连接')
+          await client.sendMedia(kind, filename, bytes, credentials.ownerUserId, contextToken)
+          return true
+        } catch (error) { finalError = error }
+      }
+      throw new Error(`微信文件发送失败，请稍后重试（${safePublicError(finalError)})`)
+    } finally {
+      if (temporaryDirectory !== undefined) {
+        try {
+          await rm(temporaryDirectory, { recursive: true, force: true })
+        } catch (error) {
+          this.ctx.logger.debug(`wechat: temporary video cleanup failed (${safePublicError(error)})`)
+        }
       }
     }
-    if (size > MAX_OUTBOUND_BYTES) {
-      const project = this.projects().find(entry => entry.path === projectPath)
-      const megabytes = (info.size / 1024 / 1024).toFixed(1)
-      await this.sendText(`文件太大（${megabytes} MB），没法通过微信发送，已保存在电脑上：项目「${project?.title ?? basename(projectPath)}」/${relativePath.split(sep).join('/')}`, contextToken)
-      return false
-    }
-    const bytes = await readFile(filePath)
-    const filename = safeFilename(basename(filePath), 'file')
-    let finalError: unknown
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const client = this.client
-        const credentials = this.credentials
-        if (client === undefined || credentials === undefined) throw new Error('微信尚未连接')
-        await client.sendMedia(kind, filename, bytes, credentials.ownerUserId, contextToken)
-        return true
-      } catch (error) { finalError = error }
-    }
-    throw new Error(`微信文件发送失败，请稍后重试（${safePublicError(finalError)})`)
   }
 
   private async sendText(text: string, contextToken?: string): Promise<void> {
@@ -900,21 +985,37 @@ export class WechatService extends TypertRemoteService {
   ): Promise<ApprovalOutcome> {
     await this.ensureLoaded()
     const sessionId = request.agent.session.id
-    if (!this.state.recentSessions.some(item => item.sessionId === sessionId)) return await next()
+    if (this.currentHandle?.agent.session.id !== sessionId) return await next()
+    const signal = request.signal
+    if (signal?.aborted) return 'rejected'
     const approval = deferred<ApprovalOutcome>()
     this.pendingApprovals.set(sessionId, { decide: approval.resolve })
     let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let resolveAborted: (() => void) | undefined
+    const aborted = new Promise<{ kind: 'aborted' }>((resolveAbort) => {
+      resolveAborted = () => { resolveAbort({ kind: 'aborted' }) }
+    })
+    const onAbort = (): void => resolveAborted?.()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    if (signal?.aborted) resolveAborted?.()
     const timeout = new Promise<{ kind: 'timeout' }>((resolveTimeout) => {
       timeoutId = this.schedule(() =>{  resolveTimeout({ kind: 'timeout' }) }, APPROVAL_TIMEOUT_MS)
     })
     try {
-      await this.sendText(`需要你确认：${approvalSummary(request)}\n回复「同意」或「拒绝」`, this.activeContextToken)
+      const prompt = await Promise.race([
+        this.sendText(`需要你确认：${approvalSummary(request)}\n回复「同意」或「拒绝」`, this.activeContextToken)
+          .then(() => ({ kind: 'sent' as const })),
+        aborted,
+      ])
+      if (prompt.kind === 'aborted') return 'rejected'
       const delegated = next().then(value => ({ kind: 'desktop' as const, value }))
       let answer = await Promise.race([
         delegated,
         approval.promise.then(value => ({ kind: 'wechat' as const, value })),
         timeout,
+        aborted,
       ])
+      if (answer.kind === 'aborted') return 'rejected'
       if (answer.kind === 'desktop') {
         if (answer.value !== 'unavailable') {
           await this.sendText('已在电脑上处理', this.activeContextToken)
@@ -923,13 +1024,16 @@ export class WechatService extends TypertRemoteService {
         answer = await Promise.race([
           approval.promise.then(value => ({ kind: 'wechat' as const, value })),
           timeout,
+          aborted,
         ])
+        if (answer.kind === 'aborted') return 'rejected'
       }
       if (answer.kind === 'wechat') return answer.value
       await this.sendText('审批已超时，按拒绝处理', this.activeContextToken)
       return 'rejected'
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId)
+      signal?.removeEventListener('abort', onAbort)
       this.pendingApprovals.delete(sessionId)
     }
   }
@@ -1025,13 +1129,10 @@ function splitText(value: string, limit: number): string[] {
   return chunks
 }
 
-function extractPaths(
-  content: readonly { readonly type: string; readonly text?: string }[],
-): string[] {
-  const text = content.filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
-  const mediaPath = /(?:[A-Z]:\\|\/)[^\r\n]*?\.(?:png|jpe?g|webp|gif|mp4|mov|m4v|webm|mp3|wav|m4a|pdf|txt|zip|json|csv|docx|xlsx)/gi
-  return (text.match(mediaPath) ?? [])
-    .filter(path => !path.includes('"') && !path.includes("'") && !path.includes('<') && !path.includes('>'))
+function generatedArtifactPath(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || !('path' in value)) return undefined
+  const path = value.path
+  return typeof path === 'string' && path.trim() !== '' ? path : undefined
 }
 
 function isAborted(signal: AbortSignal): boolean {

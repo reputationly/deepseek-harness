@@ -182,7 +182,11 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
       aspectRatio: { type: 'string', description: `Aspect ratio such as 16:9, 9:16, 1:1, or adaptive. ${STATED}` },
       resolution: { type: 'string', description: `Resolution tier such as 1K or 2K. ${STATED}` },
     },
-    output: { schema: resultSchema, render: (_args, value) => renderResult('generate_image', value) },
+    output: {
+      schema: resultSchema,
+      render: (_args, value) => renderResult('generate_image', value),
+      presentationMeta: (_args, value) => value,
+    },
     async execute(args, exec) {
       const input = args
       const link = canvasLink(deps, exec)
@@ -227,7 +231,11 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
       lastFrameNode: { type: 'string', description: 'Canvas image node used as the last frame, instead of lastFrame.' },
       referenceNodes: { type: 'array', items: { type: 'string' }, description: 'Canvas image nodes or groups used like referenceImages; a group stands for all of its images.' },
     },
-    output: { schema: resultSchema, render: (_args, value) => renderResult('generate_video', value) },
+    output: {
+      schema: resultSchema,
+      render: (_args, value) => renderResult('generate_video', value),
+      presentationMeta: (_args, value) => value,
+    },
     async execute(args, exec) {
       const input = args
       const link = canvasLink(deps, exec)
