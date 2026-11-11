@@ -1,0 +1,84 @@
+.card {
+  display: grid;
+  gap: 12px;
+  max-width: 620px;
+  padding: 20px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-raised);
+}
+
+.card h2,
+.card h3,
+.card p {
+  margin: 0;
+}
+
+.description,
+.project p {
+  color: var(--text-secondary);
+}
+
+.qr {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.qr img {
+  width: min(100%, 280px);
+  aspect-ratio: 1;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.connected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.connected span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-success);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.project select {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: var(--surface-base);
+}
+
+.usage {
+  display: grid;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.usage ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-inline-start: 20px;
+}
+
+.error {
+  color: var(--text-danger);
+}
