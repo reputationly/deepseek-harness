@@ -1,18 +1,85 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { onTestFinished, expect, it, vi } from 'vitest'
-import { IlinkClient } from '../src/protocol.ts'
+import { IlinkClient, ITEM_TYPE } from '../src/protocol.ts'
 import { WechatStore } from '../src/storage.ts'
 import { WechatService } from '../src/index.ts'
 import type { WechatStatus } from '../src/types.ts'
 import { createFakeIlinkServer, respond } from './fake-ilink-server.host.ts'
 import type { FakeIlinkRequest } from './fake-ilink-server.host.ts'
 
-const injectedServices = ['agents', 'workspaceRegistry', 'permissionPresets', 'canvas']
+const injectedServices = ['agents', 'workspaceRegistry', 'permissionPresets']
+
+it('stores and forwards image attachments when no canvas service is installed', async () => {
+  const image = Buffer.from('wechat image bytes')
+  let updateCalls = 0
+  let downloadCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'image-cursor',
+        msgs: [{
+          message_id: 88,
+          from_user_id: 'owner-id',
+          create_time_ms: Date.now() - 10_000,
+          item_list: [{ type: ITEM_TYPE.image, image_item: {} }],
+        }],
+      })
+    } else if (request.path.endsWith('/sendmessage')) respond(response, { ret: 0 })
+    else respond(response, { ret: 0 })
+  })
+  const cleanup: { home?: string; dispose?: () => Promise<void>; disposeAgents?: () => Promise<void> } = {}
+  onTestFinished(async () => {
+    await cleanup.dispose?.()
+    await cleanup.disposeAgents?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-no-canvas-'))
+  cleanup.home = home
+  const store = new WechatStore(home)
+  const projectPath = join(store.directory, 'project')
+  await seedCredentials(store, projectPath)
+  const inputs: string[] = []
+  const agents = createFakeAgents(() => {}, async (_agent, message) => {
+    inputs.push(userText(message))
+  })
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents: agents.service,
+    canvas: false,
+    createClient: (_baseUrl, token) => {
+      const client = new IlinkClient(fake.url, token)
+      vi.spyOn(client, 'downloadMedia').mockImplementation(async () => {
+        downloadCalls += 1
+        return image
+      })
+      return client
+    },
+  })
+  cleanup.dispose = () => harness.ctx.fiber.dispose()
+  cleanup.disposeAgents = () => agents.dispose()
+
+  await vi.waitFor(async () => {
+    expect((await harness.service.getStatus()).status.state).toBe('connected')
+    expect(inputs).toHaveLength(1)
+  })
+  expect(inputs[0]).toContain('附件：wechat-inbox/')
+  expect(downloadCalls).toBe(1)
+  const day = (await readdir(join(projectPath, 'wechat-inbox')))[0]
+  if (day === undefined) throw new Error('the WeChat inbox has no date directory')
+  const file = (await readdir(join(projectPath, 'wechat-inbox', day)))[0]
+  if (file === undefined) throw new Error('the downloaded image was not saved')
+  await expect(readFile(join(projectPath, 'wechat-inbox', day, file))).resolves.toEqual(image)
+})
 
 it('refreshes expired QR codes at most three times and never saves an unconfirmed login', async () => {
   let qrCount = 0
@@ -442,12 +509,14 @@ async function fixture(
     readonly sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
     readonly schedule?: (callback: () => void, milliseconds: number) => ReturnType<typeof setTimeout>
     readonly agents?: object
+    readonly canvas?: boolean
+    readonly createClient?: (baseUrl: string, token?: string) => IlinkClient
   },
   onStatus?: (status: WechatStatus) => void,
 ) {
   const ctx = new Context()
   const unlisten = onStatus === undefined ? () => {} : ctx.on('wechat/status', onStatus)
-  const { agents, ...serviceDependencies } = dependencies
+  const { agents, canvas = true, createClient, ...serviceDependencies } = dependencies
   ctx.provide('agents', (agents ?? { get: () => undefined, create: async () => { throw new Error('unexpected agent creation') } }) as never)
   ctx.provide('workspaceRegistry', {
     resolveByPath: async (path: string) => ({ id: 'wechat-project', path, title: '微信' }),
@@ -455,7 +524,7 @@ async function fixture(
     list: () => [{ id: 'wechat-project', path: join(store.directory, 'project'), title: '微信' }],
   } as never)
   ctx.provide('permissionPresets', { set: async () => {} } as never)
-  ctx.provide('canvas', { edit: async () => {} } as never)
+  if (canvas) ctx.provide('canvas', { edit: async () => {} } as never)
   let service!: WechatService
   let serviceContext!: Context
   const plugin = ctx.plugin({
@@ -464,7 +533,7 @@ async function fixture(
       serviceContext = scope
       service = new WechatService(scope, {
         store,
-        createClient: (_url, token) => new IlinkClient(baseUrl, token),
+        createClient: createClient ?? ((_url, token) => new IlinkClient(baseUrl, token)),
         ...serviceDependencies,
       })
     },

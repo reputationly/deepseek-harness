@@ -58,7 +58,7 @@ type QueuedMessage =
 
 /** Owns QR login, the durable iLink cursor, and the WeChat-to-Agent bridge. */
 export class WechatService extends TypertRemoteService {
-  static inject = ['agents', 'workspaceRegistry', 'permissionPresets', 'canvas']
+  static inject = ['agents', 'workspaceRegistry', 'permissionPresets']
 
   private readonly store: Store
   private status: WechatStatus = { state: 'idle' }
@@ -470,12 +470,17 @@ export class WechatService extends TypertRemoteService {
         const workspacePath = relative(project.path, path).split(sep).join('/')
         attachments.push(workspacePath)
         if (type === ITEM_TYPE.image) {
-          await this.ctx.canvas.edit(sessionHandle.agent.session, [{
-            op: 'add',
-            type: 'image',
-            title: `微信 · ${name}`,
-            path: workspacePath,
-          }])
+          const canvas = this.ctx.get('canvas')
+          if (canvas === undefined) {
+            this.ctx.logger.debug('wechat: canvas service unavailable; skipping image placement')
+          } else {
+            await canvas.edit(sessionHandle.agent.session, [{
+              op: 'add',
+              type: 'image',
+              title: `微信 · ${name}`,
+              path: workspacePath,
+            }])
+          }
         }
         if (type === ITEM_TYPE.voice && !voiceTranscript(message).trim()) voiceWithoutTranscript = true
       } catch {
