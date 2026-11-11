@@ -173,6 +173,17 @@ jobs:
           node scripts/release/eo-cache.mjs \
             --index artifacts/darwin-arm64-latest.json \
             --index artifacts/win32-x64-latest.json
+      # 国内源站是自己维护的副本：这里敲一下让它立刻同步新版本，而不是等 15 分钟的定时器。
+      # 没有配置这两个 secret 时整步跳过，发布照常成功。
+      - name: Ask the domestic origin to pick up the new version
+        continue-on-error: true
+        env:
+          ORIGIN_SYNC_URL: ${{ secrets.INSTALLER_ORIGIN_SYNC_URL }}
+          ORIGIN_SYNC_TOKEN: ${{ secrets.INSTALLER_ORIGIN_TOKEN }}
+        run: |
+          if [ -z "$ORIGIN_SYNC_URL" ]; then echo "no domestic origin configured; skipping"; exit 0; fi
+          curl -fsS -X POST --max-time 30 -H "X-Origin-Token: $ORIGIN_SYNC_TOKEN" "$ORIGIN_SYNC_URL"
+          echo "origin sync requested"
       - name: Verify the published pointers
         run: |
           version="${{ needs.prepare.outputs.version }}"
