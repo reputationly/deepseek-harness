@@ -94,7 +94,10 @@ export class WechatService extends TypertRemoteService {
   private typingTicket: string | undefined
   private currentTyping: ReturnType<typeof setInterval> | undefined
   private readonly pendingApprovals = new Map<SessionIdType, PendingApproval>()
+  private readonly configuredAgents = new WeakSet<Agent>()
+  private readonly workspaceAttachedAgents = new WeakSet<Agent>()
   private readonly seen = new Set<string>()
+  private stopping = false
   private readonly createClient: (baseUrl: string, token?: string) => IlinkClient
   private readonly sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
   private readonly schedule: (callback: () => void, milliseconds: number) => ReturnType<typeof setTimeout>
@@ -109,7 +112,7 @@ export class WechatService extends TypertRemoteService {
     this.runFfmpeg = dependencies.runFfmpeg
       ?? (arguments_ => execFileAsync('ffmpeg', [...arguments_], { timeout: 120_000 }).then(() => undefined))
     ctx.effect(() => this.activate(), 'wechat iLink lifecycle')
-    ctx.on('approval/request', (request, next) => this.onApproval(request, next))
+    ctx.on('approval/request', (request, next) => this.onApproval(request, next), { prepend: true })
   }
 
   /** Read the sanitized current state for the local settings page. */
@@ -246,6 +249,7 @@ export class WechatService extends TypertRemoteService {
     await this.ensureLoaded()
     if (this.credentials !== undefined) this.startTransport()
     return async () => {
+      this.stopping = true
       await this.stopLogin()
       await this.stopTransport()
       if (this.currentTyping !== undefined) clearInterval(this.currentTyping)
@@ -579,6 +583,7 @@ export class WechatService extends TypertRemoteService {
         }
         continue
       }
+      const events: SessionEvent[] = []
       try {
         const project = await this.ensureDefaultProject()
         const handle = await this.ensureCurrentSession(project.path)
@@ -612,7 +617,6 @@ export class WechatService extends TypertRemoteService {
         }
         this.titleFirstWechatMessage(session, next.text)
         const afterSeq = session.seq
-        const events: SessionEvent[] = []
         const stopObserving = handle.agent.ctx.on('session/event', (observed, event) => {
           if (observed.id === session.id && event.seq >= afterSeq) events.push(event)
         })
@@ -628,8 +632,13 @@ export class WechatService extends TypertRemoteService {
         await this.sendTurn(events, session, next.contextToken)
         await this.updateRecent(session, project.path)
       } catch (error) {
-        this.ctx.logger.warn(`wechat: agent turn failed (${safePublicError(error)})`)
-        await this.sendText('微信消息处理失败，请稍后重试', this.activeContextToken)
+        const aborted = events.some(event => event.type === 'turn/end' && event.data.reason.kind === 'aborted')
+        const disposed = this.currentHandle !== undefined
+          && this.ctx.agents.get(this.currentHandle.agent.session.id) !== this.currentHandle.agent
+        if (!this.stopping && !aborted && !disposed) {
+          this.ctx.logger.warn(`wechat: agent turn failed (${safePublicError(error)})`)
+          await this.sendText('微信消息处理失败，请稍后重试', this.activeContextToken)
+        }
       } finally {
         if (this.currentTyping !== undefined) clearInterval(this.currentTyping)
         this.currentTyping = undefined
@@ -745,6 +754,7 @@ export class WechatService extends TypertRemoteService {
       if (this.ownedHandle?.agent.session.id === current) return this.ownedHandle
       const agent = this.ctx.agents.get(current)
       if (agent !== undefined) {
+        await this.configureReusedAgent(agent, projectPath)
         await this.releaseOwnedHandle()
         return { agent, dispose: async () => {} }
       }
@@ -763,7 +773,10 @@ export class WechatService extends TypertRemoteService {
     if (this.ownedHandle?.agent.session.id === sessionId) return this.ownedHandle
     const active = this.ctx.agents.get(sessionId)
     await this.releaseOwnedHandle()
-    if (active !== undefined) return { agent: active, dispose: async () => {} }
+    if (active !== undefined) {
+      await this.configureReusedAgent(active, projectPath)
+      return { agent: active, dispose: async () => {} }
+    }
     const recent = this.state.recentSessions.find(item => item.sessionId === sessionId)
     const presets = this.ctx.get('agentPresets')
     const agentPreset = presets === undefined
@@ -775,7 +788,7 @@ export class WechatService extends TypertRemoteService {
       setup: this.agentSetup(projectPath, agentPreset),
     })
     this.ownedHandle = handle
-    await this.attachSessionToWorkspace(sessionId, projectPath)
+    if (await this.attachSessionToWorkspace(sessionId, projectPath)) this.workspaceAttachedAgents.add(handle.agent)
     await this.updateRecent(handle.agent.session, projectPath, agentPreset)
     return handle
   }
@@ -792,7 +805,7 @@ export class WechatService extends TypertRemoteService {
       setup: this.agentSetup(projectPath, agentPreset),
     })
     this.ownedHandle = handle
-    await this.attachSessionToWorkspace(sessionId, projectPath)
+    if (await this.attachSessionToWorkspace(sessionId, projectPath)) this.workspaceAttachedAgents.add(handle.agent)
     this.ctx.get('sessionTitle')?.rename(handle.agent.session, DEFAULT_WECHAT_TITLE)
     await this.updateRecent(handle.agent.session, projectPath, agentPreset)
     return handle
@@ -813,14 +826,30 @@ export class WechatService extends TypertRemoteService {
       installModelSelection(agentCtx)
       if (presets !== undefined && agentPreset !== undefined) await presets.mount(agentCtx, agentPreset)
       this.configureAgent(agentCtx, agent, projectPath)
+      this.configuredAgents.add(agent)
     }
   }
 
-  private async attachSessionToWorkspace(sessionId: SessionIdType, projectPath: string): Promise<void> {
+  private async configureReusedAgent(agent: Agent, projectPath: string): Promise<void> {
+    if (!this.configuredAgents.has(agent)) {
+      this.configureAgent(agent.ctx, agent, projectPath)
+      this.configuredAgents.add(agent)
+    }
+    if (!this.workspaceAttachedAgents.has(agent)
+      && await this.attachSessionToWorkspace(agent.session.id, projectPath)) {
+      this.workspaceAttachedAgents.add(agent)
+    }
+  }
+
+  private async attachSessionToWorkspace(sessionId: SessionIdType, projectPath: string): Promise<boolean> {
     try {
-      await (await this.ctx.workspaceRegistry.resolveByPath(projectPath))?.attachSession(sessionId)
+      const workspace = await this.ctx.workspaceRegistry.resolveByPath(projectPath)
+      if (workspace === undefined) return false
+      await workspace.attachSession(sessionId)
+      return true
     } catch (error: unknown) {
       this.ctx.logger.warn(`wechat: Session ${sessionId} did not join the Workspace at ${projectPath}: ${String(error)}`)
+      return false
     }
   }
 

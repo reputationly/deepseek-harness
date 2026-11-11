@@ -2,8 +2,13 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import type { AgentOptions } from '@deepseek-ai/dsh-agent'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
+import { createUserMessage, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { onTestFinished, expect, it, vi } from 'vitest'
 import { IlinkClient, ITEM_TYPE } from '../src/protocol.ts'
@@ -504,6 +509,92 @@ it('disposes the previous owned handle on /new and the current one on service di
   expect(agents.handleDisposals).toBe(1)
   await harness.ctx.fiber.dispose()
   expect(agents.handleDisposals).toBe(2)
+})
+
+it('configures and attaches a desktop-preloaded Agent only once across WeChat messages', async () => {
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      respond(response, {
+        ret: 0,
+        get_updates_buf: 'preloaded-agent-cursor',
+        msgs: updateCalls === 1 ? [
+          {
+            message_id: 91,
+            from_user_id: 'owner-id',
+            item_list: [{ type: 1, text_item: { text: 'first message' } }],
+          },
+          {
+            message_id: 92,
+            from_user_id: 'owner-id',
+            item_list: [{ type: 1, text_item: { text: 'second message' } }],
+          },
+        ] : [],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-preloaded-agent-'))
+  const store = new WechatStore(home)
+  const projectPath = join(store.directory, 'project')
+  await seedCredentials(store, projectPath)
+  await mkdir(projectPath, { recursive: true })
+  const sessionId = SessionId('desktop-preloaded-agent')
+  await store.writeState({
+    defaultProjectPath: projectPath,
+    currentSessionId: sessionId,
+    recentSessions: [{ sessionId, title: '微信 · Desktop session', projectPath, updatedAt: 1 }],
+    processedMessageIds: [],
+  })
+  const agentContext = new Context()
+  const registerTool = vi.fn((_tool: { readonly name: string }) => () => {})
+  agentContext.provide('tools', { register: registerTool } as never)
+  const agent: FakeAgent = {
+    ctx: agentContext,
+    signal: undefined,
+    session: { id: sessionId, header: { cwd: projectPath }, seq: 0 },
+    followup: vi.fn(),
+    whenIdle: async () => {},
+    cancel: vi.fn(),
+  }
+  const agents = {
+    get: vi.fn((id: string) => id === sessionId ? agent : undefined),
+    create: vi.fn(async () => { throw new Error('unexpected agent creation') }),
+  }
+  const setPermission = vi.fn(async () => {})
+  const attachSession = vi.fn(async () => {})
+  const workspaceRegistry = {
+    resolveByPath: async (path: string) => path === projectPath
+      ? { id: 'wechat-project', path, title: '微信', attachSession }
+      : undefined,
+    create: async (path: string, title: string) => ({
+      id: 'wechat-project', path, title, attachSession,
+    }),
+    list: () => [{ id: 'wechat-project', path: projectPath, title: '微信' }],
+  }
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents,
+    permissionPresets: { set: setPermission },
+    workspaceRegistry,
+  })
+  onTestFinished(async () => {
+    await harness.ctx.fiber.dispose()
+    await agentContext.fiber.dispose()
+    await fake.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  await vi.waitFor(() => {
+    expect(sentTexts(fake.requests).filter(text => text === '已完成')).toHaveLength(2)
+  })
+  expect(agents.get).toHaveBeenCalledTimes(2)
+  expect(registerTool).toHaveBeenCalledTimes(1)
+  expect(registerTool.mock.calls.map(([tool]) => tool.name)).toEqual(['wechat_send_file'])
+  expect(setPermission).toHaveBeenCalledExactlyOnceWith(agent.session, 'workspace-write')
+  expect(attachSession).toHaveBeenCalledExactlyOnceWith(sessionId)
 })
 
 it('gives new sessions distinct WeChat titles from their first user messages', async () => {
@@ -1227,6 +1318,293 @@ it.each([
   expect(sentTexts(harness.fake.requests)).toContain('需要你确认：Update the project file\n回复「同意」或「拒绝」')
 })
 
+it('forwards a real ApprovalService request from a desktop-preloaded Agent during a WeChat turn', async () => {
+  let updateCalls = 0
+  let pendingPoll: import('node:http').ServerResponse | undefined
+  let pendingDecision: string | undefined
+  let decisionDelivered = false
+  const wechatDecisionReceived = Promise.withResolvers<undefined>()
+  const earlierListenerReached = Promise.withResolvers<undefined>()
+  const earlierApprovalSessionIds: string[] = []
+  let earlierListenerNextCalls = 0
+  const deliverDecision = (): void => {
+    if (decisionDelivered) return
+    if (pendingPoll === undefined) {
+      pendingDecision = '同意'
+      return
+    }
+    const poll = pendingPoll
+    pendingPoll = undefined
+    decisionDelivered = true
+    wechatDecisionReceived.resolve(undefined)
+    deliverDecisionFor(poll, '同意')
+  }
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) {
+      respond(response, { ret: 0 })
+    } else if (request.path.endsWith('/getconfig')) {
+      respond(response, { ret: 0 })
+    } else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) {
+        respond(response, {
+          ret: 0,
+          get_updates_buf: 'real-approval-cursor',
+          msgs: [{
+            message_id: 81,
+            from_user_id: 'owner-id',
+            context_token: 'real-approval-context',
+            create_time_ms: Date.now() + 60_000,
+            item_list: [{ type: 1, text_item: { text: 'run the approval check' } }],
+          }],
+        })
+      } else if (pendingDecision !== undefined) {
+        const decision = pendingDecision
+        pendingDecision = undefined
+        decisionDelivered = true
+        wechatDecisionReceived.resolve(undefined)
+        deliverDecisionFor(response, decision)
+      } else {
+        pendingPoll = response
+      }
+    } else if (request.path.endsWith('/sendmessage')) {
+      respond(response, { ret: 0 })
+    } else respond(response, { ret: 0 })
+  })
+  const cleanup: { home?: string; ctx?: Context } = {}
+  onTestFinished(async () => {
+    await cleanup.ctx?.fiber.dispose()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-real-approval-'))
+  cleanup.home = home
+  const projectPath = join(home, 'project')
+  await mkdir(projectPath, { recursive: true })
+  const store = new WechatStore(home)
+  const ctx = new Context()
+  cleanup.ctx = ctx
+  await mountAgentLoopTestDependencies(ctx)
+  await ctx.plugin(AgentLoop, { agents: [] })
+  await ctx.plugin(ApprovalService, { policy: 'ask' })
+  ctx.provide('agentDefaultModel', {
+    currentSelection: () => ({ provider: 'mock', model: 'mock' }),
+  } as never)
+  ctx.provide('workspaceRegistry', {
+    resolveByPath: async (path: string) => path === projectPath
+      ? { id: 'wechat-project', path, title: '微信', attachSession: async () => {} }
+      : undefined,
+    create: async (path: string, title: string) => ({
+      id: 'wechat-project', path, title, attachSession: async () => {},
+    }),
+    list: () => [{ id: 'wechat-project', path: projectPath, title: '微信' }],
+  } as never)
+  ctx.provide('permissionPresets', { set: () => {} } as never)
+  const agentHandle = await ctx.agents.create({
+    sessionId: SessionId('desktop-preloaded-approval-agent'),
+    agentOptions: { provider: 'mock', model: 'mock' },
+    meta: { cwd: projectPath },
+  })
+  const agent = agentHandle.agent
+  const desktopHandle = await ctx.agents.create({
+    sessionId: SessionId('desktop-independent-approval-agent'),
+    agentOptions: { provider: 'desktop-mock', model: 'mock' },
+    meta: { cwd: projectPath },
+  })
+  const desktopAgent = desktopHandle.agent
+  ctx.on('approval/request', async (request, next) => {
+    earlierApprovalSessionIds.push(request.agent.session.id)
+    if (request.agent.session.id === agent.session.id) {
+      earlierListenerReached.resolve(undefined)
+      await wechatDecisionReceived.promise
+      earlierListenerNextCalls += 1
+      return await next()
+    }
+    return 'allowed-once'
+  })
+  const outcome = Promise.withResolvers<ApprovalOutcome>()
+  const desktopOutcome = Promise.withResolvers<ApprovalOutcome>()
+  ctx.llm.registerAdapter(['mock'], new RealApprovalAdapter(
+    () => agent,
+    async (agent) => {
+      try {
+        const result = await ctx.approval.request({
+          agent,
+          toolName: 'write_file',
+          reason: 'Update the project file',
+        })
+        outcome.resolve(result)
+        return result
+      } catch (error) {
+        outcome.reject(error)
+        throw error
+      }
+    },
+  ))
+  ctx.llm.registerAdapter(['desktop-mock'], new RealApprovalAdapter(
+    () => desktopAgent,
+    async (agent) => {
+      const result = await ctx.approval.request({
+        agent,
+        toolName: 'write_file',
+        reason: 'Update a desktop-only project file',
+      })
+      desktopOutcome.resolve(result)
+      return result
+    },
+  ))
+  await store.writeCredentials({
+    token: 'private-token',
+    baseUrl: 'https://ilink.example',
+    botId: 'bot-id',
+    ownerUserId: 'owner-id',
+  })
+  await store.writeState({
+    defaultProjectPath: projectPath,
+    currentSessionId: agent.session.id,
+    recentSessions: [{
+      sessionId: agent.session.id,
+      title: '微信 · Desktop session',
+      projectPath,
+      updatedAt: 1,
+    }],
+    processedMessageIds: [],
+  })
+  await ctx.plugin({
+    inject: injectedServices,
+    apply: (scope) => {
+      new WechatService(scope, {
+        store,
+        createClient: (_url, token) => new IlinkClient(fake.url, token),
+        sleep: async () => {},
+      })
+    },
+  })
+
+  await earlierListenerReached.promise
+  expect(sentTexts(fake.requests)).toContain('需要你确认：Update the project file\n回复「同意」或「拒绝」')
+  expect(earlierListenerNextCalls).toBe(0)
+
+  desktopAgent.followup(createUserMessage({
+    content: [{ type: 'text', text: 'request desktop approval' }],
+    source: { kind: 'user' },
+  }))
+  await expect(desktopOutcome.promise).resolves.toBe('allowed-once')
+  await desktopAgent.whenIdle()
+  expect(earlierApprovalSessionIds).toContain(desktopAgent.session.id)
+  expect(earlierListenerNextCalls).toBe(0)
+
+  deliverDecision()
+  await expect(outcome.promise).resolves.toBe('allowed-once')
+  expect(earlierListenerNextCalls).toBe(1)
+  expect(earlierApprovalSessionIds).toContain(agent.session.id)
+  expect(sentTexts(fake.requests)).toContain('需要你确认：Update the project file\n回复「同意」或「拒绝」')
+})
+
+it('does not send a turn-failure message when disposal aborts a WeChat turn', async () => {
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) {
+        respond(response, {
+          ret: 0,
+          get_updates_buf: 'disposed-turn-cursor',
+          msgs: [{
+            message_id: 101,
+            from_user_id: 'owner-id',
+            create_time_ms: Date.now() + 60_000,
+            item_list: [{ type: 1, text_item: { text: 'start a cancellable turn' } }],
+          }],
+        })
+      }
+    } else respond(response, { ret: 0 })
+  })
+  const cleanup: { home?: string; ctx?: Context; disposeHandle?: () => Promise<void> } = {}
+  onTestFinished(async () => {
+    await cleanup.ctx?.fiber.dispose()
+    await cleanup.disposeHandle?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-disposed-turn-'))
+  cleanup.home = home
+  const store = new WechatStore(home)
+  const projectPath = join(home, 'project')
+  await mkdir(projectPath, { recursive: true })
+  const ctx = new Context()
+  cleanup.ctx = ctx
+  await mountAgentLoopTestDependencies(ctx)
+  await ctx.plugin(AgentLoop, { agents: [] })
+  ctx.provide('agentDefaultModel', {
+    currentSelection: () => ({ provider: 'mock', model: 'mock' }),
+  } as never)
+  ctx.provide('workspaceRegistry', {
+    resolveByPath: async (path: string) => path === projectPath
+      ? { id: 'wechat-project', path, title: '微信', attachSession: async () => {} }
+      : undefined,
+    create: async (path: string, title: string) => ({
+      id: 'wechat-project', path, title, attachSession: async () => {},
+    }),
+    list: () => [{ id: 'wechat-project', path: projectPath, title: '微信' }],
+  } as never)
+  ctx.provide('permissionPresets', { set: async () => {} } as never)
+  const started = Promise.withResolvers<undefined>()
+  let streamError: DOMException | undefined
+  ctx.llm.registerAdapter(['mock'], new AbortableAdapter(
+    () => { started.resolve(undefined) },
+    (error) => { streamError = error },
+  ))
+  const handle = await ctx.agents.create({
+    sessionId: SessionId('disposed-wechat-agent'),
+    agentOptions: { provider: 'mock', model: 'mock' },
+    meta: { cwd: projectPath },
+  })
+  cleanup.disposeHandle = () => handle.dispose()
+  const turnEnd = Promise.withResolvers<unknown>()
+  handle.agent.ctx.on('session/event', (session, event) => {
+    if (session.id === handle.agent.session.id && event.type === 'turn/end') {
+      turnEnd.resolve(event.data.reason)
+    }
+  })
+  await store.writeCredentials({
+    token: 'private-token',
+    baseUrl: 'https://ilink.example',
+    botId: 'bot-id',
+    ownerUserId: 'owner-id',
+  })
+  await store.writeState({
+    defaultProjectPath: projectPath,
+    currentSessionId: handle.agent.session.id,
+    recentSessions: [{
+      sessionId: handle.agent.session.id,
+      title: '微信 · Desktop session',
+      projectPath,
+      updatedAt: 1,
+    }],
+    processedMessageIds: [],
+  })
+  await ctx.plugin({
+    inject: injectedServices,
+    apply: (scope) => {
+      new WechatService(scope, {
+        store,
+        createClient: (_url, token) => new IlinkClient(fake.url, token),
+        sleep: async () => {},
+      })
+    },
+  })
+
+  await started.promise
+  await handle.dispose()
+  await expect(turnEnd.promise).resolves.toEqual({ kind: 'aborted', reason: { kind: 'disposed' } })
+  expect(streamError?.name).toBe('AbortError')
+  await ctx.fiber.dispose()
+  expect(sentTexts(fake.requests)).not.toContain('微信消息处理失败，请稍后重试')
+})
+
 it('does not forward a desktop-driven approval for a recent WeChat session', async () => {
   const fake = await createFakeIlinkServer((request, response) => {
     if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
@@ -1289,6 +1667,59 @@ it('rejects an active WeChat approval after the five-minute deadline', async () 
   expect(sentTexts(harness.fake.requests)).toContain('审批已超时，按拒绝处理')
 })
 
+class RealApprovalAdapter extends LlmAdapter {
+  constructor(
+    private readonly getAgent: () => Agent | undefined,
+    private readonly requestApproval: (agent: Agent) => Promise<ApprovalOutcome>,
+  ) {
+    super()
+  }
+
+  override async resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    return { provider, id: model, name: model }
+  }
+
+  override async *stream(_options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const agent = this.getAgent()
+    if (agent === undefined) throw new Error('approval test Agent is unavailable')
+    await this.requestApproval(agent)
+    const text = 'Approval completed'
+    yield { type: 'block-start', index: 0, blockType: 'text' }
+    yield { type: 'text-delta', index: 0, text }
+    yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  }
+}
+
+class AbortableAdapter extends LlmAdapter {
+  constructor(
+    private readonly onStarted: () => void,
+    private readonly onAbort: (error: DOMException) => void,
+  ) {
+    super()
+  }
+
+  override async resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    return { provider, id: model, name: model }
+  }
+
+  override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    this.onStarted()
+    const signal = options.signal
+    if (signal === undefined) throw new Error('abort test model signal is unavailable')
+    await new Promise<void>((_resolve, reject) => {
+      const abort = (): void => {
+        const error = new DOMException('The operation was aborted', 'AbortError')
+        this.onAbort(error)
+        reject(error)
+      }
+      if (signal.aborted) abort()
+      else signal.addEventListener('abort', abort, { once: true })
+    })
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  }
+}
+
 async function fixture(
   baseUrl: string,
   store: WechatStore,
@@ -1300,6 +1731,7 @@ async function fixture(
     readonly agentPresets?: object
     readonly canvas?: boolean
     readonly createClient?: (baseUrl: string, token?: string) => IlinkClient
+    readonly permissionPresets?: object
     readonly workspaceRegistry?: object
     readonly sessionTitle?: object
     readonly runFfmpeg?: (arguments_: readonly string[]) => Promise<void>
@@ -1310,6 +1742,7 @@ async function fixture(
   const unlisten = onStatus === undefined ? () => {} : ctx.on('wechat/status', onStatus)
   const {
     agents, agentDefaultModel, agentPresets, canvas = true, createClient, workspaceRegistry, sessionTitle,
+    permissionPresets,
     ...serviceDependencies
   } = dependencies
   ctx.provide('agents', (agents ?? { get: () => undefined, create: async () => { throw new Error('unexpected agent creation') } }) as never)
@@ -1325,7 +1758,7 @@ async function fixture(
   } as never)
   if (sessionTitle !== undefined) ctx.provide('sessionTitle', sessionTitle as never)
   if (agentPresets !== undefined) ctx.provide('agentPresets', agentPresets as never)
-  ctx.provide('permissionPresets', { set: async () => {} } as never)
+  ctx.provide('permissionPresets', (permissionPresets ?? { set: async () => {} }) as never)
   if (canvas) ctx.provide('canvas', { edit: async () => {} } as never)
   let service!: WechatService
   let serviceContext!: Context
