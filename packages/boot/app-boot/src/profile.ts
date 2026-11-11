@@ -598,7 +598,7 @@ function normalizeShippedProfile(name: string, dir: string, manifest: ProfileMan
   const template = PROFILE_TEMPLATES[name]
   const bundles = manifest.dsh?.profile?.bundles
   if (template === undefined || bundles === undefined) return manifest
-  const isRetiredTuple = installationOwned !== undefined && sameBundles(bundles, installationOwned)
+  const isRetiredTuple = installationOwned?.some(tuple => sameBundles(bundles, tuple)) ?? false
   if (!isRetiredTuple) return manifest
   const normalized = withBundles(manifest, template.bundles)
   writeProfileManifest(dir, normalized)

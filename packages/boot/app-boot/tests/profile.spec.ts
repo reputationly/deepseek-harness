@@ -394,6 +394,24 @@ describe('loadProfile', () => {
     ])
   })
 
+  it.each([
+    ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
+    [
+      '@deepseek-ai/dsh-base',
+      '@deepseek-ai/dsh-web-app',
+      '@deepseek-ai/dsh-experimental-plugin-market-bundle',
+      '@deepseek-ai/dsh-experimental-voice-input-bundle',
+    ],
+  ])('migrates the installation-owned Web profile %j to its current template', (...legacy) => {
+    const bundles = [...new Set([...legacy, ...PROFILE_TEMPLATES.web?.bundles ?? []])]
+    const anchor = stageInstallation(Object.fromEntries(bundles.map(name => [name, { patch: '[]\n' }])))
+    const home = tmp()
+    const web = resolveProfileDir('web', home)
+    initProfile(web, legacy)
+    loadProfile('t', 'web', anchor, home)
+    expect(readProfileManifest('t', web).dsh?.profile?.bundles).toEqual([...PROFILE_TEMPLATES.web?.bundles ?? []])
+  })
+
   it.each(['@deepseek-ai/dsh-experimental-schedule-bundle', '@deepseek-ai/dsh-experimental-agent-team-profile'])('removes retired %s and keeps the rest of an application-owned manifest', (retired) => {
     const anchor = stageInstallation({
       '@deepseek-ai/dsh-base': { patch: '[]\n' },
