@@ -13,7 +13,7 @@ function indexFile(body: unknown): string {
 }
 
 describe('EdgeOne cache plan', () => {
-  it('pre-warms the immutable installers and refreshes the pointers that name them', () => {
+  it('refreshes the pointers that name the new build', () => {
     const plan = planFromIndex(indexFile({
       version: '1.0.0',
       feed: 'https://cdn.test/suanli-assistant/win32-x64/nightly.yml',
@@ -22,7 +22,6 @@ describe('EdgeOne cache plan', () => {
         stableUrl: 'https://cdn.test/suanli-assistant/win32-x64/latest/app.exe',
       }],
     }))
-    expect(plan.warm).toEqual(['https://cdn.test/suanli-assistant/win32-x64/versions/1.0.0/app.exe'])
     expect(plan.refresh).toEqual([
       'https://cdn.test/suanli-assistant/win32-x64/nightly.yml',
       'https://cdn.test/suanli-assistant/win32-x64/latest/app.exe',
@@ -38,11 +37,9 @@ describe('EdgeOne cache plan', () => {
     })
     // A padded repeat of the same URL trims to the one target it names.
     expect(planTargets([], ['https://download.test/download', '  https://download.test/download  ', '  '])).toEqual({
-      warm: [],
       refresh: ['https://download.test/download'],
     })
     expect(planTargets([file], ['https://download.test/download'])).toEqual({
-      warm: ['https://cdn.test/a/versions/1/app.exe'],
       refresh: [
         'https://download.test/download',
         'https://cdn.test/suanli-assistant/win32-x64/nightly.yml',
@@ -60,7 +57,6 @@ describe('EdgeOne cache plan', () => {
         { url: 'https://cdn.test/x/versions/1/app.exe', stableUrl: 'https://cdn.test/x/latest/app.exe' },
       ],
     }))
-    expect(plan.warm).toHaveLength(1)
     expect(plan.refresh).toHaveLength(3)
   })
 })

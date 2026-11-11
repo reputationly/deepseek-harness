@@ -77,7 +77,7 @@ CDN 侧要配合的规则（否则会反过来破坏自动更新）：
 
 上传走 Cloudflare R2 的 S3 兼容接口，用 `curl --aws-sigv4` 签名，不需要 AWS CLI。
 
-## 发布之后：预热与刷新
+## 发布之后：刷新指针
 
 `publish` job 末尾会让 EdgeOne 立刻认识新版本，只在仓库配了下列 secret 时执行（缺省则整步跳过）：
 
@@ -86,10 +86,14 @@ CDN 侧要配合的规则（否则会反过来破坏自动更新）：
 | `EO_SECRET_ID` / `EO_SECRET_KEY` | 子账号密钥，只需 `teo:CreatePrefetchTask`、`teo:CreatePurgeTask` |
 | `EO_ZONE_ID` | 站点 ID，形如 `zone-…` |
 
-它做两件事：
+它只做一件事：**刷新** `nightly.yml`、`latest.json` 和 `latest/` 里的固定文件名，让指针立刻翻转，不会出现"页面写着新版、下载到旧包"。
 
-- **预热** `versions/<版本>/` 里的安装包 —— 节点主动回源，用户第一次点击就是命中缓存。不预热的话国内首拉只有几百 KB/s，319MB 要十几分钟。
-- **刷新** `nightly.yml`、`latest.json` 和 `latest/` 里的固定文件名 —— 指针立刻翻转，不会出现"页面写着新版、下载到旧包"。
+**为什么不预热**：EdgeOne 的[套餐选型对比](https://cloud.tencent.com/document/product/1552/94165)里，预热（URL 预热）的单次/单日额度对**免费版是 ✕**，即额度为 0，任何提交都返回
+`LimitExceeded.BatchQuota`。所以这一步不调 `CreatePrefetchTask`；将来套餐带预热额度了，再把预热加回来
+（脚本里刷新的分支已经拿到全部 URL，加一段调用即可）。
+
+代价是每个边缘节点的**第一个**用户仍会走一次冷回源（跨境约 300–500 KB/s，319MB 约 10 分钟），
+之后的用户都命中缓存。
 
 这一步是 `continue-on-error`：字节此时已经在桶里，CDN 慢一拍不该把一次成功的发布标成失败，但会在运行摘要里留下告警。想先看清单而不真调接口：
 
@@ -97,11 +101,7 @@ CDN 侧要配合的规则（否则会反过来破坏自动更新）：
 node scripts/release/eo-cache.mjs --index artifacts/win32-x64-latest.json --dry-run
 ```
 
-预热按套餐计量，319MB 预热一次会占掉相应额度和回源流量；额度紧张时只预热安装包、不预热 `.blockmap` 也能省一半。
 
-预热**逐个 URL 提交**：套餐对单次提交的资源数有上限（免费版一次提 3 个就会返回
-`LimitExceeded.BatchQuota`），而单个 URL 失败只影响第一个访客的回源速度，所以预热的失败
-降级为 `::warning`，不会让一次已经上传成功的发布变红。
 
 ## 客户端如何发现更新
 

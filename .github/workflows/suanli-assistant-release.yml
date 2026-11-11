@@ -160,8 +160,9 @@ jobs:
         run: |
           node scripts/release/aurora-publish.mjs             --artifacts artifacts             --version "${{ needs.prepare.outputs.version }}"             --keep "${{ inputs.keep }}"
       # Artifacts are live at this point; a CDN hiccup must not mark the release failed, but it must
-      # be visible: the run shows the warning and the log carries the reason.
-      - name: Pre-warm the installers and refresh the pointers
+      # be visible: the run shows the warning and the log carries the reason. Only the pointers are
+      # refreshed: the free plan's pre-warm quota is zero, so CreatePrefetchTask would always fail.
+      - name: Refresh the release pointers
         if: env.EO_ENABLED == 'true'
         continue-on-error: true
         env:
