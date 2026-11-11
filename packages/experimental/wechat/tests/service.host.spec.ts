@@ -568,6 +568,7 @@ it('sends generated tool-media artifacts from structured result metadata', async
       const client = new IlinkClient(fake.url, token)
       vi.spyOn(client, 'sendMedia').mockImplementation(async (kind, filename, bytes) => {
         sentMedia.push({ kind, filename, bytes })
+        return { upload: { ret: 0 }, send: { ret: 0 } }
       })
       return client
     },
@@ -626,7 +627,10 @@ it('compresses oversized videos in a temporary directory and removes the output 
     },
     createClient: (_baseUrl, token) => {
       const client = new IlinkClient(fake.url, token)
-      vi.spyOn(client, 'sendMedia').mockImplementation(async (kind) => { sentKinds.push(kind) })
+      vi.spyOn(client, 'sendMedia').mockImplementation(async (kind) => {
+        sentKinds.push(kind)
+        return { upload: { ret: 0 }, send: { ret: 0 } }
+      })
       return client
     },
   })
