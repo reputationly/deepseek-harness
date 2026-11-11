@@ -25,6 +25,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.environ.get("SUANLI_SYNC_ROOT", "/srv/downloads/suanli-assistant")
@@ -193,6 +194,12 @@ def sync(name, wanted, state):
 
     link = os.path.join(ROOT, wanted["link"])
 
+    # 一旦确认本地不是发布端当前这一版，先撤掉浮动链接：请求会落到「本地缺失 → 回退 R2」，
+    # 拿到的一定是当前版本；否则在下载失败的窗口里，latest/ 会继续吐上一个版本的字节。
+    if os.path.lexists(link):
+        os.unlink(link)
+        print("unlinked stale %s" % wanted["link"], flush=True)
+
     def give_up(reason):
         """Drop the stale floating name instead of leaving it pointing at the previous release."""
         if os.path.lexists(link):
@@ -277,7 +284,10 @@ def main():
     # Packages go one at a time; each one is already parallel across ranges, so overlapping them too
     # would just open eighteen connections to the same edge node.
     for name, entry in sorted(wanted.items()):
-        sync(name, entry, state)
+        try:
+            sync(name, entry, state)
+        except Exception as error:                                    # noqa: BLE001
+            sys.stderr.write("sync aborted for %s: %s\n" % (name, error))
     prune(wanted, state)
     save_state(state)
 
