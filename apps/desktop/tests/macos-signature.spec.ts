@@ -86,7 +86,7 @@ describe('desktop macOS release signature', () => {
         signIgnore: ['/Contents/Resources/app\\.asar\\.unpacked/dsh(?:/|$)', '/Contents/Resources/runtime/primary-runtime(?:/|$)', '\\.pak$'],
       },
       dmg: {
-        format: 'ULMO',
+        format: 'ULFO',
         sign: true,
         writeUpdateInfo: false,
       },
@@ -99,7 +99,7 @@ describe('desktop macOS release signature', () => {
     expect(typeof config.artifactBuildCompleted).toBe('function')
   })
 
-  it('accepts LZMA DMGs through builder validation while rejecting unknown formats', async () => {
+  it('accepts LZFSE DMGs through builder validation while rejecting unknown formats', async () => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     for (const arch of ['arm64', 'x64']) {
       for (const unsigned of ['0', '1']) {
@@ -108,7 +108,7 @@ describe('desktop macOS release signature', () => {
           DSH_DESKTOP_TARGET_ARCH: arch,
           DSH_DESKTOP_UNSIGNED: unsigned,
         }, 'darwin', arch)
-        expect(config.dmg.format).toBe('ULMO')
+        expect(config.dmg.format).toBe('ULFO')
         await expect(validateConfiguration(config, { isEnabled: false })).resolves.toBeUndefined()
       }
     }

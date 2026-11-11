@@ -15,6 +15,26 @@ const runnerPrivatePnpmDestination = /^\$\{\{ runner\.temp \}\}\/setup-pnpm-\$\{
 const nativeWindowsPnpmDestination = '${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}'
 
 describe('CI workflow', () => {
+  it('runs the replacement type gate on pull requests and master pushes', () => {
+    const workflow = loadWorkflow('.github/workflows/suanli-typecheck.yml')
+    expect(workflow.name).toBe('Type check')
+    expect(workflow.on).toEqual({ pull_request: null, push: { branches: ['master'] } })
+    expect(workflow.permissions).toEqual({ contents: 'read' })
+    expect(workflow.concurrency).toEqual({
+      group: 'typecheck-${{ github.ref }}',
+      'cancel-in-progress': true,
+    })
+    const job = workflowJob(workflow, 'typecheck')
+    expect(job).toMatchObject({ name: 'Type check', 'runs-on': 'ubuntu-latest', 'timeout-minutes': 30 })
+    expect(job.steps).toEqual([
+      { uses: 'actions/checkout@v4' },
+      { uses: 'actions/setup-node@v4', with: { 'node-version': 24 } },
+      { run: 'corepack enable' },
+      { run: 'pnpm install --frozen-lockfile' },
+      { run: 'pnpm run typecheck' },
+    ])
+  })
+
   it('keeps at most eleven worker jobs active across PR workflows while Python runtime targets follow the SDK suite', () => {
     const ci = loadWorkflow('.github/workflows/ci.yml')
     const ciWindows = loadWorkflow('.github/workflows/ci-windows.yml')

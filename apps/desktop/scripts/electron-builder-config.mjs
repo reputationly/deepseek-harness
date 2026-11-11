@@ -197,7 +197,7 @@ export function createElectronBuilderConfig(
       target: unsigned ? ['dmg'] : ['dmg', 'zip'],
     },
     dmg: {
-      format: 'ULMO',
+      format: 'ULFO',
       sign: !unsigned,
       writeUpdateInfo: false,
     },
