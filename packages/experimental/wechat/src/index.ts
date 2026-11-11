@@ -662,7 +662,24 @@ export class WechatService extends TypertRemoteService {
     }
     const root = session.header.cwd
     if (root === undefined) return
-    for (const path of paths) await this.sendWorkspaceFile(path, root, undefined, contextToken)
+    let projectRoot: string | undefined
+    try {
+      projectRoot = await realpath(root)
+    } catch (error) {
+      this.ctx.logger.debug(`wechat: project path unavailable for generated-file display (${safePublicError(error)})`)
+    }
+    for (const path of paths) {
+      const requested = isAbsolute(path) ? path : resolve(root, path)
+      let display = requested
+      try {
+        const source = await realpath(requested)
+        display = projectRoot === undefined ? source : this.projectFileDisplay(source, root, projectRoot)
+        await this.sendLocalFile(source, display, undefined, contextToken)
+      } catch (error) {
+        this.ctx.logger.warn(`wechat: generated artifact delivery failed (${safePublicError(error)})`)
+        await this.sendText(`生成的文件没能发到微信，已保存在电脑上：${display}`, contextToken)
+      }
+    }
   }
 
   private async runCommand(text: string, contextToken?: string): Promise<void> {
@@ -907,6 +924,34 @@ export class WechatService extends TypertRemoteService {
     if (relativePath === '' || relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
       throw new Error('微信文件只能从当前项目工作区发送')
     }
+    return this.sendLocalFile(
+      source,
+      this.projectFileDisplay(source, projectPath, root),
+      caption,
+      contextToken,
+    )
+  }
+
+  private projectFileDisplay(source: string, projectPath: string, root: string): string {
+    const relativePath = relative(root, source)
+    if (relativePath === '' || relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+      return source
+    }
+    let title = basename(projectPath)
+    try {
+      title = this.projects().find(entry => entry.path === projectPath)?.title ?? title
+    } catch (error) {
+      this.ctx.logger.debug(`wechat: project title unavailable for file display (${safePublicError(error)})`)
+    }
+    return `项目「${title}」/${relativePath.split(sep).join('/')}`
+  }
+
+  private async sendLocalFile(
+    source: string,
+    display: string,
+    caption?: string,
+    contextToken?: string,
+  ): Promise<boolean> {
     const info = await stat(source)
     if (!info.isFile()) throw new Error('请选择一个普通文件')
     if (caption) await this.sendText(caption, contextToken)
@@ -935,9 +980,8 @@ export class WechatService extends TypertRemoteService {
         }
       }
       if (size > MAX_OUTBOUND_BYTES) {
-        const project = this.projects().find(entry => entry.path === projectPath)
         const megabytes = (info.size / 1024 / 1024).toFixed(1)
-        await this.sendText(`文件太大（${megabytes} MB），没法通过微信发送，已保存在电脑上：项目「${project?.title ?? basename(projectPath)}」/${relativePath.split(sep).join('/')}`, contextToken)
+        await this.sendText(`文件太大（${megabytes} MB），没法通过微信发送，已保存在电脑上：${display}`, contextToken)
         return false
       }
       const bytes = await readFile(filePath)

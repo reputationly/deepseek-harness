@@ -898,7 +898,9 @@ it('loads persisted state only once across logout and later status reads', async
 
 it('sends generated tool-media artifacts from structured result metadata', async () => {
   const image = Buffer.from('generated image')
-  const artifactPath = 'generated/image.png'
+  const relativeArtifact = Buffer.from('relative generated image')
+  const relativeArtifactPath = 'generated/relative.png'
+  let fileTool: FakeFileTool | undefined
   let updateCalls = 0
   const fake = await createFakeIlinkServer((request, response) => {
     if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
@@ -916,14 +918,30 @@ it('sends generated tool-media artifacts from structured result metadata', async
       })
     } else respond(response, { ret: 0 })
   })
+  const cleanup: {
+    home?: string
+    dispose?: () => Promise<void>
+    disposeAgents?: () => Promise<void>
+  } = {}
+  onTestFinished(async () => {
+    await cleanup.dispose?.()
+    await cleanup.disposeAgents?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
   const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-generated-media-'))
+  cleanup.home = home
   const store = new WechatStore(home)
   const projectPath = join(store.directory, 'project')
+  const artifactDirectory = join(home, 'media-output')
+  const artifactPath = join(artifactDirectory, 'image.png')
   await seedCredentials(store, projectPath)
+  await mkdir(artifactDirectory, { recursive: true })
   await mkdir(join(projectPath, 'generated'), { recursive: true })
-  await writeFile(join(projectPath, artifactPath), image)
+  await writeFile(artifactPath, image)
+  await writeFile(join(projectPath, relativeArtifactPath), relativeArtifact)
   const sentMedia: Array<{ readonly kind: string; readonly filename: string; readonly bytes: Uint8Array }> = []
-  const agents = createFakeAgents(() => {}, async (_agent, _message, events) => {
+  const agents = createFakeAgents((tool) => { fileTool = tool }, async (_agent, _message, events) => {
     events.push(
       { type: 'tool/call', data: { callId: 'image-call', name: 'generate_image' } },
       {
@@ -931,6 +949,17 @@ it('sends generated tool-media artifacts from structured result metadata', async
         data: {
           message: { toolCallId: 'image-call', content: [{ type: 'text', text: `Wrote ${artifactPath}.` }] },
           meta: { status: 'done', model: 'image-model', path: artifactPath, nodeId: 'image-node' },
+        },
+      },
+      { type: 'tool/call', data: { callId: 'relative-image-call', name: 'generate_image' } },
+      {
+        type: 'tool/result',
+        data: {
+          message: {
+            toolCallId: 'relative-image-call',
+            content: [{ type: 'text', text: `Wrote ${relativeArtifactPath}.` }],
+          },
+          meta: { status: 'done', model: 'image-model', path: relativeArtifactPath, nodeId: 'relative-image-node' },
         },
       },
       { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Done' }] } } },
@@ -948,16 +977,115 @@ it('sends generated tool-media artifacts from structured result metadata', async
       return client
     },
   })
-  onTestFinished(async () => {
-    await harness.ctx.fiber.dispose()
-    await agents.dispose()
-    await fake.close()
-    await rm(home, { recursive: true, force: true })
-  })
+  cleanup.dispose = () => harness.ctx.fiber.dispose()
+  cleanup.disposeAgents = () => agents.dispose()
 
-  await vi.waitFor(() => { expect(sentMedia).toHaveLength(1) })
+  await vi.waitFor(() => { expect(sentMedia).toHaveLength(2) })
   expect(sentMedia[0]).toMatchObject({ kind: 'image', filename: 'image.png' })
   expect(sentMedia[0]?.bytes).toEqual(image)
+  expect(sentMedia[1]).toMatchObject({ kind: 'image', filename: 'relative.png' })
+  expect(sentMedia[1]?.bytes).toEqual(relativeArtifact)
+  await expect(fileTool!.execute({ path: artifactPath }))
+    .rejects.toThrow('微信文件只能从当前项目工作区发送')
+})
+
+it('isolates generated artifact delivery failures and continues with later files', async () => {
+  const failedArtifact = Buffer.from('failed image')
+  const nextArtifact = Buffer.from('next image')
+  let updateCalls = 0
+  const fake = await createFakeIlinkServer((request, response) => {
+    if (request.path.endsWith('/notifystart') || request.path.endsWith('/notifystop')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getconfig')) respond(response, { ret: 0 })
+    else if (request.path.endsWith('/getupdates')) {
+      updateCalls += 1
+      if (updateCalls === 1) respond(response, {
+        ret: 0,
+        get_updates_buf: 'generated-media-failure-cursor',
+        msgs: [
+          {
+            message_id: 92,
+            from_user_id: 'owner-id',
+            item_list: [{ type: 1, text_item: { text: 'generate two images' } }],
+          },
+          {
+            message_id: 93,
+            from_user_id: 'owner-id',
+            item_list: [{ type: 1, text_item: { text: 'continue after media failure' } }],
+          },
+        ],
+      })
+    } else respond(response, { ret: 0 })
+  })
+  const cleanup: {
+    home?: string
+    dispose?: () => Promise<void>
+    disposeAgents?: () => Promise<void>
+  } = {}
+  onTestFinished(async () => {
+    await cleanup.dispose?.()
+    await cleanup.disposeAgents?.()
+    await fake.close()
+    if (cleanup.home !== undefined) await rm(cleanup.home, { recursive: true, force: true })
+  })
+  const home = await mkdtemp(join(tmpdir(), 'dsh-wechat-generated-media-failure-'))
+  cleanup.home = home
+  const store = new WechatStore(home)
+  const projectPath = join(store.directory, 'project')
+  const artifactDirectory = join(home, 'media-output')
+  const failedPath = join(artifactDirectory, 'failed.png')
+  const nextPath = join(artifactDirectory, 'next.png')
+  await seedCredentials(store, projectPath)
+  await mkdir(artifactDirectory, { recursive: true })
+  await writeFile(failedPath, failedArtifact)
+  await writeFile(nextPath, nextArtifact)
+  const mediaAttempts: string[] = []
+  const agents = createFakeAgents(() => {}, async (_agent, message, events) => {
+    if (userText(message) === 'generate two images') {
+      events.push(
+        { type: 'tool/call', data: { callId: 'failed-image-call', name: 'generate_image' } },
+        {
+          type: 'tool/result',
+          data: {
+            message: { toolCallId: 'failed-image-call', content: [{ type: 'text', text: `Wrote ${failedPath}.` }] },
+            meta: { status: 'done', model: 'image-model', path: failedPath, nodeId: 'failed-image-node' },
+          },
+        },
+        { type: 'tool/call', data: { callId: 'next-image-call', name: 'generate_image' } },
+        {
+          type: 'tool/result',
+          data: {
+            message: { toolCallId: 'next-image-call', content: [{ type: 'text', text: `Wrote ${nextPath}.` }] },
+            meta: { status: 'done', model: 'image-model', path: nextPath, nodeId: 'next-image-node' },
+          },
+        },
+        { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'First turn completed' }] } } },
+      )
+    } else {
+      events.push({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Follow-up processed' }] } } })
+    }
+  })
+  const harness = await fixture(fake.url, store, {
+    sleep: async () => {},
+    agents: agents.service,
+    createClient: (_baseUrl, token) => {
+      const client = new IlinkClient(fake.url, token)
+      vi.spyOn(client, 'sendMedia').mockImplementation(async (_kind, filename) => {
+        mediaAttempts.push(filename)
+        if (filename === 'failed.png') throw new Error('upload failed')
+        return { upload: { ret: 0 }, send: { ret: 0 } }
+      })
+      return client
+    },
+  })
+  cleanup.dispose = () => harness.ctx.fiber.dispose()
+  cleanup.disposeAgents = () => agents.dispose()
+
+  await vi.waitFor(() => {
+    expect(sentTexts(fake.requests)).toContain('Follow-up processed')
+  })
+  expect(mediaAttempts).toEqual(['failed.png', 'failed.png', 'next.png'])
+  expect(sentTexts(fake.requests)).toContain(`生成的文件没能发到微信，已保存在电脑上：${failedPath}`)
+  expect(sentTexts(fake.requests)).not.toContain('微信消息处理失败，请稍后重试')
 })
 
 it('compresses oversized videos in a temporary directory and removes the output after sending', async () => {
