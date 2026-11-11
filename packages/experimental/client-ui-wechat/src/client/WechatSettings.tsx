@@ -1,12 +1,20 @@
-import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WechatSnapshot } from '@deepseek-ai/dsh-wechat/types'
+import type { WechatDesktopPowerSource } from './desktop-power-source.ts'
 import { NS } from './locales.ts'
 import css from './WechatSettings.module.css'
 
 /** Data and commands supplied by the client registration. */
 export interface WechatSettingsInjected {
-  readonly hooks: { readonly snapshot: HostObservable<WechatSnapshot> }
+  readonly hooks: {
+    readonly snapshot: HostObservable<WechatSnapshot>
+    readonly power: WechatDesktopPowerSource['store']
+  }
+  /** Whether a protocol-compatible Desktop power bridge is available. */
+  readonly powerAvailable: boolean
+  /** @param preventSleep - Whether to prevent system suspension while Desktop runs. */
+  setPreventSleep(preventSleep: boolean): Promise<void>
   startLogin(): Promise<void>
   cancelLogin(): Promise<void>
   disconnect(): Promise<void>
@@ -20,6 +28,7 @@ export type WechatSettingsProps = PropsRuntime<'settings.section'> & PropsLocale
 /** Render the QR login lifecycle and project selection. */
 export function WechatSettings(props: WechatSettingsProps) {
   const snapshot = props.useSnapshot(value => value)
+  const power = props.usePower(value => value)
   const { t } = props
   const status = snapshot.status
   const connected = status.state === 'connected'
@@ -54,6 +63,16 @@ export function WechatSettings(props: WechatSettingsProps) {
         }}>{t('logout')}</Button>
       </>}
     </div>
+    {props.powerAvailable && <div className={css.power} role="group" aria-label={t('keepAwake.title')}>
+      <div className={css.powerText}>
+        <div className={css.powerTitle}>{t('keepAwake.title')}</div>
+        <div className={css.powerDescription}>{t('keepAwake.description')}</div>
+        {power.failed && <div className={css.error} role="alert">{t('keepAwake.error')}</div>}
+      </div>
+      <Switch checked={power.pending ?? power.state?.preventSleep ?? false}
+        disabled={power.pending !== undefined || power.state?.changing === true || power.state === undefined}
+        label={t('keepAwake.title')} onChange={(value) => { void props.setPreventSleep(value) }} />
+    </div>}
     {connected && <div className={css.project}>
       <label htmlFor="wechat-project">{t('project')}</label>
       <select id="wechat-project" value={snapshot.defaultProjectPath ?? ''}

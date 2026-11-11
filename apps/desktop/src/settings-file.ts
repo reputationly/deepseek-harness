@@ -8,17 +8,24 @@ const preferencesSchema = z.object({
   allowTestAuthPopupWindow: z.boolean(),
   channel: z.enum(['nightly', 'stable']),
 })
-const documentSchema = z.looseObject({ updates: z.looseObject({}).optional() })
+const powerPreferencesSchema = z.object({ preventSleep: z.boolean() })
+const documentSchema = z.looseObject({
+  updates: z.looseObject({}).optional(),
+  power: z.looseObject({}).optional(),
+})
 
 /** Known field values before consumers supply defaults for absent fields. */
 export type DesktopUpdatePreferences = z.infer<typeof preferencesSchema>
-/** Unknown root and updates fields survive a read-modify-write operation. */
+/** Power preferences are stored independently from updater preferences. */
+export type DesktopPowerPreferences = z.infer<typeof powerPreferencesSchema>
+/** Unknown root and section fields survive a read-modify-write operation. */
 export type DesktopSettingsDocument = z.infer<typeof documentSchema>
+type DesktopSettingsPreferences = DesktopUpdatePreferences & DesktopPowerPreferences
 /** Handling-relevant failure details; validation failures never include document contents. */
 export type DesktopSettingsProblem =
   | { kind: 'read' }
   | { kind: 'invalid'; reason: 'json' | 'structure' }
-  | { kind: 'invalid'; reason: 'field'; field: keyof DesktopUpdatePreferences }
+  | { kind: 'invalid'; reason: 'field'; field: keyof DesktopSettingsPreferences }
   | { kind: 'write'; operation: 'initialize' | 'save'; effect: 'unchanged' | 'unknown' | 'written' }
 
 /** A storage or validation failure; business consumers decide fallback or suspension. */
@@ -46,10 +53,10 @@ export type DesktopSettingsRead =
   | {
     kind: 'ready'
     document: DesktopSettingsDocument
-    fields: { [K in keyof DesktopUpdatePreferences]: DesktopSettingsField<DesktopUpdatePreferences[K]> }
+    fields: { [K in keyof DesktopSettingsPreferences]: DesktopSettingsField<DesktopSettingsPreferences[K]> }
   }
 
-function field<T>(schema: z.ZodType<T>, value: unknown, name: keyof DesktopUpdatePreferences, path: string): DesktopSettingsField<T> {
+function field<T>(schema: z.ZodType<T>, value: unknown, name: keyof DesktopSettingsPreferences, path: string): DesktopSettingsField<T> {
   if (value === undefined) return { kind: 'absent' }
   const result = schema.safeParse(value)
   return result.success ? { kind: 'valid', value: result.data }
@@ -104,6 +111,7 @@ export class DesktopSettingsFile {
       allowTestAuthPopupWindow: field(preferencesSchema.shape.allowTestAuthPopupWindow,
         document.updates?.allowTestAuthPopupWindow, 'allowTestAuthPopupWindow', this.path),
       channel: field(preferencesSchema.shape.channel, document.updates?.channel, 'channel', this.path),
+      preventSleep: field(powerPreferencesSchema.shape.preventSleep, document.power?.preventSleep, 'preventSleep', this.path),
     } }
   }
 
@@ -129,11 +137,25 @@ export class DesktopSettingsFile {
    * @returns After atomic replacement and lock release; otherwise throws DesktopSettingsFileError.
    */
   async saveUpdates(updates: Partial<DesktopUpdatePreferences>): Promise<void> {
-    const result = await this.mutate({ kind: 'save', updates })
+    const result = await this.mutate({ kind: 'save', section: 'updates', values: updates })
     if (result.kind === 'error') throw result.error
   }
 
-  private async mutate(request: { kind: 'initialize' } | { kind: 'save'; updates: Partial<DesktopUpdatePreferences> }): Promise<DesktopSettingsRead> {
+  /**
+   * Patch power preferences under the shared writer lock without replacing other sections.
+   * @param power - Typed fields to replace; omitted keys remain unchanged.
+   * @returns After atomic replacement and lock release; otherwise throws DesktopSettingsFileError.
+   */
+  async savePower(power: Partial<DesktopPowerPreferences>): Promise<void> {
+    const result = await this.mutate({ kind: 'save', section: 'power', values: power })
+    if (result.kind === 'error') throw result.error
+  }
+
+  private async mutate(request: { kind: 'initialize' } | {
+    kind: 'save'
+    section: 'updates' | 'power'
+    values: Partial<DesktopUpdatePreferences> | Partial<DesktopPowerPreferences>
+  }): Promise<DesktopSettingsRead> {
     let effect: 'unchanged' | 'unknown' | 'written' = 'unchanged'
     try {
       await mkdir(dirname(this.path), { recursive: true, mode: 0o700 })
@@ -142,8 +164,9 @@ export class DesktopSettingsFile {
         if (current.kind === 'error') throw current.error
         if (request.kind === 'initialize' && current.kind !== 'missing') return current
         const document = current.kind === 'ready' ? current.document : {}
-        const updates = request.kind === 'initialize' ? { allowTestAuthPopupWindow: false } : request.updates
-        const next = { ...document, updates: { ...document.updates, ...updates } }
+        const next = request.kind === 'initialize'
+          ? { ...document, updates: { ...document.updates, allowTestAuthPopupWindow: false } }
+          : { ...document, [request.section]: { ...document[request.section], ...request.values } }
         const raw = `${JSON.stringify(next, null, 2)}\n`
         effect = 'unknown'
         if (request.kind === 'initialize') {

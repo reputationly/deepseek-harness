@@ -1,7 +1,7 @@
 import type { FileSaveResult } from '@deepseek-ai/dsh-client-ui-file-actions/types'
 /** Origin-scoped boot, native directory selection, host paths of picked files, and update presentation with native confirmation actions. */
 
-import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
+import type { DesktopChannelState, DesktopChannelChangeResult, DesktopPowerState, DesktopPowerChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import type { DesktopShortcutInput, ShortcutConfigSnapshot, ShortcutSaveResult } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { DESKTOP_IPC, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
@@ -81,6 +81,15 @@ function createProductApi(): DshDesktopProductApi {
         const handle = (_event: Electron.IpcRendererEvent, state: DesktopUpdatePresentation): void => { listener(state) }
         ipcRenderer.on(DESKTOP_IPC.updatesPresentation, handle)
         return () => { ipcRenderer.off(DESKTOP_IPC.updatesPresentation, handle) }
+      },
+    },
+    power: {
+      get: () => ipcRenderer.invoke(DESKTOP_IPC.powerGet) as Promise<DesktopPowerState>,
+      set: preventSleep => ipcRenderer.invoke(DESKTOP_IPC.powerSet, preventSleep) as Promise<DesktopPowerChangeResult>,
+      subscribe(listener) {
+        const handle = (_event: Electron.IpcRendererEvent, state: DesktopPowerState): void => { listener(state) }
+        ipcRenderer.on(DESKTOP_IPC.powerChanged, handle)
+        return () => { ipcRenderer.off(DESKTOP_IPC.powerChanged, handle) }
       },
     },
   }

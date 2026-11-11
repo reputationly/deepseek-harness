@@ -7,7 +7,7 @@ kind: "package-reference"
 
 ## Summary
 
-This Client package adds a localized WeChat card to Settings. It displays QR login and connection state, exposes reconnect, disconnect, and logout actions, and lets the user choose the default workspace.
+This Client package adds a localized WeChat card to Settings. It displays QR login and connection state, exposes reconnect, disconnect, and logout actions, and lets the user choose the default workspace. In Desktop, the card also includes the shared keep-awake preference when the versioned power bridge is available.
 
 ## Use this package
 

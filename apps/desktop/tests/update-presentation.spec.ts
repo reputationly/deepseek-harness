@@ -2,11 +2,13 @@ import { expect, it } from 'vitest'
 import { desktopUpdateErrorSummary, presentDesktopUpdate } from '../src/update-presentation.ts'
 import { en, zh } from '../src/locale.ts'
 import type { DesktopUpdateState, DshDesktopProductApi } from '../src/ipc.ts'
-import type { DesktopUpdateBridge } from '@deepseek-ai/dsh-client-ui-settings-general/types'
+import type { DesktopPowerBridge, DesktopUpdateBridge } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 
 it('keeps the Electron preload assignable to the product consumer', () => {
   const assign = (bridge: DshDesktopProductApi['updates']): DesktopUpdateBridge => bridge
+  const powerAssign = (bridge: DshDesktopProductApi['power']): DesktopPowerBridge => bridge
   expect(assign).toBeTypeOf('function')
+  expect(powerAssign).toBeTypeOf('function')
 })
 
 it('records visible ordinary-update states without authorizing downloads or installation', async () => {

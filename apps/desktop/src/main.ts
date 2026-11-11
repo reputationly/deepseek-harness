@@ -2,7 +2,7 @@
 
 import { installFileActions } from './file-actions.ts'
 import { configurationFailure, channelSaveFailure, configurationMessage } from './update-configuration.ts'
-import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
+import type { DesktopChannelState, DesktopChannelChangeResult, DesktopPowerState, DesktopPowerChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import { DesktopUpdateSettings } from './update-settings.ts'
 import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
@@ -65,6 +65,8 @@ import { desktopClientMetadata, desktopClientVersion } from './client-metadata.t
 import { DesktopMandatoryUpdateWindow } from './mandatory-update-window.ts'
 import { DesktopPolicyTestAuth } from './policy-test-auth.ts'
 import { readDesktopSettings } from './settings.ts'
+import { DesktopSettingsFile } from './settings-file.ts'
+import { DesktopKeepAwake } from './keep-awake.ts'
 import { readDesktopLocaleCache, writeDesktopLocaleCache } from './locale-cache.ts'
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
@@ -376,6 +378,11 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
 
 async function main(): Promise<void> {
   const desktopSettings = await readDesktopSettings(app.getPath('userData'))
+  const keepAwake = new DesktopKeepAwake()
+  app.on('will-quit', () => { keepAwake.dispose() })
+  keepAwake.set(desktopSettings.power.preventSleep)
+  const powerSettingsFile = new DesktopSettingsFile(app.getPath('userData'))
+  let powerState: DesktopPowerState = { preventSleep: keepAwake.active, changing: false }
   void pruneCrashReports(app.getPath('logs'))
   const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR
   const updateJournal = journalDirectory === undefined ? undefined : new DesktopUpdateJournal(journalDirectory, app.getVersion())
@@ -759,6 +766,13 @@ async function main(): Promise<void> {
   )
 
   if (initialChannel.kind === 'error') updates.suspendConfiguration(initialChannel.error.path)
+  const publishPower = (state: DesktopPowerState): DesktopPowerState => {
+    powerState = state
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send(DESKTOP_IPC.powerChanged, state)
+    }
+    return state
+  }
   const publishChannel = (state: DesktopChannelState): DesktopChannelState => {
     channelState = state
     for (const window of BrowserWindow.getAllWindows()) {
@@ -901,6 +915,36 @@ async function main(): Promise<void> {
   ipcMain.handle(DESKTOP_IPC.updatesChannelGet, (event) => {
     assertProductSender(event)
     return channelState
+  })
+  ipcMain.handle(DESKTOP_IPC.powerGet, (event) => {
+    assertProductSender(event)
+    return powerState
+  })
+  let powerRequests = 0
+  let powerTransition: Promise<void> = Promise.resolve()
+  ipcMain.handle(DESKTOP_IPC.powerSet, async (event, preventSleep: unknown): Promise<DesktopPowerChangeResult> => {
+    assertProductSender(event)
+    if (typeof preventSleep !== 'boolean') throw new Error('desktop power: unsupported preventSleep value')
+    powerRequests++
+    publishPower({ ...powerState, changing: true })
+    const operation = powerTransition.then(async (): Promise<DesktopPowerChangeResult> => {
+      try {
+        await powerSettingsFile.savePower({ preventSleep })
+      } catch (_error) {
+        const state = publishPower({ ...powerState, changing: --powerRequests > 0 })
+        return { kind: 'failed', state }
+      }
+      try {
+        keepAwake.set(preventSleep)
+      } catch (_error) {
+        const state = publishPower({ ...powerState, changing: --powerRequests > 0 })
+        return { kind: 'failed', state }
+      }
+      const state = publishPower({ preventSleep, changing: --powerRequests > 0 })
+      return { kind: 'applied', state }
+    })
+    powerTransition = operation.then(() => {}, () => {})
+    return await operation
   })
   let channelRequests = 0
   ipcMain.handle(DESKTOP_IPC.updatesChannelSet, async (event, channel: unknown): Promise<DesktopChannelChangeResult> => {

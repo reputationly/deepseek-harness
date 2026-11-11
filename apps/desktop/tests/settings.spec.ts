@@ -23,7 +23,10 @@ it('creates a discoverable default file on first launch without touching other p
   const { userData, path } = fixture()
   rmSync(join(userData, 'desktop'), { recursive: true })
   writeFileSync(join(userData, 'keybindings.json'), 'existing shortcuts\n')
-  expect(await readDesktopSettings(userData)).toEqual({ updates: { allowTestAuthPopupWindow: false } })
+  expect(await readDesktopSettings(userData)).toEqual({
+    updates: { allowTestAuthPopupWindow: false },
+    power: { preventSleep: false },
+  })
   expect(readFileSync(path, 'utf8')).toBe('{\n  "updates": {\n    "allowTestAuthPopupWindow": false\n  }\n}\n')
   expect(readFileSync(join(userData, 'keybindings.json'), 'utf8')).toBe('existing shortcuts\n')
 })
@@ -32,6 +35,14 @@ it.each(['{}', '{"updates": {}}', '{"other": 1, "updates": {"other": true}}'])('
   const { userData, path } = fixture()
   writeFileSync(path, raw)
   expect((await readDesktopSettings(userData)).updates.allowTestAuthPopupWindow).toBe(false)
+  expect(readFileSync(path, 'utf8')).toBe(raw)
+})
+
+it.each([false, true])('loads the persisted keep-awake preference without rewriting it: %s', async (preventSleep) => {
+  const { userData, path } = fixture()
+  const raw = JSON.stringify({ power: { preventSleep }, extension: { keep: true } })
+  writeFileSync(path, raw)
+  expect((await readDesktopSettings(userData)).power).toEqual({ preventSleep })
   expect(readFileSync(path, 'utf8')).toBe(raw)
 })
 
