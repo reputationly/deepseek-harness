@@ -6,7 +6,7 @@ import { basename, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { zipSync } from 'fflate'
 import { expect, it, vi } from 'vitest'
-import { downloadPrimaryRuntimeAsset, prepareFfmpegAssets, prepareMediaEditingSkillAssets, prepareOfficeSkillAssets, primaryRuntimePayloadDigest, prunePnpmForeignNativePackages, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
+import { downloadPrimaryRuntimeAsset, prepareFfmpegAssets, prepareSkillAssets, prepareOfficeSkillAssets, primaryRuntimePayloadDigest, prunePnpmForeignNativePackages, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
 import lock from './lock.json' with { type: 'json' }
 
 it('covers every SDK wheel target with the shared interpreter lock', () => {
@@ -207,17 +207,20 @@ it('copies complete Office resources outside the application archive and removes
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-it('copies the media-editing skill beside primary-runtime for packaged dsh discovery', async () => {
+it('copies every bundled skill beside primary-runtime for packaged dsh discovery', async () => {
   const root = await mkdtemp(join(tmpdir(), 'desktop-media-skill-'))
   try {
-    const source = join(root, 'package', 'assets', 'media-editing')
-    const destination = join(root, 'Contents', 'Resources', 'runtime', 'media-editing')
-    await mkdir(source, { recursive: true })
-    await writeFile(join(source, 'SKILL.md'), '# Media editing\n')
-    await prepareMediaEditingSkillAssets(source, destination)
+    const source = join(root, 'package', 'assets')
+    const destination = join(root, 'Contents', 'Resources', 'runtime', 'skills')
+    await mkdir(join(source, 'media-editing'), { recursive: true })
+    await mkdir(join(source, 'studio-pipeline'), { recursive: true })
+    await writeFile(join(source, 'media-editing', 'SKILL.md'), '# Media editing\n')
+    await writeFile(join(source, 'studio-pipeline', 'SKILL.md'), '# Studio pipeline\n')
+    await prepareSkillAssets(source, destination)
     await writeFile(join(destination, 'obsolete.txt'), 'old')
-    await prepareMediaEditingSkillAssets(source, destination)
-    expect(await readFile(join(destination, 'SKILL.md'), 'utf8')).toBe('# Media editing\n')
+    await prepareSkillAssets(source, destination)
+    expect(await readFile(join(destination, 'media-editing', 'SKILL.md'), 'utf8')).toBe('# Media editing\n')
+    expect(await readFile(join(destination, 'studio-pipeline', 'SKILL.md'), 'utf8')).toBe('# Studio pipeline\n')
     await expect(readFile(join(destination, 'obsolete.txt'))).rejects.toMatchObject({ code: 'ENOENT' })
   } finally { await rm(root, { recursive: true, force: true }) }
 })
