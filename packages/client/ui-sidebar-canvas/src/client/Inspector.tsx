@@ -114,8 +114,11 @@ export function Inspector({
         onChange={(next) => { setParams(current => ({ ...current, [control.id]: next })) }} />)}
       <PromptField value={prompt} onChange={setPrompt} t={t} />
       <Button variant="primary" size="sm" onClick={apply}>{t('inspector.apply')}</Button>
-      {planNodes === undefined || generateNodes === undefined ? undefined
-        : <Button variant="outline" size="sm" onClick={() => {
+    </section>}
+    {planNodes === undefined || generateNodes === undefined
+      || !['image', 'video', 'audio', 'storyboard', 'timeline'].includes(node.type) ? undefined
+      : <section className={css.section}>
+        <Button variant="outline" size="sm" onClick={() => {
           setNote(undefined)
           void planNodes([node.id]).then(async (planned) => {
             if (planned === undefined) return
@@ -127,9 +130,9 @@ export function Inspector({
             if (planned.state === 'needs_confirmation') { setPlan(planned); return }
             setNote(planned.message ?? planned.state)
           }).catch((error: unknown) => { setNote(error instanceof Error ? error.message : String(error)) })
-        }}>{t('inspector.generateNow')}</Button>}
-      {note === undefined ? undefined : <p className={css.note} role="status">{note}</p>}
-    </section>}
+        }}>{t('inspector.generateNow')}</Button>
+        {note === undefined ? undefined : <p className={css.note} role="status">{note}</p>}
+      </section>}
     {node.type === 'storyboard' && <section className={css.section}>
       <Button variant="outline" size="sm" onClick={() => { openTable?.(node.id) }}>{t('inspector.openTable')}</Button>
     </section>}

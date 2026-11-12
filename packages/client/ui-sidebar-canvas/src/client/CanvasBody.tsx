@@ -84,7 +84,7 @@ export function CanvasBody({
   }
   return <section className={clsx(css.root, fullscreen && css.fullscreen)} data-sidebar-canvas
     data-fullscreen={fullscreen ? 'true' : undefined} ref={root}>
-    <div className={css.canvasActions}>
+    {table === undefined ? <div className={css.canvasActions}>
       {added.length === 0 ? undefined : <span className={css.addedBadge} role="status">{t('canvas.added', { count: added.length })}</span>}
       <Button size="sm" variant="outline" onClick={() => {
         setPanel(value => !value)
@@ -101,7 +101,7 @@ export function CanvasBody({
         }}>
         {fullscreen ? t('canvas.exitFullscreen') : t('canvas.fullscreen')}
       </Button>
-    </div>
+    </div> : undefined}
     {state.status === 'failed' && <div className={css.notice} role="alert">
       <span className={css.noticeText}>{t('failed', { message: state.error })}</span>{retry}
     </div>}
