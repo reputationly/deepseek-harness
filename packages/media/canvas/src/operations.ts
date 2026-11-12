@@ -308,10 +308,10 @@ export function applyOperations(
         const to = find(operation.to)
         if (from.id === to.id) throw new Skip('a node cannot connect to itself')
         if (from.group === to.id || to.group === from.id) throw new Skip('a group cannot connect to its own member')
-        const kind = operation.kind ?? 'reference'
-        if (kind === 'derivation' && operation.role !== undefined) throw new Skip('a derivation edge carries no role')
-        const role = kind === 'derivation' ? undefined : operation.role ?? inferRole(from.type, to.type)
-        if (kind === 'reference' && role === undefined) throw new Skip(`cannot infer what ${from.id} supplies to ${to.id}`)
+        if (operation.kind === 'derivation' && operation.role !== undefined) throw new Skip('a derivation edge carries no role')
+        const role = operation.kind === 'derivation' ? undefined : operation.role ?? inferRole(from.type, to.type)
+        if (operation.kind === 'reference' && role === undefined) throw new Skip(`cannot infer what ${from.id} supplies to ${to.id}`)
+        const kind = role === undefined ? 'derivation' : 'reference'
         if (role === 'first_frame' || role === 'last_frame') {
           if (from.type !== 'image' || to.type !== 'video') throw new Skip(`${role} connects an image to a video`)
           const held = [...edges.values()].some(edge => edge.target === to.id && edge.role === role)

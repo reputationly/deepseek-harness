@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { resolveConfig } from '../src/config.ts'
 import { EMPTY_CANVAS } from '../src/document.ts'
 import { applyOperations } from '../src/operations.ts'
 import type { CanvasDocument, CanvasOperation } from '../src/types.ts'
 
-function build(operations: readonly CanvasOperation[], from: CanvasDocument = EMPTY_CANVAS) {
-  return applyOperations(from, operations)
+const limits = resolveConfig({})
+const now = (): string => '2026-01-01T00:00:00.000Z'
+
+function build(operations: readonly CanvasOperation[], from: CanvasDocument = EMPTY_CANVAS, rejected?: ReadonlyMap<number, string>) {
+  return applyOperations(from, operations, { limits, now, ...rejected === undefined ? {} : { rejected } })
 }
 
 function overlap(a: { x: number; y: number; width: number; height: number }, b: typeof a): boolean {
@@ -76,7 +80,7 @@ describe('applyOperations', () => {
   })
 
   it('reports no change when every operation is skipped or refused', () => {
-    const { changed, result } = applyOperations(EMPTY_CANVAS, [{ op: 'remove', node: 'n1' }, { op: 'add', type: 'image', path: '/x.png' }], new Map([[1, 'file /x.png does not exist']]))
+    const { changed, result } = build([{ op: 'remove', node: 'n1' }, { op: 'add', type: 'image', path: '/x.png' }], EMPTY_CANVAS, new Map([[1, 'file /x.png does not exist']]))
     expect(changed).toBe(false)
     expect(result.skipped).toEqual([
       { index: 0, op: 'remove', reason: 'node n1 does not exist' },
