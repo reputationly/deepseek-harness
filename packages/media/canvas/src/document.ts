@@ -5,9 +5,11 @@
 
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ResolvedConfig } from './config.ts'
+import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type {
-  CanvasDocument, CanvasEdge, CanvasEdgeKind, CanvasEdgeRole, CanvasNode, CanvasNodeType, DialogueLine, ExportRecord,
-  GenerationKind, GenerationSpec, NodeInput, NodeStatus, NodeVersion, Shot, ShotSize, StillMotion, TimelineRef,
+  BibleEntryId, CanvasDocument, CanvasEdge, CanvasEdgeKind, CanvasEdgeRole, CanvasNode, CanvasNodeId, CanvasNodeType,
+  DialogueId, DialogueLine, ExportRecord, GenerationKind, GenerationSpec, NodeInput, NodeStatus, NodeVersion, Shot, ShotId,
+  ShotSize, StillMotion, TimelineRef, VersionId,
 } from './types.ts'
 import { edgeId, inferRole } from './roles.ts'
 
@@ -100,10 +102,10 @@ function parseDialogue(value: unknown, what: string): DialogueLine {
   const speaker = record(raw.speaker, `${what}.speaker`)
   const kind = oneOf(speaker.kind, ['character', 'narrator'] as const, `${what}.speaker.kind`)
   return {
-    id: brandString<'DialogueId'>(text(raw.id, `${what}.id`)),
+    id: brandString<DialogueId>(text(raw.id, `${what}.id`)),
     speaker: kind === 'narrator'
       ? { kind }
-      : { kind, entry: brandString<'BibleEntryId'>(text(speaker.entry, `${what}.speaker.entry`)) },
+      : { kind, entry: brandString<BibleEntryId>(text(speaker.entry, `${what}.speaker.entry`)) },
     line: text(raw.line, `${what}.line`),
   }
 }
@@ -112,16 +114,16 @@ function parseShot(value: unknown, what: string): Shot {
   const raw = record(value, what)
   const beat = raw.beat === undefined ? undefined : record(raw.beat, `${what}.beat`)
   return {
-    id: brandString<'ShotId'>(text(raw.id, `${what}.id`)),
+    id: brandString<ShotId>(text(raw.id, `${what}.id`)),
     title: text(raw.title, `${what}.title`),
     shotSize: oneOf(raw.shotSize, SHOT_SIZES, `${what}.shotSize`),
     visual: text(raw.visual, `${what}.visual`),
     motion: text(raw.motion, `${what}.motion`),
     camera: text(raw.camera, `${what}.camera`),
     durationSec: finite(raw.durationSec, `${what}.durationSec`),
-    characters: stringList(raw.characters, `${what}.characters`).map(entry => brandString<'BibleEntryId'>(entry)),
-    ...raw.scene === undefined ? {} : { scene: brandString<'BibleEntryId'>(text(raw.scene, `${what}.scene`)) },
-    props: stringList(raw.props, `${what}.props`).map(entry => brandString<'BibleEntryId'>(entry)),
+    characters: stringList(raw.characters, `${what}.characters`).map(entry => brandString<BibleEntryId>(entry)),
+    ...raw.scene === undefined ? {} : { scene: brandString<BibleEntryId>(text(raw.scene, `${what}.scene`)) },
+    props: stringList(raw.props, `${what}.props`).map(entry => brandString<BibleEntryId>(entry)),
     dialogue: array(raw.dialogue, `${what}.dialogue`).map((entry, index) => parseDialogue(entry, `${what}.dialogue[${String(index)}]`)),
     sfx: text(raw.sfx, `${what}.sfx`),
     negative: text(raw.negative, `${what}.negative`),
@@ -135,8 +137,8 @@ function parseShot(value: unknown, what: string): Shot {
 function parseInput(value: unknown, what: string): NodeInput {
   const raw = record(value, what)
   return {
-    node: brandString<'CanvasNodeId'>(text(raw.node, `${what}.node`)),
-    version: brandString<'VersionId'>(text(raw.version, `${what}.version`)),
+    node: brandString<CanvasNodeId>(text(raw.node, `${what}.node`)),
+    version: brandString<VersionId>(text(raw.version, `${what}.version`)),
     ...raw.role === undefined ? {} : { role: oneOf(raw.role, EDGE_ROLES, `${what}.role`) },
     path: text(raw.path, `${what}.path`),
   }
@@ -146,7 +148,7 @@ function parseVersion(value: unknown, what: string): NodeVersion {
   const raw = record(value, what)
   const beats = raw.beats === undefined ? undefined : record(raw.beats, `${what}.beats`)
   return {
-    id: brandString<'VersionId'>(text(raw.id, `${what}.id`)),
+    id: brandString<VersionId>(text(raw.id, `${what}.id`)),
     ...raw.path === undefined ? {} : { path: text(raw.path, `${what}.path`) },
     ...raw.text === undefined ? {} : { text: text(raw.text, `${what}.text`) },
     ...raw.shots === undefined ? {} : { shots: array(raw.shots, `${what}.shots`).map((entry, index) => parseShot(entry, `${what}.shots[${String(index)}]`)) },
@@ -186,15 +188,15 @@ function parseGeneration(value: unknown, what: string): GenerationSpec {
     params: raw.params === undefined ? {} : params(raw.params, `${what}.params`),
     ...shot === undefined ? {} : {
       shot: {
-        storyboard: brandString<'CanvasNodeId'>(text(shot.storyboard, `${what}.shot.storyboard`)),
-        shots: stringList(shot.shots, `${what}.shot.shots`).map(entry => brandString<'ShotId'>(entry)),
+        storyboard: brandString<CanvasNodeId>(text(shot.storyboard, `${what}.shot.storyboard`)),
+        shots: stringList(shot.shots, `${what}.shot.shots`).map(entry => brandString<ShotId>(entry)),
       },
     },
     ...dialogue === undefined ? {} : {
       dialogue: {
-        storyboard: brandString<'CanvasNodeId'>(text(dialogue.storyboard, `${what}.dialogue.storyboard`)),
-        shot: brandString<'ShotId'>(text(dialogue.shot, `${what}.dialogue.shot`)),
-        line: brandString<'DialogueId'>(text(dialogue.line, `${what}.dialogue.line`)),
+        storyboard: brandString<CanvasNodeId>(text(dialogue.storyboard, `${what}.dialogue.storyboard`)),
+        shot: brandString<ShotId>(text(dialogue.shot, `${what}.dialogue.shot`)),
+        line: brandString<DialogueId>(text(dialogue.line, `${what}.dialogue.line`)),
       },
     },
     ...raw.tailChain === undefined ? {} : { tailChain: raw.tailChain === true },
@@ -208,7 +210,7 @@ function parseStatus(value: unknown, what: string): NodeStatus {
     if (typeof raw.retryable !== 'boolean') throw new CanvasCorruptError(`${what}.retryable is not a boolean`)
     return { state, at: text(raw.at, `${what}.at`), error: text(raw.error, `${what}.error`), retryable: raw.retryable }
   }
-  const jobId = brandString<'JobId'>(text(raw.jobId, `${what}.jobId`))
+  const jobId = brandString<JobId>(text(raw.jobId, `${what}.jobId`))
   const at = text(raw.at, `${what}.at`)
   if (state === 'queued') return { state, jobId, at }
   return {
@@ -222,7 +224,7 @@ function parseStatus(value: unknown, what: string): NodeStatus {
 function parseExport(value: unknown, what: string): ExportRecord {
   const raw = record(value, what)
   return {
-    node: brandString<'CanvasNodeId'>(text(raw.node, `${what}.node`)),
+    node: brandString<CanvasNodeId>(text(raw.node, `${what}.node`)),
     preset: text(raw.preset, `${what}.preset`),
     timelineRevision: count(raw.timelineRevision, `${what}.timelineRevision`),
     at: text(raw.at, `${what}.at`),
@@ -240,7 +242,7 @@ function parseTimeline(value: unknown, what: string): TimelineRef {
 
 function parseNode(value: unknown, index: number): CanvasNode {
   const raw = record(value, `nodes[${String(index)}]`)
-  const id = brandString<'CanvasNodeId'>(text(raw.id, `nodes[${String(index)}].id`))
+  const id = brandString<CanvasNodeId>(text(raw.id, `nodes[${String(index)}].id`))
   const type = oneOf(raw.type, NODE_TYPES, `node ${id} type`)
   const tailOf = raw.tailOf === undefined ? undefined : record(raw.tailOf, `node ${id} tailOf`)
   return {
@@ -251,20 +253,20 @@ function parseNode(value: unknown, index: number): CanvasNode {
     y: finite(raw.y, `node ${id} y`),
     width: finite(raw.width, `node ${id} width`),
     height: finite(raw.height, `node ${id} height`),
-    ...raw.group === undefined ? {} : { group: brandString<'CanvasNodeId'>(text(raw.group, `node ${id} group`)) },
+    ...raw.group === undefined ? {} : { group: brandString<CanvasNodeId>(text(raw.group, `node ${id} group`)) },
     ...raw.placed === true ? { placed: true } : {},
     ...raw.versions === undefined ? {} : {
       versions: array(raw.versions, `node ${id} versions`).map((entry, at) => parseVersion(entry, `node ${id} versions[${String(at)}]`)),
     },
-    ...raw.activeVersion === undefined ? {} : { activeVersion: brandString<'VersionId'>(text(raw.activeVersion, `node ${id} activeVersion`)) },
+    ...raw.activeVersion === undefined ? {} : { activeVersion: brandString<VersionId>(text(raw.activeVersion, `node ${id} activeVersion`)) },
     ...raw.gen === undefined ? {} : { gen: parseGeneration(raw.gen, `node ${id} gen`) },
     ...raw.status === undefined ? {} : { status: parseStatus(raw.status, `node ${id} status`) },
-    ...raw.bible === undefined ? {} : { bible: brandString<'BibleEntryId'>(text(raw.bible, `node ${id} bible`)) },
+    ...raw.bible === undefined ? {} : { bible: brandString<BibleEntryId>(text(raw.bible, `node ${id} bible`)) },
     ...raw.timeline === undefined ? {} : { timeline: parseTimeline(raw.timeline, `node ${id} timeline`) },
     ...tailOf === undefined ? {} : {
       tailOf: {
-        node: brandString<'CanvasNodeId'>(text(tailOf.node, `node ${id} tailOf.node`)),
-        version: brandString<'VersionId'>(text(tailOf.version, `node ${id} tailOf.version`)),
+        node: brandString<CanvasNodeId>(text(tailOf.node, `node ${id} tailOf.node`)),
+        version: brandString<VersionId>(text(tailOf.version, `node ${id} tailOf.version`)),
       },
     },
     ...raw.stale === true ? { stale: true } : {},
@@ -274,8 +276,8 @@ function parseNode(value: unknown, index: number): CanvasNode {
 
 function parseEdge(value: unknown, index: number): CanvasEdge {
   const raw = record(value, `edges[${String(index)}]`)
-  const source = brandString<'CanvasNodeId'>(text(raw.source, `edges[${String(index)}].source`))
-  const target = brandString<'CanvasNodeId'>(text(raw.target, `edges[${String(index)}].target`))
+  const source = brandString<CanvasNodeId>(text(raw.source, `edges[${String(index)}].source`))
+  const target = brandString<CanvasNodeId>(text(raw.target, `edges[${String(index)}].target`))
   const kind = oneOf(raw.kind, EDGE_KINDS, `edge ${source}->${target} kind`)
   const role = raw.role === undefined ? undefined : oneOf(raw.role, EDGE_ROLES, `edge ${source}->${target} role`)
   if (kind === 'derivation' && role !== undefined) throw new CanvasCorruptError(`derivation edge ${source}->${target} carries a role`)
@@ -355,8 +357,8 @@ export function migrateCanvas(value: unknown): CanvasDocument {
   const byId = new Map(nodes.map(node => [node.id, node]))
   const edges = array(raw.edges, 'edges').map((entry, index) => {
     const edge = record(entry, `edges[${String(index)}]`)
-    const source = byId.get(text(edge.source, `edges[${String(index)}].source`))
-    const target = byId.get(text(edge.target, `edges[${String(index)}].target`))
+    const source = byId.get(brandString<CanvasNodeId>(text(edge.source, `edges[${String(index)}].source`)))
+    const target = byId.get(brandString<CanvasNodeId>(text(edge.target, `edges[${String(index)}].target`)))
     if (source === undefined || target === undefined) throw new CanvasCorruptError(`edge ${String(index)} names a missing node`)
     const declared = text(edge.kind, `edges[${String(index)}].kind`)
     if (declared !== 'derivation' && declared !== 'reference') throw new CanvasCorruptError(`edge ${String(index)} has unknown kind ${declared}`)

@@ -10,6 +10,9 @@
     { "path": "../../core/session" },
     { "path": "../../core/tools" },
     { "path": "../../session/working-directory" },
-    { "path": "../../typert/protocol" }
+    { "path": "../../typert/protocol" },
+    { "path": "../../../vendor/schemastery" },
+    { "path": "../../jobs/jobs" },
+    { "path": "../../util/brand" }
   ]
 }

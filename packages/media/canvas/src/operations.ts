@@ -10,8 +10,8 @@ import { activeVersionOf, assertCanvas, CanvasCorruptError } from './document.ts
 import { fitGroups, layoutCreated, nodeSize, type DraftNode } from './layout.ts'
 import { edgeId, inferRole } from './roles.ts'
 import type {
-  CanvasDocument, CanvasEdge, CanvasEdgeRole, CanvasEditResult, CanvasNodeType, CanvasOperation, CanvasSkippedOperation,
-  DialogueLine, NodeVersion, Shot, VersionId,
+  CanvasDocument, CanvasEdge, CanvasEdgeRole, CanvasEditResult, CanvasNodeId, CanvasNodeType, CanvasOperation,
+  CanvasSkippedOperation, DialogueLine, NodeVersion, Shot, ShotId, VersionId,
 } from './types.ts'
 
 /** Inputs every operation list needs beyond the document itself. */
@@ -58,7 +58,7 @@ function nextVersionId(versions: readonly NodeVersion[]): VersionId {
     const suffix = Number(version.id.slice(1))
     if (Number.isInteger(suffix) && suffix > highest) highest = suffix
   }
-  return brandString<'VersionId'>(`v${String(highest + 1)}`)
+  return brandString<VersionId>(`v${String(highest + 1)}`)
 }
 
 function isTextType(type: CanvasNodeType): boolean {
@@ -197,9 +197,9 @@ export function applyOperations(
         if (operation.shots !== undefined && operation.shots.length > options.limits.maxShotsPerStoryboard) {
           throw new Skip(`a storyboard holds at most ${String(options.limits.maxShotsPerStoryboard)} shots`)
         }
-        const id = brandString<'CanvasNodeId'>(`n${String(nextId++)}`)
+        const id = brandString<CanvasNodeId>(`n${String(nextId++)}`)
         const version: NodeVersion = {
-          id: brandString<'VersionId'>('v1'),
+          id: brandString<VersionId>('v1'),
           ...content === undefined || content === '' ? {} : isTextType(operation.type) ? { text: content } : { path: content },
           ...operation.shots === undefined ? {} : { shots: operation.shots },
           ...operation.gen === undefined ? {} : { prompt: operation.gen.prompt },
@@ -215,7 +215,7 @@ export function applyOperations(
           activeVersion: version.id,
           ...operation.gen === undefined ? {} : { gen: operation.gen },
           ...operation.bible === undefined ? {} : { bible: operation.bible },
-          ...group === undefined ? {} : { group: brandString<'CanvasNodeId'>(group) },
+          ...group === undefined ? {} : { group: brandString<CanvasNodeId>(group) },
         })
         claim(operation.ref, id)
         return
@@ -275,7 +275,7 @@ export function applyOperations(
         const shots = storyboardOf(node)
         const id = `s${String(shots.reduce((highest, shot) => Math.max(highest, Number(shot.id.slice(1)) || 0), 0) + 1)}`
         const dialogue: readonly DialogueLine[] = operation.shot.dialogue
-        const inserted: Shot = { ...operation.shot, id: brandString<'ShotId'>(id), dialogue }
+        const inserted: Shot = { ...operation.shot, id: brandString<ShotId>(id), dialogue }
         const at = operation.after === undefined ? shots.length : shotAt(shots, operation.after) + 1
         writeShots(node, [...shots.slice(0, at), inserted, ...shots.slice(at)])
         return
@@ -291,6 +291,7 @@ export function applyOperations(
         const shots = storyboardOf(node)
         const from = shotAt(shots, operation.shot)
         const moved = shots[from]
+        if (moved === undefined) throw new Skip(`shot ${operation.shot} does not exist`)
         const rest = shots.filter((_shot, at) => at !== from)
         const at = operation.after === undefined ? rest.length : shotAt(rest, operation.after) + 1
         writeShots(node, [...rest.slice(0, at), moved, ...rest.slice(at)])
@@ -299,7 +300,7 @@ export function applyOperations(
       case 'set_version': {
         const node = find(operation.node)
         if (!(node.versions ?? []).some(version => version.id === operation.version)) throw new Skip(`node ${node.id} has no version ${operation.version}`)
-        node.activeVersion = brandString<'VersionId'>(operation.version)
+        node.activeVersion = brandString<VersionId>(operation.version)
         return
       }
       case 'connect': {
@@ -354,8 +355,8 @@ export function applyOperations(
         const nested = members.find(member => member.type === 'group')
         if (nested !== undefined) throw new Skip(`node ${nested.id} is a group; groups do not nest`)
         const id = `g${String(nextId++)}`
-        nodes.set(id, { id: brandString<'CanvasNodeId'>(id), type: 'group', title: operation.title ?? 'Group', x: 0, y: 0, width: 0, height: 0 })
-        for (const member of members) member.group = brandString<'CanvasNodeId'>(id)
+        nodes.set(id, { id: brandString<CanvasNodeId>(id), type: 'group', title: operation.title ?? 'Group', x: 0, y: 0, width: 0, height: 0 })
+        for (const member of members) member.group = brandString<CanvasNodeId>(id)
         claim(operation.ref, id)
         return
       }
