@@ -59,6 +59,20 @@ export interface Config {
   catalogCacheFile?: string
   /** Video length recommended when the user names none, in seconds. */
   videoDefaultDuration?: number
+  /** Video model used when a node has reference images but no first frame. */
+  videoRefModel?: string
+  /** Generation tasks one call may run at once. */
+  generateConcurrency?: number
+  /** Video calls above which a plan needs the user's confirmation. */
+  confirmVideoCalls?: number
+  /** Total video seconds above which a plan needs the user's confirmation. */
+  confirmVideoSeconds?: number
+  /** Spoken lines above which a plan needs the user's confirmation. */
+  confirmSpeechLines?: number
+  /** Image calls above which a plan needs the user's confirmation. */
+  confirmImageCalls?: number
+  /** Music calls above which a plan needs the user's confirmation. */
+  confirmMusicCalls?: number
   /** FFmpeg executable, or an absolute path to its bundled runtime copy. */
   ffmpegPath?: string
   /** FFprobe executable, or an absolute path to its bundled runtime copy. */
@@ -84,6 +98,13 @@ const CONFIG_FIELDS = {
   catalog: z.boolean().default(true),
   catalogCacheFile: z.string().default(''),
   videoDefaultDuration: z.number().default(5),
+  videoRefModel: z.string().default('minimax-h3-ref2va'),
+  generateConcurrency: z.number().default(3),
+  confirmVideoCalls: z.number().default(2),
+  confirmVideoSeconds: z.number().default(20),
+  confirmSpeechLines: z.number().default(20),
+  confirmImageCalls: z.number().default(8),
+  confirmMusicCalls: z.number().default(2),
   ffmpegPath: z.string().default('ffmpeg'),
   ffprobePath: z.string().default('ffprobe'),
   editTimeoutMs: z.number().default(600_000),
