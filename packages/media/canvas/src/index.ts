@@ -269,10 +269,12 @@ export class CanvasService extends TypertRemoteService {
         const shots = node.type === 'storyboard' ? activeVersionOf(node)?.shots ?? [] : []
         for (const shot of shots) {
           const used = [...shot.characters, ...shot.props, ...shot.scene === undefined ? [] : [shot.scene]]
-          for (const entry of used) references.set(entry, [...references.get(entry) ?? [], node.id])
           for (const line of shot.dialogue) {
-            if (line.speaker.kind !== 'character') continue
-            references.set(line.speaker.entry, [...references.get(line.speaker.entry) ?? [], node.id])
+            if (line.speaker.kind === 'character') used.push(line.speaker.entry)
+          }
+          for (const entry of used) {
+            const holders = references.get(entry) ?? []
+            if (!holders.includes(node.id)) references.set(entry, [...holders, node.id])
           }
         }
       }

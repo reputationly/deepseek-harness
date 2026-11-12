@@ -262,7 +262,9 @@ export function listCanvas(
 function renderListing(listing: CanvasListing): string {
   const header = `Revision ${String(listing.revision)} · episode ${listing.episode.id} ${JSON.stringify(listing.episode.title)}`
     + `${listing.hasProject ? '' : ' · no project.json'}${listing.hasBible ? '' : ' · no bible.json'}`
-  if (listing.nodes.length === 0 && listing.groups.length === 0 && listing.missing === undefined) return `${header}\nThe canvas is empty.`
+  if (listing.nodes.length === 0 && listing.groups.length === 0 && listing.missing === undefined) {
+    return [header, 'The canvas is empty.', ...listing.context === undefined ? [] : [listing.context]].join('\n')
+  }
   const lines: string[] = [header]
   for (const node of listing.nodes) {
     const detail = [
