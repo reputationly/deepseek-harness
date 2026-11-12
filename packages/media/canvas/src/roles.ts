@@ -5,7 +5,8 @@
 
 import type { CanvasEdgeRole, CanvasNodeType } from './types.ts'
 
-const GENERATED: readonly CanvasNodeType[] = ['image', 'video', 'audio']
+/** Node kinds that read a prompt: the media a generation makes, and the tables a prompt is written into. */
+const PROMPT_TARGETS: readonly CanvasNodeType[] = ['image', 'video', 'audio', 'storyboard', 'script']
 
 /**
  * Role an edge takes from the kinds of the nodes it joins.
@@ -14,7 +15,7 @@ const GENERATED: readonly CanvasNodeType[] = ['image', 'video', 'audio']
  * @returns the inferred role, or undefined when the pair carries no input meaning.
  */
 export function inferRole(source: CanvasNodeType, target: CanvasNodeType): CanvasEdgeRole | undefined {
-  if (source === 'text' || source === 'script' || source === 'storyboard') return GENERATED.includes(target) ? 'prompt' : undefined
+  if (source === 'text' || source === 'script' || source === 'storyboard') return PROMPT_TARGETS.includes(target) ? 'prompt' : undefined
   if (source === 'image') return target === 'image' || target === 'video' ? 'ref' : target === 'timeline' ? 'source' : undefined
   if (source === 'audio') return target === 'video' ? 'audio' : target === 'timeline' ? 'source' : undefined
   if (source === 'video') return target === 'timeline' ? 'source' : undefined

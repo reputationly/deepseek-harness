@@ -157,8 +157,12 @@ export function layoutCreated(nodes: ReadonlyMap<string, DraftNode>, edges: read
     }
     if (progressed) continue
     const [stuck] = pending
-    const node = stuck === undefined ? undefined : nodes.get(stuck)
-    if (node === undefined) break
+    if (stuck === undefined) break
+    const node = nodes.get(stuck)
+    if (node === undefined) {
+      pending.delete(stuck)
+      continue
+    }
     place(node, true)
   }
 }
