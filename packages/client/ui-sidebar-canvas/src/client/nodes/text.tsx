@@ -34,14 +34,14 @@ export function ScriptNode({ data, selected }: NodeProps<CanvasFlowNode>): React
 
 /** A storyboard: a small shot table and the segmentation summary. */
 export function StoryboardNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
-  const { node } = data
+  const { node, t } = data
   const view = storyboardCardView(node)
   return <NodeCard data={data} selected={selected} className={css.storyboardCard}>
     <div className={css.shotTable} role="table" aria-label={node.title}>
       {view.rows.map(row => <div key={row.id} className={css.shotRow} role="row">
         <span className={css.shotTitle}>{row.title}</span>
         <span className={css.shotSize}>{row.shotSize}</span>
-        <span className={css.shotSeconds}>{row.seconds}s</span>
+        <span className={css.shotSeconds}>{t('badge.duration', { seconds: row.seconds })}</span>
       </div>)}
     </div>
     <p className={css.summary}>{view.summary}</p>

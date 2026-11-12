@@ -89,7 +89,7 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
       <span className={css.noticeText}>{t('failed', { message: state.error })}</span>{retry}
     </div>}
     {state.notice !== undefined && <div className={css.notice} role="alert">
-      <span className={css.noticeText}>{t('notice', { message: state.notice })}</span>
+      <span className={css.noticeText}>{state.conflict ? t('conflict') : t('notice', { message: state.notice })}</span>
       <Button size="sm" className={css.dismiss} aria-label={t('dismiss')} onClick={dismiss}><IconCloseOutlineRegular /></Button>
     </div>}
     {document.nodes.length === 0

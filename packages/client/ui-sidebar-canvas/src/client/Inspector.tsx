@@ -62,7 +62,8 @@ export function Inspector({ document, node, placement, capabilities, edit, close
     setModelId(node.gen?.model ?? '')
     setPrompt(node.gen?.prompt ?? '')
     setParams({ ...node.gen?.params })
-  }, [node.id, node.gen?.model, node.gen?.prompt, node.gen?.params])
+    // A reload after a conflict keeps the user's draft: only switching nodes resets it.
+  }, [node.id])
   const operation = kind === undefined ? undefined : operationFor(kind)
   useEffect(() => {
     if (operation === undefined) return
@@ -147,7 +148,7 @@ export function Inspector({ document, node, placement, capabilities, edit, close
       <span className={css.sectionTitle}>{t('inspector.versions')}</span>
       <ol className={css.versions}>
         {(node.versions ?? []).map((version, index) => <li key={version.id} className={css.versionRow}>
-          <span className={css.versionLabel}>{`v${String(index + 1)}`}</span>
+          <span className={css.versionLabel}>{t('inspector.versionLabel', { n: index + 1 })}</span>
           <span className={css.versionModel}>{version.model ?? version.origin}</span>
           <Button size="sm" disabled={version.id === node.activeVersion}
             onClick={() => { void edit([{ op: 'set_version', node: node.id, version: version.id }]) }}>{t('inspector.useVersion')}</Button>

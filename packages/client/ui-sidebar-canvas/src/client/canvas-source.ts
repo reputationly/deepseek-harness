@@ -13,6 +13,8 @@ export interface CanvasState {
   readonly error: string | undefined
   /** Why the latest edit did not fully apply. */
   readonly notice: string | undefined
+  /** Whether the last edit lost to a concurrent writer; the form keeps the user's input. */
+  readonly conflict: boolean
 }
 
 /** The two Remote calls of one Session's canvas. */
@@ -30,7 +32,9 @@ export interface CanvasRemote {
 /** Reads, edits, and change notifications of one Session's canvas. */
 export class CanvasSource {
   /** The canvas as last read, with its load status and the notice of the last edit. */
-  readonly state = createSnapshotStore<CanvasState>({ status: 'loading', view: undefined, error: undefined, notice: undefined })
+  readonly state = createSnapshotStore<CanvasState>({
+    status: 'loading', view: undefined, error: undefined, notice: undefined, conflict: false,
+  })
   /** Only the latest read publishes. */
   private generation = 0
 
@@ -57,13 +61,14 @@ export class CanvasSource {
     const baseRevision = this.state.getSnapshot().view?.document.revision ?? 0
     const result = await this.remote.apply([...operations], baseRevision)
     const notice = result.ok ? result.value.skipped[0]?.reason : result.error.message
-    this.state.set({ ...this.state.getSnapshot(), notice })
+    const conflict = !result.ok && result.error.code === 'canvas/conflict'
+    this.state.set({ ...this.state.getSnapshot(), notice, conflict })
     await this.load()
   }
 
   /** Clear the edit notice. */
   dismiss = (): void => {
-    this.state.set({ ...this.state.getSnapshot(), notice: undefined })
+    this.state.set({ ...this.state.getSnapshot(), notice: undefined, conflict: false })
   }
 
   /**
@@ -76,7 +81,7 @@ export class CanvasSource {
 
   /** Forget everything read through a replaced connection and read again. */
   reset(): void {
-    this.state.set({ status: 'loading', view: undefined, error: undefined, notice: undefined })
+    this.state.set({ status: 'loading', view: undefined, error: undefined, notice: undefined, conflict: false })
     void this.load()
   }
 

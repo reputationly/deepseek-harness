@@ -97,12 +97,12 @@ export function scriptPreview(text: string, lines = 3): string {
 }
 
 /**
- * Duration as the cards show it.
+ * Duration in seconds, as the cards pass it to their copy.
  * @param ms - milliseconds, when known.
- * @returns `12.3s`, or undefined.
+ * @returns `12.3`, or undefined.
  */
-export function durationLabel(ms: number | undefined): string | undefined {
-  return ms === undefined ? undefined : `${(ms / 1000).toFixed(1)}s`
+export function durationSeconds(ms: number | undefined): string | undefined {
+  return ms === undefined ? undefined : (ms / 1000).toFixed(1)
 }
 
 /** What a storyboard card's small table and footer show. */

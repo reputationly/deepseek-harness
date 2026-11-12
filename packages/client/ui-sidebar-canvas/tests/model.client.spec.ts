@@ -3,7 +3,7 @@ import type { CanvasDocument, CanvasNode, Shot } from '@deepseek-ai/dsh-canvas/c
 import { EditHistory, invertOperations } from '../src/client/model/history.ts'
 import { automaticRole, edgeLabel, edgeStyle, roleMenu } from '../src/client/model/edges.ts'
 import { inspectorPlacement } from '../src/client/model/inspector.ts'
-import { cardState, currentVersion, durationLabel, groupScene, scriptPreview, scriptScenes, shotBadge, storyboardCardView, versionChoices } from '../src/client/model/cards.ts'
+import { cardState, currentVersion, durationSeconds, groupScene, scriptPreview, scriptScenes, shotBadge, storyboardCardView, versionChoices } from '../src/client/model/cards.ts'
 import { frameOf, genOperation, modelChoices, operationFor, orderedRefs, paramControls, reorderOperation } from '../src/client/model/inspector.ts'
 import { movedForward, newNodeIds } from '../src/client/model/changes.ts'
 import { appendShotOperation, cellOperation, moveShotOperation, removeShotOperation, rowsOf, segmentOfShot, summaryOf } from '../src/client/model/table.ts'
@@ -210,8 +210,8 @@ describe('card view models', () => {
   })
 
   it('labels durations and segment badges', () => {
-    expect(durationLabel(1234)).toBe('1.2s')
-    expect(durationLabel(undefined)).toBeUndefined()
+    expect(durationSeconds(1234)).toBe('1.2')
+    expect(durationSeconds(undefined)).toBeUndefined()
     const board = node('b1', 'storyboard', {
       versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1'), shot('s2')] }],
       activeVersion: 'v1' as never,

@@ -5,8 +5,7 @@ import type { NodeProps } from '@xyflow/react'
 import { Button, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CanvasNode } from '@deepseek-ai/dsh-canvas/client'
 import type { CanvasFlowNode } from '../flow.ts'
-import { shotBadge } from '../model/cards.ts'
-import { durationLabel } from '../model/cards.ts'
+import { durationSeconds, shotBadge } from '../model/cards.ts'
 import { MediaStatus, NodeCard, shownVersion, useMedia, type Media } from './shared.tsx'
 import css from '../CanvasFlow.module.css'
 
@@ -74,9 +73,9 @@ function Waveform({ peaks }: { peaks: readonly number[] }): ReactNode {
 }
 
 /** Duration badge under a media card. */
-function DurationBadge({ node }: { node: CanvasNode }): ReactNode {
-  const label = durationLabel(shownVersion(node).durationMs)
-  return label === undefined ? undefined : <span className={css.badge}>{label}</span>
+function DurationBadge({ node, t }: { node: CanvasNode; t: NodeProps<CanvasFlowNode>['data']['t'] }): ReactNode {
+  const seconds = durationSeconds(shownVersion(node).durationMs)
+  return seconds === undefined ? undefined : <span className={css.badge}>{t('badge.duration', { seconds })}</span>
 }
 
 /** An image card. */
@@ -89,7 +88,7 @@ export function ImageNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
         ? <img className={css.image} src={media.url} alt={node.title} draggable={false} />
         : <MediaStatus media={media} loading={t('media.loading')} failed={t('media.failed')} />}
     </div>
-    <div className={css.badges}><DurationBadge node={node} /></div>
+    <div className={css.badges}><DurationBadge node={node} t={t} /></div>
   </NodeCard>
 }
 
@@ -117,7 +116,7 @@ export function VideoNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
         : <MediaStatus media={media} loading={t('media.loading')} failed={t('media.failed')} />}
     </div>
     <div className={css.badges}>
-      <DurationBadge node={node} />
+      <DurationBadge node={node} t={t} />
       {badge === undefined ? undefined : <span className={css.badge}>{badge}</span>}
     </div>
   </NodeCard>
@@ -139,6 +138,6 @@ export function AudioNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
         icon={<IconPlayOutlineRegular />} onClick={() => { setWanted(true) }}>{t('audio.play')}</Button>}
       {node.gen?.kind === 'speech' ? <p className={css.line}>{node.gen.prompt}</p> : undefined}
     </div>
-    <div className={css.badges}><DurationBadge node={node} /></div>
+    <div className={css.badges}><DurationBadge node={node} t={t} /></div>
   </NodeCard>
 }

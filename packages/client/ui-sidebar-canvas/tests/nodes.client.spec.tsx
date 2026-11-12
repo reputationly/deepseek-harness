@@ -48,7 +48,7 @@ it('draws a video card with its duration and segment badge', () => {
       gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'b' as never, shots: ['s1' as never] } },
     }),
   })
-  expect(screen.getByText('3.2s')).toBeTruthy()
+  expect(screen.getByText(/badge.duration/)).toBeTruthy()
 })
 
 it('draws an audio card with the line a voice node speaks', () => {
