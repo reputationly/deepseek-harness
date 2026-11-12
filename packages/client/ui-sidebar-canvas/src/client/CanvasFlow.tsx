@@ -14,7 +14,7 @@ import {
   deleteOperations, flowEdges, flowNodes, groupable, keepSelection, moveOperations,
   type CanvasFlowEdge, type CanvasFlowNode, type CanvasNodeFace,
 } from './flow.ts'
-import { NODE_TYPES } from './nodes.tsx'
+import { NODE_TYPES } from './nodes/index.ts'
 import css from './CanvasFlow.module.css'
 
 /** The document to draw and the calls its edits go through. */
@@ -74,13 +74,14 @@ function Toolbar({ document, nodes, edges, edit, reload, t }: Pick<CanvasFlowPro
  * @returns the flow with its toolbar and overview.
  */
 export function CanvasFlow({ document, readFile, t, edit, reload }: CanvasFlowProps): ReactNode {
-  const [drawn, setDrawn] = useState({ document, readFile, t })
-  const [nodes, setNodes] = useState(() => flowNodes(document, { readFile, t }))
-  const [edges, setEdges] = useState(() => flowEdges(document))
-  if (drawn.document !== document || drawn.readFile !== readFile || drawn.t !== t) {
-    setDrawn({ document, readFile, t })
-    setNodes(keepSelection(flowNodes(document, { readFile, t }), nodes))
-    setEdges(keepSelection(flowEdges(document), edges))
+  const face = { readFile, t, edit }
+  const [drawn, setDrawn] = useState({ document, readFile, t, edit })
+  const [nodes, setNodes] = useState(() => flowNodes(document, face))
+  const [edges, setEdges] = useState(() => flowEdges(document, t))
+  if (drawn.document !== document || drawn.readFile !== readFile || drawn.t !== t || drawn.edit !== edit) {
+    setDrawn({ document, readFile, t, edit })
+    setNodes(keepSelection(flowNodes(document, face), nodes))
+    setEdges(keepSelection(flowEdges(document, t), edges))
   }
   const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {
     setNodes(current => applyNodeChanges(changes, current))

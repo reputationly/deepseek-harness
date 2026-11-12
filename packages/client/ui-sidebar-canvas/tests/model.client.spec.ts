@@ -3,6 +3,7 @@ import type { CanvasDocument, CanvasNode, Shot } from '@deepseek-ai/dsh-canvas/c
 import { EditHistory, invertOperations } from '../src/client/model/history.ts'
 import { automaticRole, edgeLabel, edgeStyle, roleMenu } from '../src/client/model/edges.ts'
 import { inspectorPlacement } from '../src/client/model/inspector.ts'
+import { cardState, currentVersion, durationLabel, groupScene, scriptPreview, scriptScenes, shotBadge, storyboardCardView, versionChoices } from '../src/client/model/cards.ts'
 import { appendShotOperation, cellOperation, moveShotOperation, removeShotOperation, rowsOf, segmentOfShot, summaryOf } from '../src/client/model/table.ts'
 
 const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
@@ -173,5 +174,53 @@ describe('storyboard table', () => {
     expect(removeShotOperation(board, 's2' as never)).toEqual({ op: 'remove_shot', node: 'n1', shot: 's2' })
     expect(moveShotOperation(board, 's3' as never, 's1' as never)).toEqual({ op: 'move_shot', node: 'n1', shot: 's3', after: 's1' })
     expect(moveShotOperation(board, 's3' as never, undefined)).toEqual({ op: 'move_shot', node: 'n1', shot: 's3' })
+  })
+})
+
+describe('card view models', () => {
+  const video = node('v1', 'video', {
+    versions: [
+      { id: 'v1' as never, createdAt: 'now', origin: 'user', path: '/a.mp4', durationMs: 1234 },
+      { id: 'v2' as never, createdAt: 'now', origin: 'agent', path: '/b.mp4' },
+    ],
+    activeVersion: 'v2' as never,
+  })
+
+  it('offers a version bar only when a node has two versions', () => {
+    expect(versionChoices(video).map(choice => [choice.label, choice.active])).toEqual([['v1', false], ['v2', true]])
+    expect(versionChoices(node('n1', 'image'))).toEqual([])
+    expect(currentVersion(video)).toBe(1)
+  })
+
+  it('describes each generation state', () => {
+    expect(cardState(undefined, 0)).toEqual({ kind: 'idle' })
+    expect(cardState({ state: 'queued', jobId: 'j' as never, at: 'now' }, 0)).toEqual({ kind: 'queued' })
+    expect(cardState({ state: 'running', jobId: 'j' as never, at: '2026-11-12T00:00:00.000Z' }, Date.parse('2026-11-12T00:00:05.000Z')))
+      .toEqual({ kind: 'running', elapsedMs: 5000 })
+    expect(cardState({ state: 'failed', at: 'now', error: 'nope', retryable: false }, 0))
+      .toEqual({ kind: 'failed', error: 'nope', retryable: false })
+  })
+
+  it('reads script scenes and a short preview', () => {
+    const text = '【场1】雨夜\n正文一\n\n【场2】便利店 收银台\n正文二\n正文三'
+    expect(scriptScenes(text)).toEqual([{ number: 1, title: '雨夜' }, { number: 2, title: '便利店 收银台' }])
+    expect(scriptPreview(text)).toBe('【场1】雨夜\n正文一\n【场2】便利店 收银台')
+  })
+
+  it('labels durations and segment badges', () => {
+    expect(durationLabel(1234)).toBe('1.2s')
+    expect(durationLabel(undefined)).toBeUndefined()
+    const board = node('b1', 'storyboard', {
+      versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1'), shot('s2')] }],
+      activeVersion: 'v1' as never,
+    })
+    const segment = node('v9', 'video', {
+      gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'b1' as never, shots: ['s1' as never, 's2' as never] } },
+    })
+    expect(shotBadge(segment, board, 2)).toBe('场2·段1')
+    expect(shotBadge(node('x', 'image'))).toBeUndefined()
+    expect(storyboardCardView(board).rows).toHaveLength(2)
+    expect(storyboardCardView(board).summary).toContain('2 镜')
+    expect(groupScene(node('g', 'group', { sceneOrigin: { script: 'n1' as never, scene: 3 } }))).toBe(3)
   })
 })

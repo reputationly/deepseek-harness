@@ -3,6 +3,7 @@ import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { CanvasDocument, CanvasNode, CanvasNodeId, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import { edgeLabel, edgeStyle } from './model/edges.ts'
 import type { ReadCanvasFile } from './face.ts'
 import type { NS } from './locales.ts'
 
@@ -10,10 +11,12 @@ import type { NS } from './locales.ts'
 export type CanvasNodeFace = {
   readonly readFile: ReadCanvasFile
   readonly t: PropsLocale<typeof NS>['t']
+  /** Applies the user's edits, such as switching the shown version. */
+  readonly edit: (operations: readonly CanvasOperation[]) => Promise<void>
 }
 
-/** One drawn node: the document node and the face its card reads. */
-export type CanvasFlowNode = Node<{ node: CanvasNode } & CanvasNodeFace>
+/** One drawn node: the document node, its group size, and the face its card reads. */
+export type CanvasFlowNode = Node<{ node: CanvasNode; members?: number } & CanvasNodeFace>
 
 /** One drawn edge. */
 export type CanvasFlowEdge = Edge
@@ -35,25 +38,38 @@ export function flowNodes(document: CanvasDocument, face: CanvasNodeFace): Canva
       position: parent === undefined ? { x: node.x, y: node.y } : { x: node.x - parent.x, y: node.y - parent.y },
       width: node.width,
       height: node.height,
-      data: { node, ...face },
+      data: {
+        node,
+        ...node.type === 'group' ? { members: document.nodes.filter(child => child.group === node.id).length } : {},
+        ...face,
+      },
       ...parent === undefined ? {} : { parentId: parent.id },
     }
   })
 }
 
 /**
- * Draw the document's edges; a derivation is solid and a reference is dashed.
+ * Draw the document's edges with the role's style and label.
  * @param document - canvas document.
+ * @param t - copy bound to this plugin's keys.
  * @returns one arrow per edge.
  */
-export function flowEdges(document: CanvasDocument): CanvasFlowEdge[] {
-  return document.edges.map(edge => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    markerEnd: { type: MarkerType.ArrowClosed },
-    ...edge.kind === 'reference' ? { style: { strokeDasharray: '6 4' } } : {},
-  }))
+export function flowEdges(document: CanvasDocument, t: CanvasNodeFace['t']): CanvasFlowEdge[] {
+  return document.edges.map((edge) => {
+    const style = edgeStyle(edge.role)
+    const label = edgeLabel(edge.role, edge.order)
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      style: {
+        stroke: style.stroke,
+        ...style.strokeDasharray === undefined ? {} : { strokeDasharray: style.strokeDasharray },
+      },
+      ...label === undefined ? {} : { label: t(label.key, { n: label.n }) },
+    }
+  })
 }
 
 /**

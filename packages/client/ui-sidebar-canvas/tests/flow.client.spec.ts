@@ -1,6 +1,5 @@
 /** The document maps onto a flow with members inside their group, and gestures map back onto canvas edits. */
 import { expect, it } from 'vitest'
-import { MarkerType } from '@xyflow/react'
 import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
 import { deleteOperations, flowEdges, flowNodes, groupable, keepSelection, moveOperations } from '../src/client/flow.ts'
 
@@ -37,11 +36,15 @@ it('draws groups before their members and positions members inside the group', (
   expect(nodes[2]?.data).toEqual({ node: document.nodes[1], ...face })
 })
 
-it('draws a derivation as a solid arrow and a reference as a dashed one', () => {
-  expect(flowEdges(document)).toEqual([
-    { id: 'n1->n2:prompt', source: 'n1', target: 'n2', markerEnd: { type: MarkerType.ArrowClosed }, style: { strokeDasharray: '6 4' } },
-    { id: 'g4->n5', source: 'g4', target: 'n5', markerEnd: { type: MarkerType.ArrowClosed } },
-  ])
+it('draws each role with its own style and label', () => {
+  const t = (key: string, params?: Record<string, unknown>) => `${key}:${String(params?.n ?? '')}`
+  const edges = flowEdges(document, t as never)
+  expect(edges[0]).toMatchObject({
+    id: 'n1->n2:prompt', source: 'n1', target: 'n2', label: 'edge.prompt:1',
+    style: { strokeDasharray: '6 4', stroke: 'var(--dsh-color-border-strong)' },
+  })
+  expect(edges[1]).toMatchObject({ id: 'g4->n5', source: 'g4', target: 'n5' })
+  expect(edges[1]?.style?.strokeDasharray).toBeUndefined()
 })
 
 it('keeps the selection of items that survive a redraw', () => {
