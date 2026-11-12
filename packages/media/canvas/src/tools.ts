@@ -541,8 +541,8 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
       },
       include: {
         type: 'array',
-        items: { type: 'string', enum: ['bible', 'project'] },
-        description: 'bible adds the shared style and entries; project adds the production format and episodes.',
+        items: { type: 'string', enum: ['bible', 'project', 'production'] },
+        description: 'bible adds the shared style and entries; project adds the production format and episodes; production adds the stage reached.',
       },
     },
     output: { schema: listingSchema, render: (_args, value) => [{ type: 'text' as const, text: renderListing(value) }] },
@@ -551,6 +551,7 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
       const document = await canvas.read(session)
       const project = await canvas.projectOf(session)
       const bible = await canvas.bibleOf(session)
+      const production = await canvas.productionOf(session)
       const include = args.include ?? []
       const listing = listCanvas(document, {
         episode: project.current,
@@ -563,6 +564,7 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
         parts.push(`Project: ${JSON.stringify({ project: project.project, revision: project.revision })}`)
       }
       if (include.includes('bible')) parts.push(`Bible: ${JSON.stringify({ bible: bible.bible, revision: bible.revision })}`)
+      if (include.includes('production')) parts.push(`Production: ${JSON.stringify({ production: production.production, revision: production.revision })}`)
       return parts.length === 0 ? listing : { ...listing, context: parts.join('\n') }
     },
   }))
@@ -800,6 +802,46 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
   }))
 
   ctx.tools.register(defineTool({
+    name: 'studio_stage',
+    description: 'Read or advance the production stage of the episode this conversation edits. Stages run brief, bible, assets, '
+      + 'script, storyboard, generating, post, delivered. Moving back or skipping a stage needs an override reason.',
+    parameters: {
+      action: { type: 'string', required: true, enum: ['status', 'advance'], description: 'status reports the stage; advance moves it.' },
+      to: { type: 'string', enum: ['brief', 'bible', 'assets', 'script', 'storyboard', 'generating', 'post', 'delivered'], description: 'Stage to advance to.' },
+      gate: { type: 'string', enum: ['G1_bible_first', 'G2_storyboard_quality', 'G3_one_video_per_shots', 'G4_stage_order', 'G5_destructive', 'tail_chain'], description: 'Gate to record as overridden when the stage move needs one.' },
+      reason: { type: 'string', description: 'Why the override is acceptable; recorded with the gate.' },
+      baseRevision: { type: 'integer', description: 'Production revision the caller read; a stale one is refused.' },
+    },
+    output: {
+      schema: {
+        type: 'object' as const,
+        additionalProperties: false as const,
+        properties: {
+          stage: requiredText,
+          revision: { type: 'integer' as const, required: true as const },
+        },
+      },
+      render: (_args, value: { stage: string; revision: number }) => [{
+        type: 'text' as const,
+        text: `Production stage is ${value.stage} (revision ${String(value.revision)}).`,
+      }],
+    },
+    async execute(args, exec) {
+      const session = sessionOf('studio_stage', exec)
+      const production = await canvas.productionOf(session)
+      const target = await canvas.targetOf(session)
+      const current = production.production.episodes[target.episode.id]?.stage ?? 'brief'
+      if (args.action === 'status') return { stage: current, revision: production.revision }
+      if (args.to === undefined) throw new Error('studio_stage: advance needs to')
+      const override = args.gate === undefined || args.reason === undefined
+        ? undefined
+        : { gate: args.gate, reason: args.reason }
+      const written = await canvas.setStage(session, args.to, override, args.baseRevision)
+      return { stage: args.to, revision: written.revision }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'studio_expand_script',
     description: 'Lay a script out on the canvas: one group per scene, holding a text node with the scene body and an empty storyboard '
       + 'that reads it as its prompt. Scenes already laid out are skipped.',
@@ -817,12 +859,10 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
       if (script.type !== 'script' && script.type !== 'text') throw new Error(`canvas: node ${args.script} holds no script text`)
       const body = activeVersionOf(script)?.text ?? ''
       const wanted = args.scenes === undefined ? undefined : new Set(args.scenes)
-      // A scene stays laid out whatever its heading says later: the group title records the scene number.
+      // A scene stays laid out whatever its heading says later: the group records the script and scene it came from.
       const laidOut = new Set(document.nodes
-        .filter(node => node.type === 'group')
-        .map(node => /^场\s*([0-9０-９]+)/u.exec(node.title)?.[1])
-        .filter((digits): digits is string => digits !== undefined)
-        .map(digits => Number(digits.replace(/[０-９]/gu, digit => String.fromCharCode(digit.charCodeAt(0) - 0xfee0)))))
+        .filter(node => node.type === 'group' && node.sceneOrigin?.script === script.id)
+        .map(node => node.sceneOrigin?.scene))
       const operations: CanvasOperation[] = []
       for (const scene of parseScenes(body)) {
         if (scene.title === '' && scene.body === '') continue
@@ -832,7 +872,13 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
         operations.push(
           { op: 'add', ref: `text${String(scene.number)}`, type: 'text', title, text: scene.body },
           { op: 'add', ref: `board${String(scene.number)}`, type: 'storyboard', title: `${title} 分镜`, shots: [] },
-          { op: 'group', ref: `group${String(scene.number)}`, title, nodes: [`text${String(scene.number)}`, `board${String(scene.number)}`] },
+          {
+            op: 'group',
+            ref: `group${String(scene.number)}`,
+            title,
+            nodes: [`text${String(scene.number)}`, `board${String(scene.number)}`],
+            sceneOrigin: { script: script.id, scene: scene.number },
+          },
           { op: 'connect', from: `text${String(scene.number)}`, to: `board${String(scene.number)}`, role: 'prompt' },
         )
       }

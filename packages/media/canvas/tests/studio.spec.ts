@@ -287,17 +287,30 @@ describe('episode isolation', () => {
 })
 
 describe('script expansion idempotency', () => {
-  it('skips a scene whose group title carries the same number with another title', async () => {
+  it('reuses the group that records the same script and scene, whatever its title says now', async () => {
     await ctx.canvas.edit(session, [
       { op: 'add', type: 'script', text: '【场1】雨夜\nbody one\n【场2】便利店\nbody two' },
       { op: 'add', type: 'text', title: '场1 旧标题', text: 'body one' },
       { op: 'add', type: 'text', title: '场2 便利店 收银台', text: 'body two' },
-      { op: 'group', title: '场1 旧标题', nodes: ['n2'] },
-      { op: 'group', title: '场2 便利店 收银台', nodes: ['n3'] },
+      { op: 'group', title: '场1 旧标题', nodes: ['n2'], sceneOrigin: { script: 'n1' as never, scene: 1 } },
+      { op: 'group', title: '场2 便利店 收银台', nodes: ['n3'], sceneOrigin: { script: 'n1' as never, scene: 2 } },
     ], { baseRevision: 0 })
     const before = (await ctx.canvas.read(session)).nodes.length
     const expanded = await call('studio_expand_script', { script: 'n1', baseRevision: (await ctx.canvas.read(session)).revision })
     expect(expanded.isError).toBe(false)
     expect((await ctx.canvas.read(session)).nodes).toHaveLength(before)
+  })
+
+  it('does not treat an unrelated group that happens to be titled 场1 as an expanded scene', async () => {
+    await ctx.canvas.edit(session, [
+      { op: 'add', type: 'script', text: '【场1】雨夜\nbody one' },
+      { op: 'add', type: 'text', title: 'notes', text: 'my notes' },
+      { op: 'group', title: '场1 我的分组', nodes: ['n2'] },
+    ], { baseRevision: 0 })
+    const expanded = await call('studio_expand_script', { script: 'n1', baseRevision: (await ctx.canvas.read(session)).revision })
+    expect(expanded.isError).toBe(false)
+    expect(expanded.text).toContain('Created')
+    const groups = (await ctx.canvas.read(session)).nodes.filter(node => node.type === 'group')
+    expect(groups.map(group => group.sceneOrigin?.scene)).toEqual([undefined, 1])
   })
 })

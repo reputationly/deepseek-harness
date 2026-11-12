@@ -16,6 +16,34 @@ export type CanvasContentType = Exclude<CanvasNodeType, 'group'>
 /** Document-unique node id: `n<k>` for content nodes, `g<k>` for groups. */
 export type CanvasNodeId = Branded<'CanvasNodeId'>
 
+/** One production stage of an episode, in the order they run. */
+export type StageId = 'brief' | 'bible' | 'assets' | 'script' | 'storyboard' | 'generating' | 'post' | 'delivered'
+
+/** A check that must pass before a stage advances or a generation runs. */
+export type GateId = 'G1_bible_first' | 'G2_storyboard_quality' | 'G3_one_video_per_shots' | 'G4_stage_order' | 'G5_destructive' | 'tail_chain'
+
+/** One stage record of an episode, with the gate overrides a user granted. */
+export interface EpisodeProduction {
+  readonly stage: StageId
+  readonly overrides: readonly { readonly gate: GateId; readonly at: string; readonly reason: string }[]
+}
+
+/** `.canvas/production.json`. */
+export interface Production {
+  readonly version: 1
+  /** Incremented by every successful write. */
+  readonly revision: number
+  readonly episodes: Readonly<Record<string, EpisodeProduction>>
+}
+
+/** Where a scene group came from, so laying the same script out again reuses it. */
+export interface SceneOrigin {
+  /** Script node the scene was parsed from. */
+  readonly script: CanvasNodeId
+  /** Scene number inside that script. */
+  readonly scene: number
+}
+
 /** One canvas of a project: `e1`, `e2`, … in creation order. */
 export type EpisodeId = Branded<'EpisodeId'>
 
@@ -176,6 +204,8 @@ export interface CanvasNode {
   readonly stale?: boolean
   /** An input edge now points at a newer version than the one this node was generated from. */
   readonly inputChanged?: boolean
+  /** Script and scene number a scene group was laid out from. */
+  readonly sceneOrigin?: SceneOrigin
 }
 
 /** One directed edge; its id is `<source>-><target>` for derivation and `<source>-><target>:<role>` for reference. */
@@ -292,7 +322,14 @@ export type CanvasOperation =
   | { readonly op: 'connect'; readonly from: string; readonly to: string; readonly kind?: CanvasEdgeKind; readonly role?: CanvasEdgeRole; readonly order?: number }
   | { readonly op: 'disconnect'; readonly from: string; readonly to: string; readonly role?: CanvasEdgeRole }
   | { readonly op: 'reorder_refs'; readonly node: string; readonly sources: readonly string[] }
-  | { readonly op: 'group'; readonly ref?: string; readonly title?: string; readonly nodes: readonly string[] }
+  | {
+    readonly op: 'group'
+    readonly ref?: string
+    readonly title?: string
+    readonly nodes: readonly string[]
+    /** Script and scene this group stands for, when it is a scene group. */
+    readonly sceneOrigin?: SceneOrigin
+  }
   | { readonly op: 'ungroup'; readonly node: string }
   | { readonly op: 'move'; readonly node: string; readonly x: number; readonly y: number }
   | { readonly op: 'resize'; readonly node: string; readonly width: number; readonly height: number }

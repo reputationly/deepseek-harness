@@ -373,6 +373,7 @@ export function applyOperations(
         nodes.set(id, {
           id: brandString<CanvasNodeId>(id), type: 'group', title: operation.title ?? 'Group',
           x: 0, y: 0, width: 0, height: 0, versions: [],
+          ...operation.sceneOrigin === undefined ? {} : { sceneOrigin: operation.sceneOrigin },
         })
         for (const member of members) member.group = brandString<CanvasNodeId>(id)
         claim(operation.ref, id)

@@ -17,10 +17,12 @@ import { Config as configSchema, resolveConfig, type Config as CanvasConfig, typ
 import { activeVersionOf, assertWithinLimits, CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
 import { applyOperations, CanvasConflictError, checkRevision } from './operations.ts'
 import { episodeOf, parseProject, withBinding, withEpisode, type ProjectSpec, type ProductionFormat, type StudioProject } from './project.ts'
+import { advanceStage, EMPTY_PRODUCTION, parseProductionFile, stageOf } from './production.ts'
 import { canvasFile, CanvasStore } from './store.ts'
 import { registerCanvasTools } from './tools.ts'
 import type {
-  BibleEntryId, CanvasDocument, CanvasEditResult, CanvasEpisode, CanvasNode, CanvasOperation, CanvasView, EpisodeId,
+  BibleEntryId, CanvasDocument, CanvasEditResult, CanvasEpisode, CanvasNode, CanvasOperation, CanvasView, EpisodeId, GateId,
+  Production, StageId,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -28,10 +30,14 @@ export { activeVersionOf, CanvasCorruptError, CanvasUnsupportedVersionError } fr
 export { CanvasConflictError } from './operations.ts'
 export { Config } from './config.ts'
 export type { StudioProject, ProjectSpec, ProductionFormat } from './project.ts'
+export { STAGE_ORDER } from './production.ts'
 export type { Bible, BibleEntry } from './bible.ts'
 
 /** Project metadata file relative to `.canvas/`. */
 const PROJECT_FILE = 'project.json'
+
+/** Production record file relative to `.canvas/`. */
+const PRODUCTION_FILE = 'production.json'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -280,6 +286,46 @@ export class CanvasService extends TypertRemoteService {
       }
     }
     return references
+  }
+
+  /**
+   * Read the production record of a Session's project.
+   * @param session - Session opened on the project.
+   * @returns the production record, an empty one when the project has none, and its revision.
+   */
+  async productionOf(session: Session): Promise<{ readonly production: Production; readonly revision: number }> {
+    const stored = await this.store.readDocument(this.directoryOf(session), PRODUCTION_FILE, parseProductionFile)
+    return stored === undefined
+      ? { production: EMPTY_PRODUCTION, revision: 0 }
+      : { production: stored.value, revision: stored.revision }
+  }
+
+  /**
+   * Record the stage one episode has reached.
+   * @param session - Session opened on the project.
+   * @param to - stage to record.
+   * @param override - gate to record as overridden, with the reason a user gave.
+   * @param baseRevision - production revision the caller read, or undefined to skip the check.
+   * @returns the production record after the write, its revision, and the previous stage.
+   * @throws `CanvasConflictError` when the production moved past the caller's base revision.
+   */
+  async setStage(
+    session: Session,
+    to: StageId,
+    override?: { readonly gate: GateId; readonly reason: string },
+    baseRevision?: number,
+  ): Promise<{ readonly production: Production; readonly revision: number; readonly previous: StageId }> {
+    const directory = this.directoryOf(session)
+    const target = await this.targetOf(session)
+    const previous = stageOf((await this.productionOf(session)).production, target.episode.id)
+    const at = new Date().toISOString()
+    const written = await this.store.updateDocument(directory, PRODUCTION_FILE, parseProductionFile, () => EMPTY_PRODUCTION, (current) => {
+      if (baseRevision !== undefined && baseRevision !== current.revision) throw new CanvasConflictError(baseRevision, current.revision)
+      return { document: advanceStage(current, target.episode.id, to, override, at), value: undefined }
+    })
+    const production = (await this.productionOf(session)).production
+    this.ctx.emit('canvas/change', { directory, revisions: { production: written.revision } })
+    return { production, revision: written.revision, previous }
   }
 
   /**

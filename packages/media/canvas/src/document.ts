@@ -8,8 +8,8 @@ import type { ResolvedConfig } from './config.ts'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type {
   BibleEntryId, CanvasDocument, CanvasEdge, CanvasEdgeKind, CanvasEdgeRole, CanvasNode, CanvasNodeId, CanvasNodeType,
-  DialogueId, DialogueLine, ExportRecord, GenerationKind, GenerationSpec, NodeInput, NodeStatus, NodeVersion, Shot, ShotId,
-  ShotSize, StillMotion, TimelineRef, VersionId,
+  DialogueId, DialogueLine, ExportRecord, GenerationKind, GenerationSpec, NodeInput, NodeStatus, NodeVersion, SceneOrigin,
+  Shot, ShotId, ShotSize, StillMotion, TimelineRef, VersionId,
 } from './types.ts'
 import { edgeId, inferRole } from './roles.ts'
 
@@ -251,6 +251,14 @@ function parseTimeline(value: unknown, what: string): TimelineRef {
   }
 }
 
+function parseSceneOrigin(value: unknown, what: string): SceneOrigin {
+  const raw = record(value, what)
+  return {
+    script: brandString<CanvasNodeId>(text(raw.script, `${what}.script`)),
+    scene: count(raw.scene, `${what}.scene`),
+  }
+}
+
 function parseNode(value: unknown, index: number): CanvasNode {
   const raw = record(value, `nodes[${String(index)}]`)
   const id = brandString<CanvasNodeId>(text(raw.id, `nodes[${String(index)}].id`))
@@ -282,6 +290,7 @@ function parseNode(value: unknown, index: number): CanvasNode {
         version: brandString<VersionId>(text(tailOf.version, `node ${id} tailOf.version`)),
       },
     },
+    ...raw.sceneOrigin === undefined ? {} : { sceneOrigin: parseSceneOrigin(raw.sceneOrigin, `node ${id} sceneOrigin`) },
     ...raw.stale === true ? { stale: true } : {},
     ...raw.inputChanged === true ? { inputChanged: true } : {},
   }

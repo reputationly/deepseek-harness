@@ -20,7 +20,7 @@ export interface VoiceSpec {
 export interface BibleEntry {
   readonly id: BibleEntryId
   readonly kind: 'character' | 'location' | 'prop'
-  /** Name prompts refer to as `@name`. */
+  /** Caller-chosen id, unique within the bible; the store does not renumber it. */
   readonly name: string
   /** Other spellings that resolve to the same entry. */
   readonly aliases: readonly string[]
@@ -112,7 +112,10 @@ export function parseBible(source: string): Bible {
   if (entries === null) throw new Error('bible.json: entries is not an array')
   const narrator = voice(raw.narrator, 'narrator')
   const seen = new Set<string>()
+  const ids = new Set<string>()
   for (const entry of entries) {
+    if (ids.has(entry.id)) throw new Error(`bible.json: duplicate entry id ${entry.id}`)
+    ids.add(entry.id)
     for (const name of namesOf(entry)) {
       if (seen.has(name)) throw new Error(`bible.json: ${entry.name} repeats the name ${name}`)
       seen.add(name)
