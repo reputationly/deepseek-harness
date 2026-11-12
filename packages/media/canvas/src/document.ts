@@ -63,6 +63,13 @@ function finite(value: unknown, what: string): number {
   return value
 }
 
+/** A positive whole number, such as the next node id suffix. */
+function positive(value: unknown, what: string): number {
+  const raw = count(value, what)
+  if (raw < 1) throw new CanvasCorruptError(`${what} is not a positive integer`)
+  return raw
+}
+
 function count(value: unknown, what: string): number {
   const raw = finite(value, what)
   if (!Number.isInteger(raw) || raw < 0) throw new CanvasCorruptError(`${what} is not a non-negative integer`)
@@ -151,18 +158,23 @@ function parseVersion(value: unknown, what: string): NodeVersion {
     id: brandString<VersionId>(text(raw.id, `${what}.id`)),
     ...raw.path === undefined ? {} : { path: text(raw.path, `${what}.path`) },
     ...raw.text === undefined ? {} : { text: text(raw.text, `${what}.text`) },
-    ...raw.shots === undefined ? {} : { shots: array(raw.shots, `${what}.shots`).map((entry, index) => parseShot(entry, `${what}.shots[${String(index)}]`)) },
+    ...raw.shots === undefined ? {} : {
+      shots: array(raw.shots, `${what}.shots`).map((entry, index) => parseShot(entry, `${what}.shots[${String(index)}]`)),
+    },
     ...raw.prompt === undefined ? {} : { prompt: text(raw.prompt, `${what}.prompt`) },
     ...raw.model === undefined ? {} : { model: text(raw.model, `${what}.model`) },
     ...raw.params === undefined ? {} : { params: params(raw.params, `${what}.params`) },
-    ...raw.inputs === undefined ? {} : { inputs: array(raw.inputs, `${what}.inputs`).map((entry, index) => parseInput(entry, `${what}.inputs[${String(index)}]`)) },
+    ...raw.inputs === undefined ? {} : {
+      inputs: array(raw.inputs, `${what}.inputs`).map((entry, index) => parseInput(entry, `${what}.inputs[${String(index)}]`)),
+    },
     ...raw.durationMs === undefined ? {} : { durationMs: count(raw.durationMs, `${what}.durationMs`) },
     ...raw.width === undefined ? {} : { width: count(raw.width, `${what}.width`) },
     ...raw.height === undefined ? {} : { height: count(raw.height, `${what}.height`) },
     ...beats === undefined ? {} : {
       beats: {
         bpm: finite(beats.bpm, `${what}.beats.bpm`),
-        beatsMs: array(beats.beatsMs, `${what}.beats.beatsMs`).map((entry, index) => count(entry, `${what}.beats.beatsMs[${String(index)}]`)),
+        beatsMs: array(beats.beatsMs, `${what}.beats.beatsMs`)
+          .map((entry, index) => count(entry, `${what}.beats.beatsMs[${String(index)}]`)),
         sections: array(beats.sections, `${what}.beats.sections`).map((entry, index) => {
           const section = record(entry, `${what}.beats.sections[${String(index)}]`)
           return {
@@ -258,7 +270,9 @@ function parseNode(value: unknown, index: number): CanvasNode {
     ...raw.versions === undefined ? {} : {
       versions: array(raw.versions, `node ${id} versions`).map((entry, at) => parseVersion(entry, `node ${id} versions[${String(at)}]`)),
     },
-    ...raw.activeVersion === undefined ? {} : { activeVersion: brandString<VersionId>(text(raw.activeVersion, `node ${id} activeVersion`)) },
+    ...raw.activeVersion === undefined ? {} : {
+      activeVersion: brandString<VersionId>(text(raw.activeVersion, `node ${id} activeVersion`)),
+    },
     ...raw.gen === undefined ? {} : { gen: parseGeneration(raw.gen, `node ${id} gen`) },
     ...raw.status === undefined ? {} : { status: parseStatus(raw.status, `node ${id} status`) },
     ...raw.bible === undefined ? {} : { bible: brandString<BibleEntryId>(text(raw.bible, `node ${id} bible`)) },
@@ -315,7 +329,9 @@ export function assertCanvas(document: CanvasDocument): void {
     const target = byId.get(edge.target)
     if (source === undefined || target === undefined) throw new CanvasCorruptError(`edge ${edge.id} names a missing node`)
     if (edges.has(edge.id)) throw new CanvasCorruptError(`duplicate edge ${edge.id}`)
-    if (edge.id !== edgeId(edge.source, edge.target, edge.role)) throw new CanvasCorruptError(`edge ${edge.id} does not match its endpoints`)
+    if (edge.id !== edgeId(edge.source, edge.target, edge.role)) {
+      throw new CanvasCorruptError(`edge ${edge.id} does not match its endpoints`)
+    }
     if (edge.order !== undefined && edge.role !== 'ref' && edge.role !== 'source') {
       throw new CanvasCorruptError(`edge ${edge.id} carries an order without a role that uses one`)
     }
@@ -361,7 +377,9 @@ export function migrateCanvas(value: unknown): CanvasDocument {
     const target = byId.get(brandString<CanvasNodeId>(text(edge.target, `edges[${String(index)}].target`)))
     if (source === undefined || target === undefined) throw new CanvasCorruptError(`edge ${String(index)} names a missing node`)
     const declared = text(edge.kind, `edges[${String(index)}].kind`)
-    if (declared !== 'derivation' && declared !== 'reference') throw new CanvasCorruptError(`edge ${String(index)} has unknown kind ${declared}`)
+    if (declared !== 'derivation' && declared !== 'reference') {
+      throw new CanvasCorruptError(`edge ${String(index)} has unknown kind ${declared}`)
+    }
     const role = declared === 'reference' ? inferRole(source.type, target.type) : undefined
     return {
       id: edgeId(source.id, target.id, role),
@@ -374,7 +392,7 @@ export function migrateCanvas(value: unknown): CanvasDocument {
   const document: CanvasDocument = {
     version: 2,
     revision: 0,
-    nextId: count(raw.nextId, 'nextId'),
+    nextId: positive(raw.nextId, 'nextId'),
     nodes,
     edges,
   }
@@ -389,8 +407,12 @@ export function migrateCanvas(value: unknown): CanvasDocument {
  * @throws {@link CanvasCorruptError} naming the bound the document exceeds.
  */
 export function assertWithinLimits(document: CanvasDocument, limits: ResolvedConfig): void {
-  if (document.nodes.length > limits.maxNodes) throw new CanvasCorruptError(`document holds ${String(document.nodes.length)} nodes; the limit is ${String(limits.maxNodes)}`)
-  if (document.edges.length > limits.maxEdges) throw new CanvasCorruptError(`document holds ${String(document.edges.length)} edges; the limit is ${String(limits.maxEdges)}`)
+  if (document.nodes.length > limits.maxNodes) {
+    throw new CanvasCorruptError(`document holds ${String(document.nodes.length)} nodes; the limit is ${String(limits.maxNodes)}`)
+  }
+  if (document.edges.length > limits.maxEdges) {
+    throw new CanvasCorruptError(`document holds ${String(document.edges.length)} edges; the limit is ${String(limits.maxEdges)}`)
+  }
   for (const node of document.nodes) {
     if (node.gen !== undefined && node.gen.prompt.length > limits.maxPromptLength) {
       throw new CanvasCorruptError(`node ${node.id} prompt exceeds ${String(limits.maxPromptLength)} characters`)
@@ -436,7 +458,7 @@ function parseCurrentDocument(value: unknown): CanvasDocument {
   const document: CanvasDocument = {
     version: 2,
     revision: count(raw.revision, 'revision'),
-    nextId: count(raw.nextId, 'nextId'),
+    nextId: positive(raw.nextId, 'nextId'),
     nodes: array(raw.nodes, 'nodes').map(parseNode),
     edges: array(raw.edges, 'edges').map(parseEdge),
   }
