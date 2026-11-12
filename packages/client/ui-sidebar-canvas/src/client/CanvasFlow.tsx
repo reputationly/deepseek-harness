@@ -133,6 +133,18 @@ export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, hist
         else undo()
         return
       }
+      const target = event.target
+      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      if (event.code === 'Space') {
+        const selectedNode = nodes.find(node => node.selected === true)
+        if (selectedNode === undefined) return
+        const element = window.document.querySelector(`.react-flow__node[data-id="${selectedNode.id}"] video, .react-flow__node[data-id="${selectedNode.id}"] audio`)
+        if (!(element instanceof HTMLMediaElement)) return
+        event.preventDefault()
+        if (element.paused) void element.play().catch(() => undefined)
+        else element.pause()
+        return
+      }
       if (event.key.toLowerCase() !== 'g' || event.metaKey || event.ctrlKey) return
       const members = groupable(document, nodes.filter(node => node.selected === true).map(node => node.id))
       if (members.length < 2) return
@@ -174,9 +186,12 @@ export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, hist
   }, [apply, document])
   // The Host owns deletion: the gesture becomes edits and the flow keeps its items until the next document.
   const onBeforeDelete = useCallback<OnBeforeDelete<CanvasFlowNode, CanvasFlowEdge>>(async (deleted) => {
-    await apply(deleteOperations(document, deleted.nodes.map(node => node.id), deleted.edges.map(edge => edge.id)))
+    const removal = deleteOperations(document, deleted.nodes.map(node => node.id), deleted.edges.map(edge => edge.id))
+    const removing = removal.filter(operation => operation.op !== 'ungroup').length
+    if (removing > 0 && !window.confirm(t('canvas.confirmDelete', { count: removing }))) return false
+    await apply(removal)
     return false
-  }, [document, apply])
+  }, [document, apply, t])
   return <ReactFlow
     className={css.flow} nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} fitView minZoom={0.1} maxZoom={2}
     deleteKeyCode={['Backspace', 'Delete']} proOptions={{ hideAttribution: true }}
