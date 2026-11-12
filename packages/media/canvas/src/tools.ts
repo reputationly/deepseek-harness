@@ -224,7 +224,7 @@ export function listCanvas(
   detail: 'summary' | 'full' = 'summary',
 ): CanvasListing {
   const wanted = only === undefined || only.length === 0 ? undefined : new Set(only)
-  const short = detail === 'summary'
+  const short = detail === 'summary' && wanted === undefined
   const shown = (id: string, group: string | undefined): boolean =>
     wanted === undefined || wanted.has(id) || (group !== undefined && wanted.has(group))
   const nodes = document.nodes.filter(node => node.type !== 'group' && shown(node.id, node.group))

@@ -52,7 +52,7 @@ async function call(name: string, args: unknown): Promise<{ text: string; isErro
 
 describe('CanvasService', () => {
   it('reads an empty canvas for a project without a canvas file and writes nothing', async () => {
-    expect(await ctx.canvas.read(session)).toEqual({ version: 1, nextId: 1, nodes: [], edges: [] })
+    expect(await ctx.canvas.read(session)).toEqual({ version: 2, revision: 0, nextId: 1, nodes: [], edges: [] })
     await expect(readFile(canvasFile(directory))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
@@ -60,12 +60,14 @@ describe('CanvasService', () => {
     const result = await ctx.canvas.edit(session, [
       { op: 'add', ref: 'a', type: 'image', path: 'a.png' },
       { op: 'add', type: 'image', path: 'missing.png' },
-    ])
+    ], { baseRevision: 0 })
     expect(result.skipped).toEqual([{ index: 1, op: 'add', reason: 'file missing.png does not exist' }])
-    const stored = JSON.parse(await readFile(canvasFile(directory), 'utf8')) as { nodes: { path: string }[] }
-    expect(stored.nodes.map(node => node.path)).toEqual([join(directory, 'a.png')])
-    expect(changes).toEqual([{ directory }])
-    await ctx.canvas.edit(session, [{ op: 'remove', node: 'n9' }])
+    const stored = JSON.parse(await readFile(canvasFile(directory), 'utf8')) as { nodes: { versions: { path?: string }[] }[] }
+    expect(stored.nodes.map(node => node.versions[0]?.path)).toEqual([join(directory, 'a.png')])
+    expect(changes).toHaveLength(1)
+    expect(changes[0]).toMatchObject({ directory, episode: 'e1', revisions: { canvas: 1 } })
+    const unchanged = await ctx.canvas.edit(session, [{ op: 'remove', node: 'n9' }], { baseRevision: result.revision })
+    expect(unchanged.revision).toBe(1)
     expect(changes).toHaveLength(1)
   })
 
@@ -144,9 +146,11 @@ describe('CanvasService', () => {
   })
 
   it('serves the Remote view and applies user operations', async () => {
-    await ctx.canvas.apply(session, [{ op: 'add', type: 'text', text: 'hello' }, { op: 'move', node: 'n1', x: 40, y: 60 }])
+    await ctx.canvas.apply(session, [{ op: 'add', type: 'text', text: 'hello' }, { op: 'move', node: 'n1', x: 40, y: 60 }], 0)
     const view = await ctx.canvas.get(session)
     expect(view.directory).toBe(directory)
+    expect(view.episode).toEqual({ id: 'e1', title: 'Canvas' })
+    expect(view.revisions).toEqual({ canvas: 1 })
     expect(view.document.nodes).toMatchObject([{ id: 'n1', x: 40, y: 60, placed: true }])
   })
 })
@@ -159,6 +163,7 @@ describe('canvas tools', () => {
 
   it('builds a connected, grouped canvas in one call and reads it back', async () => {
     const edit = await call('canvas_edit', {
+      baseRevision: 0,
       operations: [
         { op: 'add', ref: 'brief', type: 'text', title: 'Brief', text: 'x'.repeat(200) },
         { op: 'add', ref: 'a', type: 'image', path: 'a.png' },
@@ -169,7 +174,7 @@ describe('canvas tools', () => {
       ],
     })
     expect(edit.isError).toBe(false)
-    expect(edit.text).toBe('Created n1 (brief), n2 (a), n3 (b), g4 (refs).\nSkipped operation 4 (connect): node ghost does not exist.')
+    expect(edit.text).toBe('Revision 1.\nCreated n1 (brief), n2 (a), n3 (b), g4 (refs).\nSkipped operation 4 (connect): node ghost does not exist.')
     const listing = await call('canvas_get', {})
     expect(listing.text.replaceAll(directory, '<project>')).toMatchSnapshot()
     const one = await call('canvas_get', { nodes: ['n1', 'n7'] })
@@ -178,10 +183,11 @@ describe('canvas tools', () => {
   })
 
   it('reports an empty canvas, a no-op edit, and a malformed operation', async () => {
-    expect((await call('canvas_get', {})).text).toBe('The canvas is empty.')
-    await call('canvas_edit', { operations: [{ op: 'add', type: 'text', text: 'a' }] })
-    expect((await call('canvas_edit', { operations: [{ op: 'update', node: 'n1', title: 'A' }] })).text).toBe('Applied.')
-    const malformed = await call('canvas_edit', { operations: [{ op: 'connect', from: 'n1' }] })
+    expect((await call('canvas_get', {})).text).toContain('The canvas is empty.')
+    await call('canvas_edit', { baseRevision: 0, operations: [{ op: 'add', type: 'text', text: 'a' }] })
+    const noop = await call('canvas_edit', { baseRevision: 1, operations: [{ op: 'remove', node: 'n9' }] })
+    expect(noop.text).toBe('Revision 1.\nSkipped operation 0 (remove): node n9 does not exist.')
+    const malformed = await call('canvas_edit', { baseRevision: 1, operations: [{ op: 'connect', from: 'n1' }] })
     expect(malformed.isError).toBe(true)
     expect(malformed.text).toContain('operations[0] (connect) needs to')
   })

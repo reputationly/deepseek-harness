@@ -1,22 +1,42 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`canvas tools > builds a connected, grouped canvas in one call and reads it back 1`] = `
-"- n1 text "Brief" text="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
-- n2 image "a.png" path=<project>/a.png group=g4
-- n3 image "b.png" path=<project>/b.png group=g4
+"Revision 1 · episode e1 "Canvas" · no project.json · no bible.json
+- n1 text "Brief" v=v1 text="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+- n2 image "a.png" v=v1 group=g4 path=<project>/a.png inputs=prompt n1
+- n3 image "b.png" v=v1 group=g4 path=<project>/b.png
 - g4 group "References" members=n2,n3
-Edges: n1->n2"
+Edges: n1->n2:prompt"
 `;
 
 exports[`canvas tools > shows the model one schema per tool 1`] = `
 [
   {
-    "description": "Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges.",
+    "description": "Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges. Nodes report their active version, generation inputs, and whether their storyboard or inputs changed since they were made.",
     "name": "canvas_get",
     "parameters": {
       "properties": {
+        "detail": {
+          "description": "summary shortens long text; full keeps it and returns the shots of each storyboard.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
+        "include": {
+          "description": "bible adds the shared style and entries; project adds the production format and episodes.",
+          "items": {
+            "enum": [
+              "bible",
+              "project",
+            ],
+            "type": "string",
+          },
+          "type": "array",
+        },
         "nodes": {
-          "description": "Node or group ids to read in full. Omit to list the whole canvas with long text and prompts shortened.",
+          "description": "Node or group ids to read in full. Omit to list the whole canvas with long text shortened.",
           "items": {
             "type": "string",
           },
@@ -27,25 +47,51 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
     },
   },
   {
-    "description": "Edit the project canvas with an ordered list of operations applied together. Nodes are positioned automatically. An operation that cannot apply is skipped and reported while the others still apply.",
+    "description": "Edit the project canvas with an ordered list of operations applied together. Nodes are positioned automatically. baseRevision is the revision canvas_get returned; a stale revision is refused instead of overwriting newer work. An operation that cannot apply is skipped and reported while the others still apply.",
     "name": "canvas_edit",
     "parameters": {
       "properties": {
+        "baseRevision": {
+          "description": "Revision canvas_get returned for the canvas this call edits.",
+          "type": "integer",
+        },
         "operations": {
           "description": "Operations in the order they apply.",
           "items": {
             "additionalProperties": false,
             "properties": {
+              "after": {
+                "description": "Shot id the moved or inserted shot follows; omit to append.",
+                "type": "string",
+              },
+              "bible": {
+                "description": "Bible entry this image belongs to.",
+                "type": "string",
+              },
               "from": {
-                "description": "Node or group the edge starts at: the input or source material.",
+                "description": "Node the edge starts at: the input or source material.",
+                "type": "string",
+              },
+              "genKind": {
+                "description": "What the node generates.",
+                "enum": [
+                  "image",
+                  "video",
+                  "speech",
+                  "music",
+                ],
                 "type": "string",
               },
               "group": {
-                "description": "Existing group that the added node joins.",
+                "description": "Existing group the added node joins.",
+                "type": "string",
+              },
+              "model": {
+                "description": "Model id for generation.",
                 "type": "string",
               },
               "node": {
-                "description": "Node that update, remove, or ungroup acts on.",
+                "description": "Node that the operation acts on.",
                 "type": "string",
               },
               "nodes": {
@@ -56,28 +102,89 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
                 "type": "array",
               },
               "op": {
-                "description": "add creates a node from type plus text or path. update changes title, text, or path of node. remove deletes node. connect and disconnect take from and to. group frames nodes under title. ungroup dissolves the group node and keeps its members.",
+                "description": "add creates a node from type plus text, path, shots, or prompt. update changes title, text, or path. set_gen changes how a media node generates and takes params where null deletes a parameter. set_text and set_shots store a new version; update_shot, insert_shot, remove_shot, and move_shot edit one shot. set_version switches the active version. connect and disconnect take from and to, with an optional role. reorder_refs rewrites the reference order. group frames nodes under title; ungroup dissolves the group.",
                 "enum": [
                   "add",
                   "update",
                   "remove",
+                  "set_gen",
+                  "set_text",
+                  "set_shots",
+                  "update_shot",
+                  "insert_shot",
+                  "remove_shot",
+                  "move_shot",
+                  "set_version",
                   "connect",
                   "disconnect",
+                  "reorder_refs",
                   "group",
                   "ungroup",
                 ],
                 "type": "string",
               },
+              "order": {
+                "description": "Position among the reference inputs.",
+                "type": "integer",
+              },
+              "params": {
+                "additionalProperties": true,
+                "description": "Generation parameters; null deletes one.",
+                "properties": {},
+                "type": "object",
+              },
+              "patch": {
+                "additionalProperties": true,
+                "description": "Shot fields update_shot replaces.",
+                "properties": {},
+                "type": "object",
+              },
               "path": {
                 "description": "File of an image, video, or audio node.",
                 "type": "string",
               },
-              "ref": {
-                "description": "Name for the node that add or group creates, usable wherever a node id is expected in later operations of this call.",
+              "prompt": {
+                "description": "Prompt of a generated node; may mention bible entries as @name.",
                 "type": "string",
               },
+              "ref": {
+                "description": "Name for the node that add or group creates, usable wherever a node id is expected later in this call.",
+                "type": "string",
+              },
+              "role": {
+                "description": "What the edge supplies. Inferred from node types when omitted.",
+                "enum": [
+                  "prompt",
+                  "ref",
+                  "first_frame",
+                  "last_frame",
+                  "audio",
+                  "source",
+                ],
+                "type": "string",
+              },
+              "shot": {
+                "description": "Shot id that the operation acts on.",
+                "type": "string",
+              },
+              "shots": {
+                "description": "Shots of a storyboard, or the shot insert_shot adds.",
+                "items": {
+                  "additionalProperties": true,
+                  "properties": {},
+                  "type": "object",
+                },
+                "type": "array",
+              },
+              "sources": {
+                "description": "Reference sources in the order reorder_refs applies.",
+                "items": {
+                  "type": "string",
+                },
+                "type": "array",
+              },
               "text": {
-                "description": "Content of a text node.",
+                "description": "Content of a text or script node.",
                 "type": "string",
               },
               "title": {
@@ -85,7 +192,7 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
                 "type": "string",
               },
               "to": {
-                "description": "Node or group the edge points to: what was made from, or depends on, from.",
+                "description": "Node the edge points to: what was made from, or depends on.",
                 "type": "string",
               },
               "type": {
@@ -94,7 +201,14 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
                   "video",
                   "audio",
                   "text",
+                  "script",
+                  "storyboard",
+                  "timeline",
                 ],
+                "type": "string",
+              },
+              "version": {
+                "description": "Version id set_version activates.",
                 "type": "string",
               },
             },
@@ -108,6 +222,7 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
       },
       "required": [
         "operations",
+        "baseRevision",
       ],
       "type": "object",
     },

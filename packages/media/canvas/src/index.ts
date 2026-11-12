@@ -157,6 +157,7 @@ export class CanvasService extends TypertRemoteService {
       if (!await isFile(path)) rejected.set(index, `file ${operation.path} does not exist`)
       return { ...operation, path }
     }))
+    let changed = false
     const result = await this.store.updateCanvas(target.directory, target.file, (current) => {
       checkRevision(current, options.baseRevision)
       const outcome = applyOperations(current, prepared, {
@@ -165,9 +166,10 @@ export class CanvasService extends TypertRemoteService {
         rejected,
       })
       assertWithinLimits(outcome.document, this.limits)
+      changed = outcome.changed
       return { ...outcome.changed ? { document: outcome.document } : {}, value: outcome.result }
     })
-    if (operations.length > 0) {
+    if (changed) {
       this.ctx.emit('canvas/change', { directory: target.directory, episode: target.episode.id, revisions: { canvas: result.revision } })
     }
     return result

@@ -141,15 +141,22 @@ export function applyOperations(
   const setVersion = (node: DraftNode, version: NodeVersion): void => {
     node.versions = [...node.versions ?? [], version]
     node.activeVersion = version.id
-    if (isMediaType(node.type) || node.type === 'text' || node.type === 'script') versioned.add(node.id)
+    versioned.add(node.id)
   }
   const dropVersions = (node: DraftNode): void => {
     const versions = node.versions ?? []
     const limit = isMediaType(node.type) ? options.limits.versionLimit : options.limits.textVersionLimit
     if (versions.length <= limit) return
+    const kept: NodeVersion[] = []
+    for (let at = versions.length - 1; at >= 0 && kept.length < limit; at -= 1) {
+      const version = versions[at]
+      if (version !== undefined) kept.unshift(version)
+    }
     const active = activeVersionOf(node)
-    const keep = versions.filter(version => version.id !== active?.id).slice(versions.length - limit)
-    const kept = active === undefined ? keep : [...keep, active].sort((a, b) => versions.indexOf(a) - versions.indexOf(b))
+    if (active !== undefined && !kept.some(version => version.id === active.id)) {
+      kept.shift()
+      kept.unshift(active)
+    }
     node.versions = kept
   }
   const storyboardOf = (node: DraftNode): Shot[] => {
@@ -218,6 +225,10 @@ export function applyOperations(
           ...group === undefined ? {} : { group: brandString<CanvasNodeId>(group) },
         })
         claim(operation.ref, id)
+        return
+      }
+      case 'remove': {
+        dropNode(find(operation.node).id)
         return
       }
       case 'update': {
@@ -385,6 +396,10 @@ export function applyOperations(
         node.width = operation.width
         node.height = operation.height
         return
+      }
+      default: {
+        const unhandled: never = operation
+        throw new Error(`canvas: unhandled operation ${JSON.stringify(unhandled)}`)
       }
     }
   }
