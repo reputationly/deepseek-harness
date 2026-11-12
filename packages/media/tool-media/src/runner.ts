@@ -24,8 +24,13 @@ export interface GeneratedMedia {
 export interface MediaCall {
   readonly node: CanvasNode
   readonly entry: PlannedGeneration
+  /** Prompt with prompt edges and mentions already expanded. */
+  readonly prompt: string
+  /** Reference image files, in edge order. */
+  readonly refs: readonly string[]
   /** File a tail chain uses as the first frame, when the plan resolved one. */
   readonly firstFramePath?: string
+  readonly lastFramePath?: string
   readonly signal: AbortSignal
 }
 
@@ -151,13 +156,20 @@ function inputsOf(inputs: ReturnType<typeof collectInputs>): readonly NodeInput[
  * @param token - budget token the caller confirmed, when it confirmed one.
  * @returns the refusal, the budget the caller must confirm, or what each node produced.
  */
-export async function runPlan(services: RunnerServices, requested: readonly string[], token: string | undefined): Promise<RunOutcome> {
+export async function runPlan(
+  services: RunnerServices,
+  requested: readonly string[],
+  token: string | undefined,
+  options: { readonly skipConfirmation?: boolean } = {},
+): Promise<RunOutcome> {
   const loaded = await services.canvas.read()
   const bible = await services.canvas.bible()
   const plan = planNodes(loaded.document, bible, requested, services.limits)
   if (plan.blocked !== undefined) return { status: 'blocked', plan }
   const budget = budgetOf(plan, services.confirmLimits)
-  if (budget.needsConfirmation && budget.token !== token) return { status: 'needs_confirmation', plan, budget }
+  if (budget.needsConfirmation && budget.token !== token && options.skipConfirmation !== true) {
+    return { status: 'needs_confirmation', plan, budget }
+  }
 
   let document = loaded.document
   let revision = loaded.revision
@@ -206,7 +218,12 @@ export async function runPlan(services: RunnerServices, requested: readonly stri
       }
       const job = services.jobs.start({
         label: `${current.title}`,
-        run: signal => generate(services, current, entry, firstFramePath, signal),
+        run: signal => generate(services, current, entry, {
+          prompt: inputs.prompt,
+          refs: inputs.refs.map(ref => ref.path),
+          ...firstFramePath === undefined ? {} : { firstFramePath },
+          ...inputs.lastFrame === undefined ? {} : { lastFramePath: inputs.lastFrame.path },
+        }, signal),
       })
       const queued: CanvasOperation = {
         op: 'set_status', node, status: { state: 'queued', jobId: job.id as never, at: services.now() },
@@ -254,13 +271,10 @@ async function generate(
   services: RunnerServices,
   node: CanvasNode,
   entry: PlannedGeneration,
-  firstFramePath: string | undefined,
+  resolved: Pick<MediaCall, 'prompt' | 'refs' | 'firstFramePath' | 'lastFramePath'>,
   signal: AbortSignal,
 ): Promise<GeneratedMedia> {
-  const call: MediaCall = {
-    node, entry, signal,
-    ...firstFramePath === undefined ? {} : { firstFramePath },
-  }
+  const call: MediaCall = { node, entry, signal, ...resolved }
   if (entry.kind === 'image') return services.generate.image(call)
   if (entry.kind === 'video') return services.generate.video(call)
   if (entry.kind === 'speech') return services.generate.speech(call)

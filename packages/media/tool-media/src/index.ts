@@ -21,6 +21,9 @@ import { CatalogSource } from './catalog.ts'
 import { registerMediaSkills, resolveSkillRoot } from './skills.ts'
 import { registerEditTools } from './edit-tools.ts'
 import { FfmpegRunner } from './ffmpeg.ts'
+import type { JobHandle } from '@deepseek-ai/dsh-jobs'
+import { createGenerator } from './generators.ts'
+import { registerNodeTools } from './node-tools.ts'
 import { awaitTask, downloadMedia, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
 import { placeMediaArtifact, registerVisualTools } from './visual-tools.ts'
 
@@ -61,6 +64,8 @@ export interface Config {
   videoDefaultDuration?: number
   /** Video model used when a node has reference images but no first frame. */
   videoRefModel?: string
+  /** Longest video segment one generation call may cover, in seconds. */
+  maxSegmentSeconds?: number
   /** Generation tasks one call may run at once. */
   generateConcurrency?: number
   /** Video calls above which a plan needs the user's confirmation. */
@@ -99,6 +104,7 @@ const CONFIG_FIELDS = {
   catalogCacheFile: z.string().default(''),
   videoDefaultDuration: z.number().default(5),
   videoRefModel: z.string().default('minimax-h3-ref2va'),
+  maxSegmentSeconds: z.number().default(15),
   generateConcurrency: z.number().default(3),
   confirmVideoCalls: z.number().default(2),
   confirmVideoSeconds: z.number().default(20),
@@ -113,6 +119,12 @@ const CONFIG_FIELDS = {
 } satisfies Record<keyof Config, unknown>
 
 export const Config: z<Config> = z.object(CONFIG_FIELDS)
+
+declare module '@deepseek-ai/dsh-jobs' {
+  interface JobKindMap {
+    media: 'media'
+  }
+}
 
 /** Declared config keys; a deployment that carries a retired key must fail at load instead of silently falling back. */
 const CONFIG_KEYS: readonly string[] = Object.keys(CONFIG_FIELDS)
@@ -240,6 +252,91 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       return join(directory, `edit-${String(Date.now())}-${String(outputSequence)}${extension}`)
     },
     canvas: () => ctx.get('canvas'),
+  })
+  const generator = createGenerator({
+    request,
+    ...resolved.catalog ? {
+      catalog: async () => {
+        const gateway = await request(AbortSignal.timeout(resolved.taskTimeoutMs))
+        return new CatalogSource({ baseURL: resolved.baseURL, cacheFile }).load(gateway.apiKey, gateway.signal)
+      },
+    } : {},
+    write: (prefix, contentType, bytes) => writeArtifact(resolved.outputDir, prefix, contentType, bytes),
+    taskTimeoutMs: resolved.taskTimeoutMs,
+    pollIntervalMs: resolved.pollIntervalMs,
+    videoDefaultDuration: resolved.videoDefaultDuration,
+  })
+  const jobsRegistry = ctx.get('jobs')
+  registerNodeTools(ctx, {
+    canvas: ctx.get('canvas') as import('@deepseek-ai/dsh-canvas').CanvasService,
+    limits: {
+      maxVideoSeconds: resolved.maxSegmentSeconds,
+      videoDefaultDuration: resolved.videoDefaultDuration,
+      videoModel: resolved.videoModel,
+      videoRefModel: resolved.videoRefModel,
+      imageModel: resolved.imageModel,
+      speechModel: resolved.speechModel,
+      musicModel: resolved.musicModel,
+    },
+    confirmLimits: {
+      confirmVideoCalls: resolved.confirmVideoCalls,
+      confirmVideoSeconds: resolved.confirmVideoSeconds,
+      confirmSpeechLines: resolved.confirmSpeechLines,
+      confirmImageCalls: resolved.confirmImageCalls,
+      confirmMusicCalls: resolved.confirmMusicCalls,
+    },
+    concurrency: resolved.generateConcurrency,
+    generate: generator,
+    jobs: session => ({
+      start: (spec) => {
+        if (jobsRegistry === undefined) throw new Error('tool-media: the jobs service is not available')
+        const owner = session.id
+        let settle: (value: Awaited<ReturnType<typeof spec.run>>) => void = () => {}
+        let reject: (error: unknown) => void = () => {}
+        const done = new Promise<Awaited<ReturnType<typeof spec.run>>>((resolve, fail) => { settle = resolve; reject = fail })
+        const id = jobsRegistry.start({
+          kind: 'media',
+          label: spec.label,
+          owner,
+          run: (job: JobHandle) => {
+            const controller = new AbortController()
+            job.append(`generating ${spec.label}\n`, { channel: 'log' })
+            spec.run(controller.signal).then((value) => {
+              settle(value)
+              job.append(`wrote ${value.path}\n`, { channel: 'log' })
+            }, (error: unknown) => {
+              reject(error)
+              job.append(`${error instanceof Error ? error.message : String(error)}\n`, { channel: 'log' })
+            })
+            return {
+              cancel: (reason?: string) => controller.abort(reason),
+              done: done.then(
+                value => ({ status: 'completed' as const, result: value.path }),
+                (error: unknown) => ({ status: 'failed' as const, detail: error instanceof Error ? error.message : String(error) }),
+              ),
+            }
+          },
+        })
+        return { id: String(id), done }
+      },
+    }),
+    probe: async (path) => {
+      const probe = await ffmpeg.probe(path)
+      const stream = probe.streams?.find(entry => entry.codec_type === 'video')
+      const duration = Number(probe.format?.duration ?? stream?.duration ?? 0)
+      return {
+        ...Number.isFinite(duration) && duration > 0 ? { durationMs: Math.round(duration * 1000) } : {},
+        ...stream?.width === undefined ? {} : { width: stream.width },
+        ...stream?.height === undefined ? {} : { height: stream.height },
+      }
+    },
+    tailFrame: async (path) => {
+      const directory = isAbsolute(resolved.outputDir) ? resolved.outputDir : join(process.cwd(), resolved.outputDir)
+      await mkdir(directory, { recursive: true })
+      const target = join(directory, `tail-${String(Date.now())}.png`)
+      await ffmpeg.exec(['-sseof', '-0.05', '-i', path, '-frames:v', '1', '-y', target])
+      return target
+    },
   })
   const skills = ctx.get('skills')
   if (skills !== undefined) registerMediaSkills(ctx, skills, resolveSkillRoot(resolved.skillsRoot))

@@ -82,7 +82,7 @@ export function planDialogue(
       })
       planned.push({
         node: `${storyboard.id}:${shot.id}:${line.id}` as CanvasNodeId,
-        ref: `voice-${line.id}`,
+        ref: `voice-${shot.id}-${line.id}`,
         kind: 'speech',
         model,
         calls: 1,
