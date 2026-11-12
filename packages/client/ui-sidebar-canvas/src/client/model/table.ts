@@ -104,3 +104,22 @@ export function moveShotOperation(node: CanvasNode, shot: ShotId, after: ShotId 
 export function segmentOfShot(segments: readonly StoryboardSegment[], shot: ShotId): number {
   return segments.findIndex(segment => segment.shots.includes(shot))
 }
+
+/** Template a new table row starts from. */
+export function blankShot(): Omit<Shot, 'id'> {
+  return {
+    title: '', shotSize: 'medium', visual: '', motion: '', camera: '固定', durationSec: 3,
+    characters: [], props: [], dialogue: [], sfx: '', negative: '',
+  }
+}
+
+/**
+ * Segment color class one shot belongs to.
+ * @param segments - segments of the storyboard.
+ * @param shot - shot id.
+ * @returns a stable class suffix in 0–3, or 0 when the shot is in no segment.
+ */
+export function segmentTone(segments: readonly StoryboardSegment[], shot: ShotId): number {
+  const index = segmentOfShot(segments, shot)
+  return index < 0 ? 0 : index % 4
+}

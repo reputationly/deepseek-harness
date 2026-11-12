@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { CanvasInjected } from './face.ts'
 import { LazyCanvasFlow } from './LazyCanvasFlow.tsx'
 import { Inspector } from './Inspector.tsx'
+import { StoryboardTable } from './StoryboardTable.tsx'
 import { inspectorPlacement } from './model/inspector.ts'
 import type { NS } from './locales.ts'
 import css from './CanvasBody.module.css'
@@ -24,6 +25,7 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
   const root = useRef<HTMLElement>(null)
   const [width, setWidth] = useState(0)
   const [selectedId, setSelectedId] = useState<string>()
+  const [tableId, setTableId] = useState<string>()
   useEffect(() => {
     const element = root.current
     if (element === null) return
@@ -42,6 +44,7 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
   }
   const { document } = state.view
   const selected = selectedId === undefined ? undefined : document.nodes.find(node => node.id === selectedId)
+  const table = tableId === undefined ? undefined : document.nodes.find(node => node.id === tableId)
   return <section className={css.root} data-sidebar-canvas ref={root}>
     {state.status === 'failed' && <div className={css.notice} role="alert">
       <span className={css.noticeText}>{t('failed', { message: state.error })}</span>{retry}
@@ -55,7 +58,8 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
       : <><LazyCanvasFlow document={document} readFile={readFile} t={t} edit={edit} reload={load} onSelect={setSelectedId} />
         {selected === undefined ? undefined : <Inspector
           document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}
-          edit={edit} close={() => { setSelectedId(undefined) }} t={t}
-        />}</>}
+          edit={edit} close={() => { setSelectedId(undefined) }} openTable={setTableId} t={t}
+        />}
+        {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t} />}</>}
   </section>
 }
