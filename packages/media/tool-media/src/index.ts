@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { extname, isAbsolute, join, relative, sep } from 'node:path'
+import { isAbsolute, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -285,8 +285,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     },
   }))
 
-  const taskTool = (toolName: string, model: string, description: string) => ({
-    name: toolName,
+  const taskTool = (model: string, description: string) => ({
+    name: 'generate_music',
     description,
     parameters: {
       prompt: { type: 'string' as const, required: true as const, description: 'What to produce, including style, instruments, tempo, and mood for music.' },
@@ -313,19 +313,17 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const input = args as { prompt: string; lyrics?: string }
       const gateway = await request(exec.signal)
       // Music3 reads the arrangement description from request metadata and the lyrics from the prompt.
-      const body: Record<string, unknown> = toolName === 'generate_music'
-        ? {
-          prompt: input.prompt,
-          metadata: {
-            instructions: input.prompt,
-            ...(input.lyrics === undefined ? {} : { lyrics: input.lyrics }),
-          },
-        }
-        : { prompt: input.prompt }
+      const body: Record<string, unknown> = {
+        prompt: input.prompt,
+        metadata: {
+          instructions: input.prompt,
+          ...(input.lyrics === undefined ? {} : { lyrics: input.lyrics }),
+        },
+      }
       const id = await submitTask(gateway, model, body)
       const url = await awaitTask(gateway, id, { timeoutMs: resolved.taskTimeoutMs, intervalMs: resolved.pollIntervalMs })
       const media = await downloadMedia(gateway, url)
-      const path = await writeArtifact(resolved.outputDir, toolName.replace('generate_', ''), media.contentType, media.bytes)
+      const path = await writeArtifact(resolved.outputDir, 'music', media.contentType, media.bytes)
       const placement = await placeMediaArtifact(ctx.get('canvas'), exec.agent?.session, {
         type: 'audio', path, title: 'Music', prompt: input.prompt, model,
       })
@@ -334,31 +332,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   })
 
   ctx.tools.register(defineTool(taskTool(
-    'generate_music',
     resolved.musicModel,
     'Generate a music track. The prompt must describe genre, instrumentation, tempo, and mood.',
   )))
-}
-
-/** Supported artifact file extensions, exported for tests. */
-export const MEDIA_EXTENSIONS = ['.png', '.jpg', '.webp', '.wav', '.mp3', '.mp4', '.bin'] as const
-
-/**
- * Whether a path stays inside one directory tree, exported for tests.
- * @param root - the directory that must contain the path.
- * @param candidate - the path to check.
- * @returns true when the path is strictly below the directory.
- */
-export function staysInside(root: string, candidate: string): boolean {
-  const path = relative(root, candidate)
-  return path !== '' && path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path)
-}
-
-/**
- * File extension of one artifact path, exported for tests.
- * @param path - the artifact path.
- * @returns the extension with its leading dot, or an empty string.
- */
-export function artifactExtension(path: string): string {
-  return extname(path)
 }

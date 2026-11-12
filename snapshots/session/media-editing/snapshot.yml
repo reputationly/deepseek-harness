@@ -6,3 +6,5 @@ recording: live
 header:
   class: media-editing
   pin: true
+input:
+  task: Load the media-editing skill, then explain which tools and arguments handle audio separation, clipping, scaling, and concatenation. Do not execute any media tools or modify files.

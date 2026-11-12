@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -85,6 +85,16 @@ describe('CanvasService', () => {
     const failure = await ctx.canvas.get(session).catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(RemoteError)
     expect(failure).toMatchObject({ code: 'canvas/corrupt', details: { file: canvasFile(directory) } })
+  })
+
+  it('propagates unexpected file errors from media validation and remote reads', async () => {
+    await symlink('loop', join(directory, 'loop'))
+    await expect(ctx.canvas.edit(session, [{ op: 'add', type: 'image', path: 'loop' }]))
+      .rejects.toMatchObject({ code: 'ELOOP' })
+
+    await mkdir(join(directory, '.canvas'))
+    await symlink('canvas.json', canvasFile(directory))
+    await expect(ctx.canvas.get(session)).rejects.toMatchObject({ code: 'ELOOP' })
   })
 
   it('resolves image nodes and groups to image files for generation inputs', async () => {

@@ -33,8 +33,7 @@ function optionValues(args: readonly string[], option: string): string[] {
   const values: string[] = []
   for (let index = 0; index < args.length - 1; index++) {
     if (args[index] === option) {
-      const value = args[index + 1]
-      if (value !== undefined) values.push(value)
+      values.push(args[index + 1] as string)
     }
   }
   return values
@@ -52,7 +51,7 @@ function localInput(source: string, lavfi: boolean): boolean {
 }
 
 function videoConcat(graph: string): boolean {
-  return [...graph.matchAll(/concat\s*=\s*([^;,]+)/giu)].some(match => !/\bv\s*=\s*0\b/iu.test(match[1] ?? ''))
+  return [...graph.matchAll(/concat\s*=\s*([^;,]+)/giu)].some(match => !/\bv\s*=\s*0\b/iu.test(match[1] as string))
 }
 
 export function isDryRun(args: readonly string[]): boolean {
@@ -64,8 +63,7 @@ export function checkFfmpegCommand(args: readonly string[], outputType = 'video'
   let pendingFormat = ''
   let inputCount = 0
   for (let index = 0; index < args.length; index++) {
-    const arg = args[index]
-    if (arg === undefined) continue
+    const arg = args[index] as string
     if (arg === '-y' || arg === '-n' || arg.startsWith('-y=') || arg.startsWith('-n=')) {
       return { ok: false, error: 'Do not pass -y or -n; the tool controls output overwrite behavior.' }
     }
@@ -164,17 +162,17 @@ export function extractOptionValues(filter: string, key: string): string[] {
           value += filter.slice(cursor, cursor + 2)
           cursor += 2
         } else {
-          value += filter[cursor] ?? ''
+          value += filter[cursor] as string
           cursor++
         }
       }
     } else {
-      while (cursor < filter.length && ![':', ',', ']'].includes(filter[cursor] ?? '')) {
+      while (cursor < filter.length && ![':', ',', ']'].includes(filter[cursor] as string)) {
         if (filter[cursor] === '\\' && cursor + 1 < filter.length) {
           value += filter.slice(cursor, cursor + 2)
           cursor += 2
         } else {
-          value += filter[cursor] ?? ''
+          value += filter[cursor] as string
           cursor++
         }
       }
@@ -197,7 +195,7 @@ function drawtextRanges(filter: string): { readonly start: number; readonly end:
     let end = start
     let quote = ''
     while (end < filter.length) {
-      const character = filter[end] ?? ''
+      const character = filter.charAt(end)
       if (character === '\\') end += 2
       else if (quote !== '') {
         if (character === quote) quote = ''
@@ -221,8 +219,7 @@ export function injectCjkFont(
 ): RewriteResult {
   const output = [...args]
   for (let index = 0; index < output.length; index++) {
-    const arg = output[index]
-    if (arg === undefined) continue
+    const arg = output[index] as string
     if (!arg.includes('drawtext')) continue
     let rewritten = arg
     for (const range of drawtextRanges(arg).reverse()) {

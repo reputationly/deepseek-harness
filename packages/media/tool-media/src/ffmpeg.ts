@@ -58,8 +58,7 @@ function appendTail(chunks: Buffer[], currentBytes: number, chunk: Buffer): numb
   chunks.push(chunk)
   let size = currentBytes + chunk.byteLength
   while (size > OUTPUT_LIMIT && chunks.length > 0) {
-    const first = chunks[0]
-    if (first === undefined) break
+    const first = chunks[0] as Buffer
     const excess = size - OUTPUT_LIMIT
     if (first.byteLength <= excess) {
       chunks.shift()
@@ -143,7 +142,7 @@ export class FfmpegRunner {
       if (signal !== undefined) {
         waiter.abort = () => {
           const index = this.waiters.indexOf(waiter)
-          if (index !== -1) this.waiters.splice(index, 1)
+          this.waiters.splice(index, 1)
           reject(new FfmpegError('aborted', 'ffmpeg operation was aborted', { cause: signal.reason }))
         }
         signal.addEventListener('abort', waiter.abort, { once: true })

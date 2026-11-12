@@ -3,6 +3,14 @@
   config:
     apiKeyEnv: AURORA_API_KEY
     baseURL: https://maas.ovaijisuan.com/v1
+    models:
+      - id: deepseek-v4-1-flash
+
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: deepseek-official
+    model: deepseek-v4-1-flash
 
 - id: tool-media
   name: '@deepseek-ai/dsh-tool-media'

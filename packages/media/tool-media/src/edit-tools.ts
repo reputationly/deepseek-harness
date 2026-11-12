@@ -61,34 +61,39 @@ function inputNodeIds(ids: readonly string[] | undefined, count: number): string
 function outputExtension(type: OutputType, args: readonly string[]): string {
   if (type === 'image') return '.png'
   if (type === 'video') return '.mp4'
-  const codec = args.findIndex((arg, index) => (arg === '-c:a' || arg === '-codec:a' || arg === '-acodec') && args[index + 1] !== undefined)
-  const value = codec === -1 ? '' : args[codec + 1]?.toLowerCase() ?? ''
-  if (value.includes('mp3') || value === 'libmp3lame') return '.mp3'
+  const codec = args.find((_, index) =>
+    index > 0 && (args[index - 1] === '-c:a' || args[index - 1] === '-codec:a' || args[index - 1] === '-acodec'))
+  const value = codec?.toLowerCase() ?? ''
+  if (value.includes('mp3')) return '.mp3'
   if (value.includes('aac')) return '.m4a'
   if (value.includes('flac')) return '.flac'
   if (value.includes('opus')) return '.opus'
   if (value.includes('vorbis')) return '.ogg'
   if (value === 'copy') {
     const input = args.findIndex(arg => arg === '-i')
-    return input === -1 ? '.wav' : extname(args[input + 1] ?? '').toLowerCase() || '.wav'
+    if (input === -1) return '.wav'
+    return extname(args[input + 1] as string).toLowerCase() || '.wav'
   }
   if (value.includes('pcm')) return '.wav'
   return '.wav'
 }
 
 function streamsOf(document: FfprobeDocument): ProbeResult['streams'] {
-  return (document.streams ?? []).map((stream: MediaStream) => ({
-    type: stream.codec_type ?? 'unknown',
-    codec: stream.codec_name ?? 'unknown',
-    ...(stream.width === undefined ? {} : { width: stream.width }),
-    ...(stream.height === undefined ? {} : { height: stream.height }),
-    ...stream.avg_frame_rate === undefined && stream.r_frame_rate === undefined
-      ? {}
-      : { frameRate: stream.avg_frame_rate ?? stream.r_frame_rate },
-    ...(stream.sample_rate === undefined ? {} : { sampleRate: Number(stream.sample_rate) }),
-    ...(stream.channels === undefined ? {} : { channels: stream.channels }),
-    ...(stream.channel_layout === undefined ? {} : { channelLayout: stream.channel_layout }),
-  }))
+  return (document.streams ?? []).map((stream: MediaStream) => {
+    const sampleRate = stream.sample_rate === undefined ? undefined : Number(stream.sample_rate)
+    return {
+      type: stream.codec_type ?? 'unknown',
+      codec: stream.codec_name ?? 'unknown',
+      ...(stream.width === undefined ? {} : { width: stream.width }),
+      ...(stream.height === undefined ? {} : { height: stream.height }),
+      ...stream.avg_frame_rate === undefined && stream.r_frame_rate === undefined
+        ? {}
+        : { frameRate: stream.avg_frame_rate ?? stream.r_frame_rate },
+      ...(sampleRate === undefined || !Number.isFinite(sampleRate) ? {} : { sampleRate }),
+      ...(stream.channels === undefined ? {} : { channels: stream.channels }),
+      ...(stream.channel_layout === undefined ? {} : { channelLayout: stream.channel_layout }),
+    }
+  })
 }
 
 function durationOf(document: FfprobeDocument): number {
@@ -111,8 +116,7 @@ function resolution(
     return stream?.width !== undefined && stream.height !== undefined ? [[stream.width, stream.height] as const] : []
   })
   if (dimensions.length === 0) throw new Error('merge_videos needs video streams with probeable dimensions.')
-  const first = dimensions[0]
-  if (first === undefined) throw new Error('merge_videos needs video streams with probeable dimensions.')
+  const first = dimensions.reduce(selected => selected)
   if (mode === 'first') return first
   const measure = (size: readonly [number, number]) => size[0] * size[1]
   return dimensions.reduce((selected, candidate) => mode === 'max'
@@ -132,7 +136,7 @@ function nodeFrom(
 }
 
 function render(value: Record<string, unknown>) {
-  const path = typeof value.path === 'string' ? value.path : ''
+  const path = value.path as string
   const node = typeof value.nodeId === 'string' ? ` Canvas node ${value.nodeId}.` : ''
   const canvasError = typeof value.canvasError === 'string' ? ` Canvas placement failed: ${value.canvasError}.` : ''
   if (value.dryRun === true) {
@@ -216,7 +220,7 @@ export function registerEditTools(ctx: Context, deps: EditToolDeps): void {
       }
       if (isDryRun(argsWithEncoding)) {
         const result = await deps.runner.exec([...argsWithEncoding, '-'], { signal: exec.signal, cwd: directory, timeoutMs: deps.editTimeoutMs })
-        return { path: '', dryRun: true, summary: result.stderr.trim().slice(-2_000) || result.stdout.trim().slice(-2_000) }
+        return { path: '', dryRun: true, summary: result.stderr.trim().slice(-2_000) || result.stdout.trim().slice(-2_000) || 'Dry run completed.' }
       }
       const path = await deps.writePath(outputExtension(outputType, argsWithEncoding))
       await deps.runner.exec(['-y', ...argsWithEncoding, path], { signal: exec.signal, cwd: directory, timeoutMs: deps.editTimeoutMs })
@@ -250,17 +254,18 @@ export function registerEditTools(ctx: Context, deps: EditToolDeps): void {
         cwd: directory,
         timeoutMs: deps.editTimeoutMs,
       })))
-      if (probes.some(probe => !(probe.streams ?? []).some(stream => stream.codec_type === 'video'))) {
+      const streams = probes.map(probe => probe.streams ?? [])
+      if (streams.some(items => !items.some(stream => stream.codec_type === 'video'))) {
         throw new Error('merge_videos requires each input to contain a video stream.')
       }
-      const size = resolution(probes.map(probe => probe.streams ?? []), input.scale_mode ?? 'first', input.target_width, input.target_height)
+      const size = resolution(streams, input.scale_mode ?? 'first', input.target_width, input.target_height)
       const durations = probes.map(durationOf)
       const ffmpegArgs: string[] = []
       paths.forEach(file => ffmpegArgs.push('-i', file))
       const silenceInputs = new Map<number, number>()
       let silenceCount = 0
-      probes.forEach((probe, index) => {
-        if (!(probe.streams ?? []).some(stream => stream.codec_type === 'audio')) {
+      streams.forEach((items, index) => {
+        if (!items.some(stream => stream.codec_type === 'audio')) {
           silenceInputs.set(index, paths.length + silenceCount)
           silenceCount++
           ffmpegArgs.push('-f', 'lavfi', '-t', String(durations[index] || 1), '-i', 'anullsrc=r=48000:cl=stereo')
