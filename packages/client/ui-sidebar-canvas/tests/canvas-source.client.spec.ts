@@ -4,10 +4,15 @@ import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { CanvasEditResult, CanvasView } from '@deepseek-ai/dsh-canvas/client'
 import { CanvasSource } from '../src/client/canvas-source.ts'
 
-const view = (directory: string, nextId = 1): CanvasView => ({ directory, document: { version: 1, nextId, nodes: [], edges: [] } })
+const view = (directory: string, nextId = 1): CanvasView => ({
+  directory,
+  episode: { id: 'e1' as never, title: 'Canvas' },
+  revisions: { canvas: 3 },
+  document: { version: 2, revision: 3, nextId, nodes: [], edges: [] },
+})
 const ok = <T>(value: T): RemoteResult<T> => ({ ok: true, value })
 const failure = (message: string): RemoteResult<never> => ({ ok: false, error: { code: 'internal', message } as never })
-const applied: CanvasEditResult = { refs: {}, created: [], skipped: [] }
+const applied: CanvasEditResult = { revision: 3, refs: {}, created: [], skipped: [] }
 
 it('shows the document it read and keeps it visible when a later read fails', async () => {
   const get = vi.fn<() => Promise<RemoteResult<CanvasView>>>().mockResolvedValueOnce(ok(view('/project')))
@@ -41,16 +46,18 @@ it('lets only the latest read publish', async () => {
 
 it('applies edits in one call, reads the settled document, and reports what did not apply until dismissed', async () => {
   const get = vi.fn<() => Promise<RemoteResult<CanvasView>>>().mockResolvedValue(ok(view('/project')))
-  const apply = vi.fn<(operations: unknown[]) => Promise<RemoteResult<CanvasEditResult>>>().mockResolvedValue(ok(applied))
+  const apply = vi.fn<(operations: unknown[], baseRevision: number) => Promise<RemoteResult<CanvasEditResult>>>()
+    .mockResolvedValue(ok(applied))
   const source = new CanvasSource({ get, apply })
 
+  await source.load()
   await source.edit([])
   expect(apply).not.toHaveBeenCalled()
-  expect(get).not.toHaveBeenCalled()
+  expect(get).toHaveBeenCalledOnce()
 
   await source.edit([{ op: 'remove', node: 'n1' }])
-  expect(apply).toHaveBeenCalledWith([{ op: 'remove', node: 'n1' }])
-  expect(get).toHaveBeenCalledOnce()
+  expect(apply).toHaveBeenCalledWith([{ op: 'remove', node: 'n1' }], 3)
+  expect(get).toHaveBeenCalledTimes(2)
   expect(source.state.getSnapshot().notice).toBeUndefined()
 
   apply.mockResolvedValueOnce(ok({ ...applied, skipped: [{ index: 0, op: 'connect', reason: 'the edge would form a cycle' }] }))

@@ -1,23 +1,37 @@
 /**
- * Project canvas: one document per project directory, edited by the model through `canvas_get` and
+ * Project canvas: one document per episode, edited by the model through `canvas_get` and
  * `canvas_edit`, by users through the `canvas` Remote namespace, and read by media tools for inputs.
  * @module @deepseek-ai/dsh-canvas
  */
 
 import { stat } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-working-directory'
-import { CanvasCorruptError } from './document.ts'
-import { applyOperations } from './operations.ts'
+import { bibleFile, EMPTY_BIBLE, parseBible, type Bible, type BibleEntry } from './bible.ts'
+import type z from '@deepseek-ai/schemastery'
+import { Config as configSchema, resolveConfig, type Config as CanvasConfig, type ResolvedConfig } from './config.ts'
+import { activeVersionOf, assertWithinLimits, CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
+import { applyOperations, CanvasConflictError, checkRevision } from './operations.ts'
+import { episodeOf, parseProject, withBinding, withEpisode, type ProjectSpec, type ProductionFormat, type StudioProject } from './project.ts'
 import { canvasFile, CanvasStore } from './store.ts'
 import { registerCanvasTools } from './tools.ts'
-import type { CanvasDocument, CanvasEditResult, CanvasNode, CanvasOperation, CanvasView } from './types.ts'
+import type {
+  BibleEntryId, CanvasDocument, CanvasEditResult, CanvasEpisode, CanvasNode, CanvasOperation, CanvasView, EpisodeId,
+} from './types.ts'
 
 export type * from './types.ts'
-export { CanvasCorruptError } from './document.ts'
+export { activeVersionOf, CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
+export { CanvasConflictError } from './operations.ts'
+export { Config } from './config.ts'
+export type { StudioProject, ProjectSpec, ProductionFormat } from './project.ts'
+export type { Bible, BibleEntry } from './bible.ts'
+
+/** Project metadata file relative to `.canvas/`. */
+const PROJECT_FILE = 'project.json'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -44,15 +58,37 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
-/** Owns every project's canvas document. */
+/** Where one Session's edits land. */
+export interface CanvasTarget {
+  readonly directory: string
+  readonly project: StudioProject | undefined
+  readonly episode: CanvasEpisode
+  /** Episode canvas file relative to `.canvas/`. */
+  readonly file: string
+}
+
+/** Bible entries one project's storyboards reference. */
+export interface BibleReferences {
+  readonly entries: ReadonlyMap<BibleEntryId, readonly string[]>
+}
+
+/** Owns every project's canvas documents. */
 export class CanvasService extends TypertRemoteService {
   static inject = ['tools', 'workingDirectory']
 
-  private readonly store = new CanvasStore()
+  static Config: z<CanvasConfig> = configSchema
 
-  /** @param ctx - Host context carrying the tool registry and Session directories. */
-  constructor(ctx: Context) {
+  private readonly store: CanvasStore
+  private readonly limits: ResolvedConfig
+
+  /**
+   * @param ctx - Host context carrying the tool registry and Session directories.
+   * @param config - deployment bounds for canvas documents.
+   */
+  constructor(ctx: Context, config: CanvasConfig = {}) {
     super(ctx, 'canvas')
+    this.limits = resolveConfig(config)
+    this.store = new CanvasStore(this.limits)
     registerCanvasTools(ctx, this)
   }
 
@@ -66,43 +102,83 @@ export class CanvasService extends TypertRemoteService {
   }
 
   /**
+   * Project, episode, and files one Session edits.
+   * @param session - Session opened on the project.
+   * @param episode - episode the caller asked for; the Session's binding applies when omitted.
+   * @returns the resolved target; a directory without `project.json` reports the single canvas.
+   * @throws Error when the requested episode does not exist.
+   */
+  async targetOf(session: Session, episode?: EpisodeId): Promise<CanvasTarget> {
+    const directory = this.directoryOf(session)
+    const project = await this.readProject(session)
+    if (project === undefined) {
+      return { directory, project: undefined, episode: { id: brandString<EpisodeId>('e1'), title: 'Canvas' }, file: 'canvas.json' }
+    }
+    const chosen = episode ?? episodeOf(project, session.id)
+    const held = project.episodes.find(entry => entry.id === chosen)
+    if (held === undefined) throw new Error(`canvas: episode ${chosen} does not exist`)
+    return { directory, project, episode: { id: held.id, title: held.title }, file: held.file }
+  }
+
+  /**
    * Read the canvas of a Session's project.
    * @param session - Session opened on the project.
+   * @param episode - episode to read; the Session's binding applies when omitted.
    * @returns the validated document; an empty canvas when the project has none.
    * @throws `CanvasCorruptError` when the canvas file is not a valid document.
    */
-  read(session: Session): Promise<CanvasDocument> {
-    return this.store.read(this.directoryOf(session))
+  async read(session: Session, episode?: EpisodeId): Promise<CanvasDocument> {
+    const target = await this.targetOf(session, episode)
+    return this.store.readCanvas(target.directory, target.file)
   }
 
   /**
    * Apply operations to the canvas of a Session's project in one write.
    * @param session - Session opened on the project.
    * @param operations - ordered operations; relative media paths resolve against the project directory.
-   * @returns assigned ids and the operations that were skipped with their reasons.
+   * @param options - base revision the caller read, episode to edit, and who prompted the change.
+   * @returns assigned ids, the revision after the write, and the skipped operations with their reasons.
    * @throws `CanvasCorruptError` when the canvas file is not a valid document.
+   * @throws `CanvasConflictError` when the document moved past the caller's base revision.
    */
-  async edit(session: Session, operations: readonly CanvasOperation[]): Promise<CanvasEditResult> {
-    const directory = this.directoryOf(session)
+  async edit(
+    session: Session,
+    operations: readonly CanvasOperation[],
+    options: { readonly baseRevision?: number; readonly episode?: EpisodeId; readonly origin?: 'agent' | 'user' } = {},
+  ): Promise<CanvasEditResult> {
+    if (operations.length > this.limits.maxBatchOperations) {
+      throw new Error(`canvas: ${String(operations.length)} operations exceed the ${String(this.limits.maxBatchOperations)} this deployment accepts`)
+    }
+    const target = await this.targetOf(session, options.episode)
     const rejected = new Map<number, string>()
     const prepared = await Promise.all(operations.map(async (operation, index) => {
       if ((operation.op !== 'add' && operation.op !== 'update') || operation.path === undefined) return operation
-      const path = isAbsolute(operation.path) ? operation.path : resolve(directory, operation.path)
+      const path = isAbsolute(operation.path) ? operation.path : resolve(target.directory, operation.path)
       if (!await isFile(path)) rejected.set(index, `file ${operation.path} does not exist`)
       return { ...operation, path }
     }))
-    const { result, changed } = await this.store.update(directory, (current) => {
-      const outcome = applyOperations(current, prepared, rejected)
-      return { ...outcome.changed ? { document: outcome.document } : {}, value: outcome }
+    let changed = false
+    const result = await this.store.updateCanvas(target.directory, target.file, (current) => {
+      checkRevision(current, options.baseRevision)
+      const outcome = applyOperations(current, prepared, {
+        limits: this.limits,
+        ...options.origin === undefined ? {} : { origin: options.origin },
+        rejected,
+      })
+      assertWithinLimits(outcome.document, this.limits)
+      changed = outcome.changed
+      return { ...outcome.changed ? { document: outcome.document } : {}, value: outcome.result }
     })
-    if (changed) this.ctx.emit('canvas/change', { directory })
+    if (changed) {
+      this.ctx.emit('canvas/change', { directory: target.directory, episode: target.episode.id, revisions: { canvas: result.revision } })
+    }
     return result
   }
 
   /**
-   * Resolve nodes and groups to the image files they stand for as generation inputs.
+   * Picture nodes and groups stand for as generation inputs.
    * @param session - Session opened on the project.
-   * @param ids - image node ids or group ids; a group stands for its image members in reading order (top to bottom, then left to right).
+   * @param ids - image node ids or group ids; a group stands for its image members in reading order.
    * @returns absolute image paths in input order, without duplicates.
    * @throws {@link CanvasInputError} when an id is unknown, is not an image or group, or is a group without images.
    */
@@ -110,7 +186,8 @@ export class CanvasService extends TypertRemoteService {
     const document = await this.read(session)
     const paths: string[] = []
     const take = (node: CanvasNode): void => {
-      if (node.path !== undefined && !paths.includes(node.path)) paths.push(node.path)
+      const path = activeVersionOf(node)?.path
+      if (path !== undefined && !paths.includes(path)) paths.push(path)
     }
     for (const id of ids) {
       const node = document.nodes.find(candidate => candidate.id === id)
@@ -144,43 +221,236 @@ export class CanvasService extends TypertRemoteService {
       if (node.type !== 'image' && node.type !== 'video' && node.type !== 'audio') {
         throw new CanvasInputError(`canvas node ${id} is a ${node.type} node, not a media node`)
       }
-      if (node.path === undefined) throw new CanvasInputError(`canvas media node ${id} has no path`)
-      return node.path
+      const path = activeVersionOf(node)?.path
+      if (path === undefined) throw new CanvasInputError(`canvas media node ${id} has no path`)
+      return path
     })
   }
 
   /**
-   * Read the canvas shown for a Session.
+   * Read the project metadata and every episode.
    * @param session - Session opened on the project.
-   * @returns the project directory and its canvas document.
-   * @throws RemoteError `canvas/corrupt` when the canvas file is not a valid document.
+   * @returns the project, its revision, the current episode, and the episodes of the project.
    */
-  @Remote('get')
-  async get(session: Session): Promise<CanvasView> {
-    const directory = this.directoryOf(session)
-    return { directory, document: await this.remote(directory, () => this.read(session)) }
+  async projectOf(session: Session): Promise<{
+    readonly project: StudioProject | undefined
+    readonly revision: number
+    readonly current: CanvasEpisode
+    readonly episodes: readonly CanvasEpisode[]
+  }> {
+    const stored = await this.store.readDocument(this.directoryOf(session), PROJECT_FILE, parseProject)
+    const target = await this.targetOf(session)
+    const episodes = stored?.value.episodes.map(entry => ({ id: entry.id, title: entry.title })) ?? [target.episode]
+    return { project: stored?.value, revision: stored?.revision ?? 0, current: target.episode, episodes }
   }
 
   /**
-   * Apply a user's edits to the canvas shown for a Session.
+   * Read the bible of a Session's project.
+   * @param session - Session opened on the project.
+   * @returns the bible, or an empty one when the project has none, with the revision the file holds.
+   */
+  async bibleOf(session: Session): Promise<{ readonly bible: Bible; readonly revision: number }> {
+    const stored = await this.store.readDocument(this.directoryOf(session), bibleFile(), parseBible)
+    return stored === undefined ? { bible: EMPTY_BIBLE, revision: 0 } : { bible: stored.value, revision: stored.revision }
+  }
+
+  /**
+   * Bible entries the storyboards of every episode of a project reference.
+   * @param session - Session opened on the project.
+   * @returns the referencing storyboard nodes per entry id.
+   */
+  async bibleReferences(session: Session): Promise<ReadonlyMap<BibleEntryId, readonly string[]>> {
+    const target = await this.targetOf(session)
+    const files = target.project === undefined ? [target.file] : target.project.episodes.map(entry => entry.file)
+    const references = new Map<BibleEntryId, string[]>()
+    for (const file of files) {
+      const document = await this.store.readCanvas(target.directory, file)
+      for (const node of document.nodes) {
+        const shots = node.type === 'storyboard' ? activeVersionOf(node)?.shots ?? [] : []
+        for (const shot of shots) {
+          const used = [...shot.characters, ...shot.props, ...shot.scene === undefined ? [] : [shot.scene]]
+          for (const line of shot.dialogue) {
+            if (line.speaker.kind === 'character') used.push(line.speaker.entry)
+          }
+          for (const entry of used) {
+            const holders = references.get(entry) ?? []
+            if (!holders.includes(node.id)) references.set(entry, [...holders, node.id])
+          }
+        }
+      }
+    }
+    return references
+  }
+
+  /**
+   * Create the project metadata, making the existing single canvas its first episode.
+   * @param session - Session opened on the project.
+   * @param request - production format, title, and output specification.
+   * @returns the project after the write and its revision.
+   * @throws Error when the project already has metadata.
+   */
+  async createProject(
+    session: Session,
+    request: { readonly format: ProductionFormat; readonly title: string; readonly spec: ProjectSpec },
+  ): Promise<{ readonly project: StudioProject; readonly revision: number }> {
+    const directory = this.directoryOf(session)
+    const stored = await this.store.readDocument(directory, PROJECT_FILE, parseProject)
+    if (stored !== undefined) throw new Error('canvas: the project already has project.json')
+    const empty: StudioProject = {
+      version: 1,
+      revision: 0,
+      format: request.format,
+      title: request.title,
+      spec: request.spec,
+      episodes: [{ id: brandString<EpisodeId>('e1'), title: '第 1 集', file: 'canvas.json' }],
+      bindings: {},
+    }
+    const { value, revision } = await this.store.updateDocument(directory, PROJECT_FILE, parseProject, () => empty, current => ({
+      document: current,
+      value: current,
+    }))
+    this.emitProjectChange(directory, revision)
+    return { project: { ...value, revision }, revision }
+  }
+
+  /**
+   * Add an episode to the project.
+   * @param session - Session opened on the project.
+   * @param title - title of the new episode.
+   * @returns the new episode and the project revision.
+   * @throws Error when the project has no metadata.
+   */
+  async createEpisode(session: Session, title: string): Promise<{ readonly episode: CanvasEpisode; readonly revision: number }> {
+    const directory = this.directoryOf(session)
+    const created = await this.store.updateDocument(directory, PROJECT_FILE, parseProject, missingProject, (current) => {
+      const next = withEpisode(current, title)
+      return { document: next.project, value: { id: next.episode.id, title: next.episode.title } }
+    })
+    this.emitProjectChange(directory, created.revision)
+    return { episode: created.value, revision: created.revision }
+  }
+
+  /**
+   * Bind a Session to an episode.
+   * @param session - Session opened on the project.
+   * @param episode - episode the Session edits.
+   * @returns the project revision after the binding.
+   * @throws Error when the episode does not exist.
+   */
+  async useEpisode(session: Session, episode: EpisodeId): Promise<{ readonly revision: number }> {
+    const directory = this.directoryOf(session)
+    const written = await this.store.updateDocument(directory, PROJECT_FILE, parseProject, missingProject, current => ({
+      document: withBinding(current, session.id, episode),
+      value: undefined,
+    }))
+    this.emitProjectChange(directory, written.revision)
+    return { revision: written.revision }
+  }
+
+  /**
+   * Update the bible of a Session's project.
+   * @param session - Session opened on the project.
+   * @param change - fields to replace, entries to upsert, and entries to remove.
+   * @param baseRevision - bible revision the caller read, or undefined to skip the check.
+   * @returns the bible after the write and its revision.
+   * @throws `CanvasConflictError` when the bible moved past the caller's base revision.
+   * @throws Error when a removed entry is still referenced by a storyboard.
+   */
+  async updateBible(
+    session: Session,
+    change: {
+      readonly logline?: string | undefined
+      readonly style?: Partial<Bible['style']> | undefined
+      readonly upsert?: readonly BibleEntry[] | undefined
+      readonly remove?: readonly BibleEntryId[] | undefined
+    },
+    baseRevision?: number,
+  ): Promise<{ readonly bible: Bible; readonly revision: number }> {
+    const directory = this.directoryOf(session)
+    const references = await this.bibleReferences(session)
+    const blocked = (change.remove ?? []).filter(entry => (references.get(entry) ?? []).length > 0)
+    if (blocked.length > 0) throw new Error(`canvas: bible entry ${blocked.join(', ')} is still referenced by a storyboard`)
+    const written = await this.store.updateDocument(directory, bibleFile(), parseBible, () => EMPTY_BIBLE, (current) => {
+      if (baseRevision !== undefined && baseRevision !== current.revision) throw new CanvasConflictError(baseRevision, current.revision)
+      const removed = change.remove ?? []
+      const upserted = change.upsert ?? []
+      const next: Bible = {
+        ...current,
+        ...change.logline === undefined ? {} : { logline: change.logline },
+        style: { ...current.style, ...change.style },
+        entries: [...current.entries.filter(entry => !removed.includes(entry.id)), ...upserted],
+      }
+      return { document: next, value: next }
+    })
+    const bible = (await this.bibleOf(session)).bible
+    this.ctx.emit('canvas/change', { directory, revisions: { bible: written.revision } })
+    return { bible, revision: written.revision }
+  }
+
+  /**
+   * Read the canvas and the revisions a Client needs to render it.
+   * @param session - Session opened on the project.
+   * @param episode - episode to read; the Session's binding applies when omitted.
+   * @returns the directory, episode, revisions, and document.
+   * @throws RemoteError `canvas/corrupt` when the canvas file is not a valid document.
+   */
+  @Remote('get')
+  async get(session: Session, episode?: EpisodeId): Promise<CanvasView> {
+    const target = await this.targetOf(session, episode)
+    const document = await this.remote(target.directory, target.file, () => this.read(session, target.episode.id))
+    return { directory: target.directory, episode: target.episode, revisions: { canvas: document.revision }, document }
+  }
+
+  /**
+   * Apply a user's edits to the canvas of an episode.
    * @param session - Session opened on the project.
    * @param operations - ordered operations.
-   * @returns assigned ids and the operations that were skipped with their reasons.
+   * @param baseRevision - revision the Client read.
+   * @param episode - episode to edit; the Session's binding applies when omitted.
+   * @returns assigned ids, the new revision, and the skipped operations.
    * @throws RemoteError `canvas/corrupt` when the canvas file is not a valid document.
    */
   @Remote('apply')
-  apply(session: Session, operations: CanvasOperation[]): Promise<CanvasEditResult> {
-    return this.remote(this.directoryOf(session), () => this.edit(session, operations))
+  apply(session: Session, operations: CanvasOperation[], baseRevision: number, episode?: EpisodeId): Promise<CanvasEditResult> {
+    const directory = this.directoryOf(session)
+    return this.remote(directory, 'canvas.json', () => this.edit(session, operations, {
+      baseRevision,
+      origin: 'user',
+      ...episode === undefined ? {} : { episode },
+    }))
   }
 
-  private async remote<T>(directory: string, run: () => Promise<T>): Promise<T> {
+  /** Read the project metadata, or undefined when the project has none. */
+  private async readProject(session: Session): Promise<StudioProject | undefined> {
+    const stored = await this.store.readDocument(this.directoryOf(session), PROJECT_FILE, parseProject)
+    return stored?.value
+  }
+
+  /** Announce a write of a project-level file. */
+  private emitProjectChange(directory: string, revision: number): void {
+    this.ctx.emit('canvas/change', { directory, revisions: { project: revision } })
+  }
+
+  /** Map the canvas errors a Client can handle to Remote errors, and pass the rest through. */
+  private async remote<T>(directory: string, file: string, run: () => Promise<T>): Promise<T> {
     try {
       return await run()
     } catch (error: unknown) {
+      if (error instanceof CanvasUnsupportedVersionError) {
+        throw new RemoteError('canvas/unsupported-version', error.message, { file: canvasFile(directory, file), version: error.version }, { cause: error })
+      }
+      if (error instanceof CanvasConflictError) {
+        throw new RemoteError('canvas/conflict', error.message, { expected: error.expected, actual: error.actual }, { cause: error })
+      }
       if (!(error instanceof CanvasCorruptError)) throw error
-      throw new RemoteError('canvas/corrupt', error.message, { file: canvasFile(directory), reason: error.reason }, { cause: error })
+      throw new RemoteError('canvas/corrupt', error.message, { file: canvasFile(directory, file), reason: error.reason }, { cause: error })
     }
   }
+}
+
+/** The project a directory that never created one behaves as, for writers that require it. */
+function missingProject(): never {
+  throw new Error('canvas: the project has no project.json; create it first')
 }
 
 export default CanvasService

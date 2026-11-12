@@ -136,11 +136,21 @@ describe('generated audio canvas placement', () => {
     expect(music.meta).toMatchObject({ model: 'minimax-music3', nodeId: 'n2' })
     const document = await ctx.canvas.read(session)
     expect(document.nodes).toMatchObject([
-      { id: 'n1', type: 'audio', title: 'Speech', prompt: 'Hello there', model: 'indextts-2.5' },
-      { id: 'n2', type: 'audio', title: 'Music', prompt: 'Gentle piano and strings', model: 'minimax-music3' },
+      {
+        id: 'n1', type: 'audio', title: 'Speech',
+        gen: { kind: 'speech', prompt: 'Hello there', model: 'indextts-2.5' },
+        versions: [{ prompt: 'Hello there', model: 'indextts-2.5' }],
+      },
+      {
+        id: 'n2', type: 'audio', title: 'Music',
+        gen: { kind: 'music', prompt: 'Gentle piano and strings', model: 'minimax-music3' },
+        versions: [{ prompt: 'Gentle piano and strings', model: 'minimax-music3' }],
+      },
     ])
-    expect(await readFile(document.nodes[0]!.path!, 'utf8')).toBe('speech-bytes')
-    expect(await readFile(document.nodes[1]!.path!, 'utf8')).toBe('music-bytes')
+    const speechPath = document.nodes[0]?.versions?.[0]?.path
+    expect(speechPath).toBeDefined()
+    expect(await readFile(speechPath ?? '', 'utf8')).toBe('speech-bytes')
+    expect(await readFile(document.nodes[1]?.versions?.[0]?.path ?? '', 'utf8')).toBe('music-bytes')
     expect(document.edges).toEqual([])
     const musicRequest = fetchSpy.mock.calls.find(([input, init]) =>
       requestUrl(input).endsWith('/videos') && init?.method === 'POST')
@@ -283,7 +293,7 @@ describe('generated audio canvas placement', () => {
     expect(artifactPath(image)).toMatch(/image-.*\.png$/u)
     const imageNode = (await ctx.canvas.read(session)).nodes.find(node => node.type === 'image')
     if (imageNode?.type !== 'image') throw new Error('Expected an image canvas node')
-    expect(imageNode.path).toMatch(/\.png$/u)
+    expect(imageNode.versions?.[0]?.path).toMatch(/\.png$/u)
     const edit = await call('ffmpeg', { args: ['-i', 'input.mp4'] })
     expect(edit.isError).toBe(true)
     expect(toolText(edit)).toContain('未找到 ffmpeg')

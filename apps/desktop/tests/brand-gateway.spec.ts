@@ -125,12 +125,12 @@ describe('brand default selection', () => {
       ffmpegPath: '/Resources/runtime/primary-runtime/ffmpeg/ffmpeg',
       ffprobePath: '/Resources/runtime/primary-runtime/ffmpeg/ffprobe',
       fontFile: '/System/Library/Fonts/Hiragino Sans GB.ttc',
-      skillAssetRoot: '/Resources/runtime/media-editing',
+      skillsRoot: '/Resources/runtime/skills',
     })
     expect(patch).toContain('    ffmpegPath: "/Resources/runtime/primary-runtime/ffmpeg/ffmpeg"')
     expect(patch).toContain('    ffprobePath: "/Resources/runtime/primary-runtime/ffmpeg/ffprobe"')
     expect(patch).toContain('    fontFile: "/System/Library/Fonts/Hiragino Sans GB.ttc"')
-    expect(patch).toContain('    skillAssetRoot: "/Resources/runtime/media-editing"')
+    expect(patch).toContain('    skillsRoot: "/Resources/runtime/skills"')
     expect(gatewayProfilePatch(BRANDED)).not.toContain('    ffmpegPath:')
   })
 

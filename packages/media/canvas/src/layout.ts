@@ -26,6 +26,9 @@ const SIZES: Readonly<Record<CanvasContentType, { readonly width: number; readon
   video: { width: 320, height: 220 },
   audio: { width: 280, height: 110 },
   text: { width: 280, height: 160 },
+  script: { width: 320, height: 260 },
+  storyboard: { width: 420, height: 300 },
+  timeline: { width: 420, height: 260 },
 }
 
 /**
@@ -153,9 +156,14 @@ export function layoutCreated(nodes: ReadonlyMap<string, DraftNode>, edges: read
       if (place(node, false)) progressed = true
     }
     if (progressed) continue
-    const [stuck] = pending
-    const node = stuck === undefined ? undefined : nodes.get(stuck)
-    if (node === undefined) break
-    place(node, true)
+    for (const stuck of pending) {
+      const node = nodes.get(stuck)
+      if (node === undefined) {
+        pending.delete(stuck)
+        continue
+      }
+      place(node, true)
+      break
+    }
   }
 }

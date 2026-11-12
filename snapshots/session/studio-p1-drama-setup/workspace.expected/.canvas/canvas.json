@@ -1,0 +1,586 @@
+{
+  "version": 2,
+  "revision": 3,
+  "nextId": 11,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "script",
+      "title": "第1集 剧本",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 260,
+      "versions": [
+        {
+          "id": "v1",
+          "text": "《雨夜便利店》第1集\n\n【场1】便利店 深夜\n凌晨三点十七分，暴雨砸在玻璃门上。林夏独自守夜班，正低头清点关东煮。门铃没有响，门却自己开了。一个湿透的男人站在门口，黑冲锋衣往下滴水，右手腕的旧手表停在三点十七分。他不说话，只盯着货架。林夏把手伸到收银台下，指尖碰到美工刀的塑料柄。\n\n【场2】便利店 货架间\n陈默在两排货架间慢慢走，每拿起一样东西都要看很久。他买了一瓶水、一卷黑色胶带，最后从日用区抽走一把美工刀。他把东西摆在收银台上，一件一件排整齐。林夏扫码时看见他右手腕的血混着雨水滴在台面上。她问他要不要包扎，他没回答，只说了一句：这里以前是不是死过人。\n\n【场3】便利店 收银台\n林夏说这里没死过人，让他结账走人。陈默从湿透的内袋里掏出一个塑料袋，里面是一张被泡软的身份证和一张三年前的寻人启事。他把寻人启事摊在收银台上，用手一遍一遍抹平。照片上的人，是林夏。他抬起头，第一次看她的脸，说：你在这里，我等了三年。",
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v1"
+    },
+    {
+      "id": "n2",
+      "type": "text",
+      "title": "场1 便利店 深夜",
+      "x": 0,
+      "y": 380,
+      "width": 280,
+      "height": 160,
+      "group": "g4",
+      "versions": [
+        {
+          "id": "v1",
+          "text": "凌晨三点十七分，暴雨砸在玻璃门上。林夏独自守夜班，正低头清点关东煮。门铃没有响，门却自己开了。一个湿透的男人站在门口，黑冲锋衣往下滴水，右手腕的旧手表停在三点十七分。他不说话，只盯着货架。林夏把手伸到收银台下，指尖碰到美工刀的塑料柄。",
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v1"
+    },
+    {
+      "id": "n3",
+      "type": "storyboard",
+      "title": "场1 便利店 深夜 分镜",
+      "x": 360,
+      "y": 380,
+      "width": 420,
+      "height": 300,
+      "group": "g4",
+      "versions": [
+        {
+          "id": "v1",
+          "shots": [],
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        },
+        {
+          "id": "v2",
+          "shots": [
+            {
+              "id": "s1",
+              "title": "时钟三点十七",
+              "shotSize": "insert",
+              "visual": "收银台角上的数字钟跳到03:17，红光映在起雾的玻璃门上，门外雨幕糊成一片",
+              "motion": "雨点砸在玻璃上，光斑跳动",
+              "camera": "固定",
+              "durationSec": 3,
+              "characters": [],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "暴雨砸玻璃、远处闷雷",
+              "negative": "水印、字幕、多余手指"
+            },
+            {
+              "id": "s2",
+              "title": "空店夜班",
+              "shotSize": "wide",
+              "visual": "竖屏纵深：两条货架挤在左侧，收银台在右前，一根荧光灯管在闪；林夏弯腰整理关东煮，店内空无一人",
+              "motion": "林夏低头干活，背后灯管闪了一下",
+              "camera": "缓慢横移",
+              "durationSec": 4,
+              "characters": [
+                "linxia"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "荧光灯电流声、关东煮咕嘟声",
+              "negative": "多余手指、文字水印、镜头抖动"
+            },
+            {
+              "id": "s3",
+              "title": "清点关东煮",
+              "shotSize": "medium_close",
+              "visual": "@林夏 低头盯着锅里的丸子，热气糊住她的半边脸，睫毛上挂着水汽，左眉尾的小痣清楚可见",
+              "motion": "她数着鱼丸，热气扑在脸上",
+              "camera": "固定",
+              "durationSec": 4,
+              "characters": [
+                "linxia"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "汤汁沸腾声",
+              "negative": "多余手指、文字水印"
+            },
+            {
+              "id": "s4",
+              "title": "门开了没响铃",
+              "shotSize": "close",
+              "visual": "玻璃门被风顶开一条缝，挂在门上的门铃绳却纹丝不动，雨水顺着门缝流进地砖",
+              "motion": "风把门推开一条缝，门铃绳静止不响",
+              "camera": "固定",
+              "durationSec": 3,
+              "characters": [],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "狂风灌入、雨声骤大",
+              "negative": "水印、字幕"
+            },
+            {
+              "id": "s5",
+              "title": "湿透的男人",
+              "shotSize": "full",
+              "visual": "@陈默 站在门口，黑色冲锋衣湿透贴肩，脸上有血痕，脚下一圈水渍正在扩大",
+              "motion": "他一动不动地站着，水从衣角往下滴",
+              "camera": "微微后拉",
+              "durationSec": 4,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "水滴落地的声音",
+              "negative": "多余手指、文字水印"
+            },
+            {
+              "id": "s6",
+              "title": "她抬头",
+              "shotSize": "medium",
+              "visual": "@林夏 抬头看向门口的方向，眼神收紧，上半身僵直，右手消失在收银台下方",
+              "motion": "林夏缓缓抬头，右手不动声色移到台面下",
+              "camera": "固定",
+              "durationSec": 3,
+              "characters": [
+                "linxia"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "灯管电流声",
+              "negative": "多余手指、文字水印"
+            },
+            {
+              "id": "s7",
+              "title": "手表停在三点十七",
+              "shotSize": "extreme_close",
+              "visual": "@陈默 右手腕上的旧手表玻璃有裂痕，指针停在三点十七分，表带缝里渗出雨水",
+              "motion": "手腕垂着，秒针一动不动",
+              "camera": "推近",
+              "durationSec": 2,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "雨声、心跳般的低频",
+              "negative": "水印、文字水印、多余手指"
+            }
+          ],
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v2"
+    },
+    {
+      "id": "g4",
+      "type": "group",
+      "title": "场1 便利店 深夜",
+      "x": -30,
+      "y": 310,
+      "width": 840,
+      "height": 400,
+      "versions": []
+    },
+    {
+      "id": "n5",
+      "type": "text",
+      "title": "场2 便利店 货架间",
+      "x": 320,
+      "y": 720,
+      "width": 280,
+      "height": 160,
+      "group": "g7",
+      "versions": [
+        {
+          "id": "v1",
+          "text": "陈默在两排货架间慢慢走，每拿起一样东西都要看很久。他买了一瓶水、一卷黑色胶带，最后从日用区抽走一把美工刀。他把东西摆在收银台上，一件一件排整齐。林夏扫码时看见他右手腕的血混着雨水滴在台面上。她问他要不要包扎，他没回答，只说了一句：这里以前是不是死过人。",
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v1"
+    },
+    {
+      "id": "n6",
+      "type": "storyboard",
+      "title": "场2 便利店 货架间 分镜",
+      "x": 680,
+      "y": 720,
+      "width": 420,
+      "height": 300,
+      "group": "g7",
+      "versions": [
+        {
+          "id": "v1",
+          "shots": [],
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        },
+        {
+          "id": "v2",
+          "shots": [
+            {
+              "id": "s1",
+              "title": "货架间的深巷",
+              "shotSize": "wide",
+              "visual": "两排高货架夹出一条竖长的通道，@陈默 的背影在通道深处，冷白灯光把他的影子拉得很长",
+              "motion": "他在货架间慢慢走，脚步留下水印",
+              "camera": "跟随侧移",
+              "durationSec": 4,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "多余手指、文字水印、镜头抖动"
+            },
+            {
+              "id": "s2",
+              "title": "看很久的水",
+              "shotSize": "medium_close",
+              "visual": "@陈默 侧脸对着灯，右手举着一瓶矿泉水，眼睛几乎不眨，脸上血痕已经发暗",
+              "motion": "他举起水瓶对着灯光看，看了很久才放下",
+              "camera": "固定",
+              "durationSec": 4,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "多余手指、文字水印"
+            },
+            {
+              "id": "s3",
+              "title": "一卷黑胶带",
+              "shotSize": "insert",
+              "visual": "一只湿冷的手把一卷黑色胶带攥进掌心，指节泛白，货架标签在背景里虚化",
+              "motion": "他把胶带轻轻放进怀里",
+              "camera": "固定",
+              "durationSec": 3,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "水印、字幕、多余手指"
+            },
+            {
+              "id": "s4",
+              "title": "货架上的刀",
+              "shotSize": "medium",
+              "visual": "@陈默 站在日用区前，手里握着一把透明包装的美工刀，脸转向斜上方的监控探头",
+              "motion": "他抽出美工刀，抬头看了一眼监控探头",
+              "camera": "缓慢推近",
+              "durationSec": 4,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "多余手指、文字水印"
+            },
+            {
+              "id": "s5",
+              "title": "排整齐的三样",
+              "shotSize": "medium_close",
+              "visual": "收银台台面上，水、黑色胶带、美工刀被一件一件摆成笔直的一排，@陈默 的手停在刀柄上",
+              "motion": "他把三样东西摆成一条直线",
+              "camera": "固定",
+              "durationSec": 4,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "多余手指、文字水印"
+            },
+            {
+              "id": "s6",
+              "title": "滴在台面的血",
+              "shotSize": "close",
+              "visual": "红光扫过台面，雨水混着血从 @陈默 的手腕滴下，在白色台面上摊开一小片",
+              "motion": "血水顺着台面边缘滴落",
+              "camera": "固定",
+              "durationSec": 3,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "水印、字幕"
+            },
+            {
+              "id": "s7",
+              "title": "他没回答",
+              "shotSize": "close",
+              "visual": "@林夏 隔着台面看他的手腕，@陈默 的下颌绷紧，眼睛越过她望向货架深处",
+              "motion": "林夏语气放轻，他没有回答，只盯着货架后的黑暗",
+              "camera": "固定",
+              "durationSec": 5,
+              "characters": [
+                "linxia",
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [
+                {
+                  "id": "d1",
+                  "speaker": {
+                    "kind": "character",
+                    "entry": "linxia"
+                  },
+                  "line": "你手在流血，要不要先包一下。"
+                },
+                {
+                  "id": "d2",
+                  "speaker": {
+                    "kind": "character",
+                    "entry": "chenmo"
+                  },
+                  "line": "这里以前，是不是死过人。"
+                }
+              ],
+              "sfx": "雨声、灯管嗡鸣",
+              "negative": "多余手指、文字水印、镜头抖动"
+            }
+          ],
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v2"
+    },
+    {
+      "id": "g7",
+      "type": "group",
+      "title": "场2 便利店 货架间",
+      "x": 290,
+      "y": 650,
+      "width": 840,
+      "height": 400,
+      "versions": []
+    },
+    {
+      "id": "n8",
+      "type": "text",
+      "title": "场3 便利店 收银台",
+      "x": 640,
+      "y": 1060,
+      "width": 280,
+      "height": 160,
+      "group": "g10",
+      "versions": [
+        {
+          "id": "v1",
+          "text": "林夏说这里没死过人，让他结账走人。陈默从湿透的内袋里掏出一个塑料袋，里面是一张被泡软的身份证和一张三年前的寻人启事。他把寻人启事摊在收银台上，用手一遍一遍抹平。照片上的人，是林夏。他抬起头，第一次看她的脸，说：你在这里，我等了三年。",
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v1"
+    },
+    {
+      "id": "n9",
+      "type": "storyboard",
+      "title": "场3 便利店 收银台 分镜",
+      "x": 1000,
+      "y": 1060,
+      "width": 420,
+      "height": 300,
+      "group": "g10",
+      "versions": [
+        {
+          "id": "v1",
+          "shots": [],
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        },
+        {
+          "id": "v2",
+          "shots": [
+            {
+              "id": "s1",
+              "title": "她否认",
+              "shotSize": "medium",
+              "visual": "@林夏 站在收银台后，身体微微后仰，一只手仍按在台面下",
+              "motion": "林夏后退半步，声音压得很低",
+              "camera": "固定",
+              "durationSec": 3,
+              "characters": [
+                "linxia"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [
+                {
+                  "id": "d1",
+                  "speaker": {
+                    "kind": "character",
+                    "entry": "linxia"
+                  },
+                  "line": "这里没死过人。你结完账就走。"
+                }
+              ],
+              "sfx": "雨声",
+              "negative": "多余手指、文字水印"
+            },
+            {
+              "id": "s2",
+              "title": "内袋里的塑料袋",
+              "shotSize": "insert",
+              "visual": "一只泡得发白的手从冲锋衣内袋里掏出一个鼓胀的透明塑料袋，袋壁上挂着水珠",
+              "motion": "他从湿透的内袋里掏出一个塑料袋",
+              "camera": "固定",
+              "durationSec": 3,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "水印、字幕、多余手指"
+            },
+            {
+              "id": "s3",
+              "title": "泡软的寻人启事",
+              "shotSize": "close",
+              "visual": "收银台上，一张边缘泡烂的寻人启事被摊平，旁边是一张被水泡软的身份证，纸面反着冷光",
+              "motion": "他把寻人启事摊开，用手一遍遍抹平",
+              "camera": "推近",
+              "durationSec": 4,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "多余手指、水印"
+            },
+            {
+              "id": "s4",
+              "title": "照片上的人",
+              "shotSize": "extreme_close",
+              "visual": "寻人启事上的证件照微微起皱，照片里的短发女人与 @林夏 是同一个人",
+              "motion": "林夏的呼吸停了半拍",
+              "camera": "固定",
+              "durationSec": 3,
+              "characters": [
+                "linxia"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "多余手指、字幕、镜头抖动"
+            },
+            {
+              "id": "s5",
+              "title": "他第一次看她",
+              "shotSize": "medium_close",
+              "visual": "@陈默 缓缓抬起脸，眼里第一次有了焦点，直直看向对面的人",
+              "motion": "他第一次抬起头，正眼看她的脸",
+              "camera": "固定",
+              "durationSec": 3,
+              "characters": [
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [],
+              "sfx": "",
+              "negative": "多余手指、文字水印"
+            },
+            {
+              "id": "s6",
+              "title": "我等了三年",
+              "shotSize": "close",
+              "visual": "@陈默 把掌心摊在台面上，一枚锈住的旧钥匙躺在他手里，@林夏 的脸在画面前景失焦",
+              "motion": "他张开一直插在口袋里的左手，掌心是一枚旧钥匙",
+              "camera": "缓慢推近",
+              "durationSec": 5,
+              "characters": [
+                "linxia",
+                "chenmo"
+              ],
+              "scene": "store",
+              "props": [],
+              "dialogue": [
+                {
+                  "id": "d1",
+                  "speaker": {
+                    "kind": "character",
+                    "entry": "chenmo"
+                  },
+                  "line": "你在这里。我等了三年。"
+                }
+              ],
+              "sfx": "雨声、低频心跳",
+              "negative": "多余手指、文字水印、镜头抖动"
+            }
+          ],
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v2"
+    },
+    {
+      "id": "g10",
+      "type": "group",
+      "title": "场3 便利店 收银台",
+      "x": 610,
+      "y": 990,
+      "width": 840,
+      "height": 400,
+      "versions": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "n2->n3:prompt",
+      "source": "n2",
+      "target": "n3",
+      "kind": "reference",
+      "role": "prompt"
+    },
+    {
+      "id": "n5->n6:prompt",
+      "source": "n5",
+      "target": "n6",
+      "kind": "reference",
+      "role": "prompt"
+    },
+    {
+      "id": "n8->n9:prompt",
+      "source": "n8",
+      "target": "n9",
+      "kind": "reference",
+      "role": "prompt"
+    }
+  ]
+}

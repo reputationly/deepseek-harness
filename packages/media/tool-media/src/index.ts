@@ -9,18 +9,16 @@
  * @module @deepseek-ai/dsh-tool-media
  */
 
-import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { isAbsolute, join, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { isAbsolute, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import type { SkillCandidate, SkillProvider } from '@deepseek-ai/dsh-skill'
 import { CatalogSource } from './catalog.ts'
+import { registerMediaSkills, resolveSkillRoot } from './skills.ts'
 import { registerEditTools } from './edit-tools.ts'
 import { FfmpegRunner } from './ffmpeg.ts'
 import { awaitTask, downloadMedia, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
@@ -69,11 +67,11 @@ export interface Config {
   editTimeoutMs?: number
   /** Absolute font path injected into non-ASCII drawtext filters. */
   fontFile?: string
-  /** Absolute directory containing the bundled media-editing SKILL.md. */
-  skillAssetRoot?: string
+  /** Directory holding one subdirectory per bundled skill; relative paths resolve against this package. */
+  skillsRoot?: string
 }
 
-export const Config: z<Config> = z.object({
+const CONFIG_FIELDS = {
   baseURL: z.string(),
   apiKeyEnv: z.string().role('credential-ref').default('DSH_MAAS_API_KEY'),
   imageModel: z.string().default('qwen-image-pro'),
@@ -90,19 +88,27 @@ export const Config: z<Config> = z.object({
   ffprobePath: z.string().default('ffprobe'),
   editTimeoutMs: z.number().default(600_000),
   fontFile: z.string().min(1),
-  skillAssetRoot: z.string().min(1),
-})
+  skillsRoot: z.string().min(1).default('../assets/'),
+} satisfies Record<keyof Config, unknown>
+
+export const Config: z<Config> = z.object(CONFIG_FIELDS)
+
+/** Declared config keys; a deployment that carries a retired key must fail at load instead of silently falling back. */
+const CONFIG_KEYS: readonly string[] = Object.keys(CONFIG_FIELDS)
+
+/**
+ * Reject a config key this build does not declare.
+ * @param config - deployment config as the Loader passed it.
+ * @throws Error naming the unknown key.
+ */
+function rejectUnknownKeys(config: Config): void {
+  for (const key of Object.keys(config)) {
+    if (!CONFIG_KEYS.includes(key)) throw new Error(`tool-media: unknown config key ${key}`)
+  }
+}
 
 /** Complete config after schemastery applies every field default. */
-type ResolvedConfig = Required<Omit<Config, 'fontFile' | 'skillAssetRoot'>> & Pick<Config, 'fontFile' | 'skillAssetRoot'>
-
-function parseMediaEditingSkill(raw: string, path: string): { readonly description: string; readonly content: string } {
-  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(raw)
-  if (frontmatter?.[1] === undefined) throw new Error(`tool-media: ${path} has no YAML frontmatter`)
-  const description = /^description:\s*(.+)$/mu.exec(frontmatter[1])?.[1]?.trim().replace(/^["']|["']$/gu, '')
-  if (description === undefined || description === '') throw new Error(`tool-media: ${path} has no description`)
-  return { description, content: raw.slice(frontmatter[0].length).trim() }
-}
+type ResolvedConfig = Required<Omit<Config, 'fontFile'>> & Pick<Config, 'fontFile'>
 
 /** Map a media content type to a file extension. */
 function extensionFor(contentType: string): string {
@@ -173,12 +179,10 @@ async function writeArtifact(root: string, prefix: string, contentType: string, 
  * @param config - deployment configuration with every default applied.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
+  rejectUnknownKeys(config)
   const resolved = config as ResolvedConfig
   if (resolved.fontFile !== undefined && !isAbsolute(resolved.fontFile)) {
     throw new Error('tool-media fontFile must be an absolute path')
-  }
-  if (resolved.skillAssetRoot !== undefined && !isAbsolute(resolved.skillAssetRoot)) {
-    throw new Error('tool-media skillAssetRoot must be an absolute directory')
   }
   const ref = credentialRef(resolved.apiKeyEnv)
   const request = async (signal: AbortSignal): Promise<GatewayRequest> => ({
@@ -217,33 +221,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     canvas: () => ctx.get('canvas'),
   })
   const skills = ctx.get('skills')
-  if (skills !== undefined) {
-    const assetRoot = resolved.skillAssetRoot ?? fileURLToPath(new URL('../assets/media-editing/', import.meta.url))
-    const path = join(assetRoot, 'SKILL.md')
-    const { description } = parseMediaEditingSkill(readFileSync(path, 'utf8'), path)
-    const { BUNDLED_SKILL_RANK } = await import('@deepseek-ai/dsh-skill')
-    const candidate: SkillCandidate = {
-      name: 'media-editing',
-      description,
-      invocation: { modelInvocable: true, userInvocable: true },
-      provider: 'dsh-tool-media',
-      source: 'bundled',
-      rank: BUNDLED_SKILL_RANK,
-      resourceBase: { kind: 'directory', path: assetRoot.split(sep).join('/') },
-      locator: path,
-    }
-    const provider: SkillProvider = {
-      name: 'dsh-tool-media',
-      list: () => Promise.resolve([candidate]),
-      async get(skill, options) {
-        const { rank: _rank, locator, ...summary } = skill
-        if (typeof locator !== 'string') throw new Error('tool-media: invalid media-editing skill locator')
-        const raw = await readFile(locator, { encoding: 'utf8', signal: options.signal })
-        return { ...summary, content: parseMediaEditingSkill(raw, locator).content }
-      },
-    }
-    ctx.effect(() => skills.registerProvider(() => provider), 'tool-media: media-editing skill')
-  }
+  if (skills !== undefined) registerMediaSkills(ctx, skills, resolveSkillRoot(resolved.skillsRoot))
 
   ctx.tools.register(defineTool({
     name: 'generate_speech',
@@ -279,7 +257,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       })
       const path = await writeArtifact(resolved.outputDir, 'speech', audio.contentType, audio.bytes)
       const placement = await placeMediaArtifact(ctx.get('canvas'), exec.agent?.session, {
-        type: 'audio', path, title: 'Speech', prompt: input.text, model: resolved.speechModel,
+        type: 'audio', kind: 'speech', path, title: 'Speech', prompt: input.text, model: resolved.speechModel,
       })
       return { path, model: resolved.speechModel, ...placement }
     },
@@ -325,7 +303,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const media = await downloadMedia(gateway, url)
       const path = await writeArtifact(resolved.outputDir, 'music', media.contentType, media.bytes)
       const placement = await placeMediaArtifact(ctx.get('canvas'), exec.agent?.session, {
-        type: 'audio', path, title: 'Music', prompt: input.prompt, model,
+        type: 'audio', kind: 'music', path, title: 'Music', prompt: input.prompt, model,
       })
       return { path, model, ...placement }
     },

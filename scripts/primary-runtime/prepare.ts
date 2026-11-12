@@ -185,12 +185,12 @@ export async function prepareOfficeSkillAssets(source: string, destination: stri
 }
 
 /**
- * Copy the bundled media-editing skill to ordinary filesystem resources.
- * @param source - Package directory containing `SKILL.md`.
+ * Copy the bundled skills to ordinary filesystem resources.
+ * @param source - Package `assets` directory holding one subdirectory per skill.
  * @param destination - External Desktop runtime directory.
  * @returns Resolves after replacing the destination with the skill assets.
  */
-export async function prepareMediaEditingSkillAssets(source: string, destination: string): Promise<void> {
+export async function prepareSkillAssets(source: string, destination: string): Promise<void> {
   rmSync(destination, { recursive: true, force: true })
   await cp(source, destination, { recursive: true, dereference: true })
 }
@@ -235,8 +235,8 @@ export interface PreparePrimaryRuntimeOptions {
   readonly pnpmArchive?: RuntimeNpmArchive
   /** Ordinary filesystem Office assets; build hosts otherwise resolve the workspace package. */
   readonly skillSource?: string
-  /** Ordinary filesystem media-editing skill assets; build hosts otherwise resolve the workspace package. */
-  readonly mediaEditingSkillSource?: string
+  /** Ordinary filesystem skill assets; build hosts otherwise resolve the workspace package. */
+  readonly bundledSkillSource?: string
   /** Omit Node.js and pnpm for carriers providing only Python. */
   readonly pythonOnly?: boolean
 }
@@ -300,9 +300,9 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
   const assets = options.skillSource ?? join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-skill-office/package.json')), 'assets')
   await prepareOfficeSkillAssets(assets,
     join(paths.runtime, 'office-skills'))
-  const mediaSkillAssets = options.mediaEditingSkillSource
-    ?? join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-tool-media/package.json')), 'assets', 'media-editing')
-  await prepareMediaEditingSkillAssets(mediaSkillAssets, join(paths.runtime, 'media-editing'))
+  const mediaSkillAssets = options.bundledSkillSource
+    ?? join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-tool-media/package.json')), 'assets')
+  await prepareSkillAssets(mediaSkillAssets, join(paths.runtime, 'skills'))
 }
 
 /**

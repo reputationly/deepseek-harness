@@ -168,7 +168,10 @@ async function placeOutput(
   sourceFiles: readonly string[],
 ): Promise<{ readonly nodeId?: string; readonly canvasError?: string }> {
   return placeMediaArtifact(deps.canvas(), exec.agent?.session, {
-    type, path, ...(title === undefined ? {} : { title }),
+    type,
+    kind: type === 'image' ? 'image' : type === 'video' ? 'video' : 'speech',
+    path,
+    ...(title === undefined ? {} : { title }),
   }, sourceNodes, sourceFiles)
 }
 

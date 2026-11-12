@@ -21,9 +21,10 @@ export interface CanvasRemote {
   readonly get: () => Promise<RemoteResult<CanvasView>>
   /**
    * @param operations - edits applied in one write.
+   * @param baseRevision - document revision the edits were computed from.
    * @returns created ids and skipped operations, or the Host's failure.
    */
-  readonly apply: (operations: CanvasOperation[]) => Promise<RemoteResult<CanvasEditResult>>
+  readonly apply: (operations: CanvasOperation[], baseRevision: number) => Promise<RemoteResult<CanvasEditResult>>
 }
 
 /** Reads, edits, and change notifications of one Session's canvas. */
@@ -53,7 +54,8 @@ export class CanvasSource {
    */
   edit = async (operations: readonly CanvasOperation[]): Promise<void> => {
     if (operations.length === 0) return
-    const result = await this.remote.apply([...operations])
+    const baseRevision = this.state.getSnapshot().view?.document.revision ?? 0
+    const result = await this.remote.apply([...operations], baseRevision)
     const notice = result.ok ? result.value.skipped[0]?.reason : result.error.message
     this.state.set({ ...this.state.getSnapshot(), notice })
     await this.load()

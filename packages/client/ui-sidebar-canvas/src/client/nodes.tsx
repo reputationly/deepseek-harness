@@ -3,9 +3,16 @@ import { useEffect, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Button, IconPlayOutlineRegular, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { CanvasNode } from '@deepseek-ai/dsh-canvas/client'
 import type { CanvasFlowNode } from './flow.ts'
 import type { ReadCanvasFile } from './face.ts'
 import css from './CanvasFlow.module.css'
+
+/** Content of the version a node currently shows. */
+function shownVersion(node: CanvasNode): { path?: string; text?: string } {
+  const versions = node.versions ?? []
+  return versions.find(version => version.id === node.activeVersion) ?? versions.at(-1) ?? {}
+}
 
 const MEDIA_TYPES: Readonly<Record<string, string>> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif',
@@ -70,7 +77,7 @@ function MediaStatus({ media, loading, failed }: { media: Media; loading: string
 /** An image, read when the card mounts. */
 export function ImageNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
   const { node, readFile, t } = data
-  const media = useMedia(node.path, true, readFile)
+  const media = useMedia(shownVersion(node).path, true, readFile)
   return <Card title={node.title} selected={selected}>
     <div className={css.media}>
       {media.status === 'ready'
@@ -84,7 +91,7 @@ export function ImageNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
 function PlayableNode({ data, selected, kind }: NodeProps<CanvasFlowNode> & { kind: 'video' | 'audio' }): ReactNode {
   const { node, readFile, t } = data
   const [wanted, setWanted] = useState(false)
-  const media = useMedia(node.path, wanted, readFile)
+  const media = useMedia(shownVersion(node).path, wanted, readFile)
   let content: ReactNode
   if (media.status === 'ready') {
     content = kind === 'video'
@@ -112,7 +119,7 @@ export function AudioNode(props: NodeProps<CanvasFlowNode>): ReactNode {
 /** A text note. */
 export function TextNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
   return <Card title={data.node.title} selected={selected} className={css.text}>
-    <p className={css.textBody}>{data.node.text}</p>
+    <p className={css.textBody}>{shownVersion(data.node).text}</p>
   </Card>
 }
 

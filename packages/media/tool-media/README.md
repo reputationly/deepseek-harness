@@ -31,6 +31,10 @@ Mount this package in a composition when a session needs media generation or loc
 
 Choose this package when an agent needs gateway image, speech, music, or video generation, or local audio/video editing. Use [the canvas package](../canvas/README.md) when a session only needs direct project-canvas operations.
 
+### Skills
+
+`skillsRoot` names the directory that holds one subdirectory per bundled skill, each with a `SKILL.md` whose frontmatter `name` matches its directory; the default is this package's `assets/`. It ships `media-editing` (local FFmpeg recipes), `studio-pipeline` (the production flow), `studio-craft` (script, storyboard, and prompt writing), and `studio-layout` (canvas layout conventions). A directory whose frontmatter names another skill fails at load.
+
 ### Minimal configuration
 
 ```yaml
@@ -82,7 +86,8 @@ When the [canvas](../canvas/README.md) service is present, image and video also 
 
 | Source | Responsibility |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Registers generation tools and the optional editing-skill provider. |
+| [`src/index.ts`](src/index.ts) | Registers generation tools and the optional skill provider. |
+| [`src/skills.ts`](src/skills.ts) | Enumerates the skill directories under `skillsRoot` and registers one provider for them. |
 | [`src/visual-tools.ts`](src/visual-tools.ts) | Generates gateway media and places outputs on the canvas. |
 | [`src/edit-tools.ts`](src/edit-tools.ts) | Registers and executes FFmpeg, merge, and probe tools. |
 | [`src/ffmpeg-guards.ts`](src/ffmpeg-guards.ts) | Restricts FFmpeg arguments and configures drawtext fonts. |
@@ -99,6 +104,7 @@ These pages cover canvas behavior, common editing recipes, and tool integration.
 
 - [Canvas package](../canvas/README.md) — project media nodes and derivation edges.
 - [Media-editing recipes](assets/media-editing/SKILL.md) — probes and common FFmpeg operations.
+- [Studio pipeline](assets/studio-pipeline/SKILL.md), [craft](assets/studio-craft/SKILL.md), and [layout](assets/studio-layout/SKILL.md) — the production flow, storyboard craft, and canvas layout conventions.
 - [Tool authoring guide](../../../docs/cookbook/adding-a-tool.md) — schemas, execution results, and Web presentation.
 
 -----

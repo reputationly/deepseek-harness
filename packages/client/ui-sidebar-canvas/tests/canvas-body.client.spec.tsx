@@ -14,11 +14,17 @@ vi.mock('../src/client/CanvasFlow.tsx', () => ({ CanvasFlow: drawn }))
 
 afterEach(() => { cleanup(); drawn.mockClear() })
 
-const empty: CanvasDocument = { version: 1, nextId: 1, nodes: [], edges: [] }
+const empty: CanvasDocument = { version: 2, revision: 0, nextId: 1, nodes: [], edges: [] }
 const filled: CanvasDocument = {
-  version: 1, nextId: 2, edges: [],
-  nodes: [{ id: 'n1', type: 'text', title: 'Brief', x: 0, y: 0, width: 280, height: 160, text: 'brief' }],
+  version: 2, revision: 0, nextId: 2, edges: [],
+  nodes: [{
+    id: 'n1' as never, type: 'text', title: 'Brief', x: 0, y: 0, width: 280, height: 160,
+    activeVersion: 'v1' as never,
+    versions: [{ id: 'v1' as never, text: 'brief', createdAt: 'now', origin: 'user' }],
+  }],
 }
+const view = { directory: '/project', episode: { id: 'e1', title: 'Canvas' }, revisions: { canvas: 0 }, document: filled }
+const emptyView = { ...view, document: empty }
 
 function mount(initial: Partial<CanvasState>) {
   const state = createSnapshotStore<CanvasState>({ status: 'loading', view: undefined, error: undefined, notice: undefined, ...initial })
@@ -45,20 +51,20 @@ it('shows a failed first read with a retry', () => {
 })
 
 it('explains an empty canvas without loading the flow', () => {
-  mount({ status: 'ready', view: { directory: '/project', document: empty } })
+  mount({ status: 'ready', view: emptyView as never })
   expect(screen.getByText('empty')).toBeTruthy()
   expect(drawn).not.toHaveBeenCalled()
 })
 
 it('draws a canvas with nodes through the lazily loaded flow', async () => {
-  const h = mount({ status: 'ready', view: { directory: '/project', document: filled } })
+  const h = mount({ status: 'ready', view: view as never })
   await waitFor(() => { expect(drawn).toHaveBeenCalled() })
   const props = drawn.mock.calls[0]![0] as CanvasFlowProps
   expect(props).toMatchObject({ document: filled, readFile: h.readFile, t: h.t, edit: h.edit, reload: h.load })
 })
 
 it('keeps the document drawn under a failed refresh and under an edit notice that can be dismissed', async () => {
-  const h = mount({ status: 'failed', error: 'offline', notice: 'the edge would form a cycle', view: { directory: '/project', document: filled } })
+  const h = mount({ status: 'failed', error: 'offline', notice: 'the edge would form a cycle', view: view as never })
   await waitFor(() => { expect(drawn).toHaveBeenCalled() })
   expect(screen.getAllByRole('alert').map(alert => alert.textContent)).toEqual(['failed:offlineretry', 'notice:the edge would form a cycle'])
   fireEvent.click(screen.getByRole('button', { name: 'dismiss' }))

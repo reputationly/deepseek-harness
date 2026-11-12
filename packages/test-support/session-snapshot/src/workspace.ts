@@ -57,10 +57,14 @@ export interface CaptureWorkspaceSnapshotOptions {
   readonly ignoredRootEntries?: readonly string[]
 }
 
+/** Wall-clock values a workspace file records are not part of the external effect under test. */
+const TIMESTAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/gu
+const TIMESTAMP_TOKEN = '{{timestamp}}'
+
 function textContent(bytes: Buffer): string | undefined {
   if (bytes.includes(0)) return undefined
   const text = bytes.toString('utf8')
-  return Buffer.from(text, 'utf8').equals(bytes) ? text : undefined
+  return Buffer.from(text, 'utf8').equals(bytes) ? text.replace(TIMESTAMP, TIMESTAMP_TOKEN) : undefined
 }
 
 /**

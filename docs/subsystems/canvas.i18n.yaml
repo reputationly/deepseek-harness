@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/canvas.md
 /canvas:
-  en: c13710fe413502a9
-  zh: e24fd1197d56b7c5
+  en: 646b99a2298a72bd
+  zh: aa122acc1a5c8bb6
 /canvas/ownership:
-  en: 9837e6ed7952fdc7
-  zh: 668b29a0d46551c5
-/canvas/document-and-operations:
-  en: f92e7e9a9e92d59e
-  zh: ea9ade5376001a32
+  en: a34aca1216bad39e
+  zh: 3a13c8095585684b
+/canvas/documents-and-operations:
+  en: c381599b11f45a57
+  zh: 52a15e1ffafe17fd
 /canvas/media-inputs:
   en: 009965bed518ee88
   zh: e5423cc182a6e3b2

@@ -10,41 +10,56 @@ Media tools write generated files into an output directory and return paths. A u
 
 ## Decision
 
-Each project directory owns one canvas document. `dsh-canvas` is its only writer, the model edits it through two tools, the media tools read inputs from it and place results on it, and a right-Sidebar tab renders it.
+A project directory owns one canvas per episode, plus project metadata and a shared bible. `dsh-canvas` is their only writer, the model edits them through the canvas and studio tools, the media tools read inputs from them and place results on them, and a right-Sidebar tab renders the canvas.
 
-### Document
+### Documents
 
-The document is `<project>/.canvas/canvas.json`, where `<project>` is the Session's original directory (`session.header.cwd`), falling back to its current working directory. Sessions opened on the same project share the canvas.
+`<project>/.canvas/canvas.json` is the canvas of episode 1 when the project has no `project.json`; with one, `project.json` names the file of every episode (`episodes/<id>.json` for the rest) and records which episode each Session edits. `<project>` is the Session's original directory (`session.header.cwd`), falling back to its current working directory. `bible.json` holds the shared style, characters, locations, and props.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "revision": 3,
   "nextId": 4,
   "nodes": [
-    { "id": "n1", "type": "image", "title": "Cat", "x": 0, "y": 0, "width": 280, "height": 280, "path": "/abs/cat.png", "group": "g3" },
-    { "id": "n2", "type": "text", "title": "Brief", "x": 0, "y": 320, "width": 280, "height": 160, "text": "..." },
-    { "id": "g3", "type": "group", "title": "References", "x": -30, "y": -50, "width": 340, "height": 360 }
+    { "id": "n1", "type": "image", "title": "Cat", "x": 0, "y": 0, "width": 280, "height": 280, "group": "g3", "activeVersion": "v1",
+      "versions": [{ "id": "v1", "path": "/abs/cat.png", "prompt": "a cat", "model": "qwen-image-pro", "createdAt": "…", "origin": "agent" }] },
+    { "id": "n2", "type": "text", "title": "Brief", "x": 0, "y": 320, "width": 280, "height": 160,
+      "versions": [{ "id": "v1", "text": "…", "createdAt": "…", "origin": "user" }] }
   ],
-  "edges": [{ "id": "g3->n4", "source": "g3", "target": "n4", "kind": "derivation" }]
+  "edges": [
+    { "id": "n1->n4:ref", "source": "n1", "target": "n4", "kind": "reference", "role": "ref", "order": 0 },
+    { "id": "g3->n4", "source": "g3", "target": "n4", "kind": "derivation" }
+  ]
 }
 ```
 
-Node types are `image`, `video`, `audio`, `text`, and `group`. Ids are short (`n<k>` for content, `g<k>` for groups) because the model repeats them in later calls; `nextId` keeps them unique after removals. Media nodes carry `path`, and generated ones also `prompt` and `model`. A node belongs to at most one group, and groups do not nest. An edge is `derivation` when a generation produced the target from the source, and `reference` when the user or the model drew it.
+Node types are `image`, `video`, `audio`, `text`, `script`, `storyboard`, `timeline`, and `group`. Ids are short (`n<k>` for content, `g<k>` for groups) because the model repeats them in later calls; `nextId` keeps them unique after removals. Content lives in `versions`, which the version limits bound without ever dropping the active one; a `storyboard` version holds shots, and an audio version may hold a detected `beats` grid. `gen` says how a media node generates, including which shots or dialogue line it stands for. A node belongs to at most one group, and groups do not nest.
 
-Writes are serialized per document, validated, and replace the file through a temporary file and rename. A document that fails to parse or validate is never overwritten: reads and edits fail with `canvas/corrupt` until the file is repaired or removed. A missing file is an empty canvas.
+An edge records what it supplies: `derivation` when a generation produced the target from the source, `reference` with a `role` (`prompt`, `ref`, `first_frame`, `last_frame`, `audio`, `source`) when it feeds an input. Reference edges are keyed by role, so one image can be both a reference and the first frame of one video.
+
+`revision` advances once per successful edit, and every writer states the revision it read; a stale one fails the whole call before anything is written, which is what keeps two Sessions on one episode from overwriting each other. `project.json`, `bible.json`, and the canvas all carry their own revision, advanced by the store on each write.
+
+Writes are serialized per project directory, validated, and replace each file through a temporary file and rename. A document that fails to parse or validate is never overwritten: reads and edits fail with `canvas/corrupt`, and a newer format version is refused with `canvas/unsupported-version`, until the file is repaired or removed. A version-1 canvas migrates on read. A missing file is an empty canvas.
 
 ### Model tools
 
-`canvas_get` returns nodes, groups with their members, and edges; `nodes` narrows it to named ids and adds full text. `canvas_edit` applies an ordered operation list in one write:
+`canvas_get` returns the revision, the episode, whether `project.json` and `bible.json` exist, nodes, groups with their members, and edges; `nodes` narrows it to named ids, `detail: full` keeps long text and adds storyboard shots, and `include` adds the project or bible JSON. `canvas_edit` applies an ordered operation list in one write and requires the `baseRevision` that `canvas_get` returned:
 
 | `op` | Fields | Effect |
 |---|---|---|
-| `add` | `ref`, `type`, `title`, `path` or `text`, `group` | Create a content node; `ref` names it for later operations in the same call |
-| `update` | `node`, `title`, `text`, `path` | Change fields of one node |
+| `add` | `ref`, `type`, `title`, `path`/`text`/`shots`, `gen`, `bible`, `group` | Create a content node with its first version; `ref` names it for later operations in the same call |
+| `update` | `node`, `title`, `text`, `path` | Change fields of one node; text and path changes add a version |
 | `remove` | `node` | Remove a node with its edges; removing a group keeps its members |
-| `connect` / `disconnect` | `from`, `to` | Add or remove one edge |
-| `group` | `ref`, `title`, `nodes` | Create a group around existing or just-added nodes |
-| `ungroup` | `node` | Dissolve a group and keep its members |
+| `set_gen` | `node`, `gen` | Change generation parameters; a `null` value deletes one |
+| `set_text` / `set_shots` | `node`, `text`/`shots` | Store one new version |
+| `update_shot` / `insert_shot` / `remove_shot` / `move_shot` | `node`, `shot`, patch or `after` | Edit one shot of a storyboard; one call adds at most one version |
+| `set_version` | `node`, `version` | Switch the version the node shows |
+| `connect` / `disconnect` | `from`, `to`, optional `role` | Add or remove one edge; dropping `role` removes every edge between the two nodes |
+| `reorder_refs` | `node`, `sources` | Rewrite the reference order |
+| `group` / `ungroup` | `ref`, `title`, `nodes` / `node` | Create a group around nodes, or dissolve one and keep its members |
+
+`studio_project_create`, `studio_episode_create`, `studio_episode_use`, `studio_bible_update`, and `studio_expand_script` create the project, its episodes, its bible entries, and one group per scene of a script; `studio_bible_update` refuses to delete an entry a storyboard still uses.
 
 The model never states coordinates. The service lays new nodes out left to right by edge depth beside the nodes they connect to, moves a new node down until it overlaps nothing, never moves a node the user placed, and resizes a group to its members. An operation that names an unknown node, repeats an edge, or would create a cycle is skipped and reported in `skipped` with its reason; the remaining operations still apply, so a node the user deleted mid-turn does not fail the whole call. The result returns the `ref` to id map.
 
@@ -52,7 +67,7 @@ The model never states coordinates. The service lays new nodes out left to right
 
 `generate_image` and `generate_video` accept `referenceNodes`, and `generate_video` also `firstFrameNode` and `lastFrameNode`. A node id resolves to that image node's file. A group id resolves to its member image nodes in reading order (top to bottom, then left to right). File-path parameters keep working and are combined with node inputs. A reference that is unknown, is not an image, or is a group with no image fails the call before any gateway request.
 
-After a successful generation the tool adds a node for the written file with the prompt and model, connects one `derivation` edge from every referenced node or group, and returns its id as `nodeId`. A call with `needs_choice` changes nothing. When `dsh-canvas` is not mounted the media tools behave as before and reject node parameters.
+After a successful generation the tool adds a node whose first version holds the written file with the prompt and model, sets `gen` to what produced it, connects one `derivation` edge from every referenced node or group, and returns its id as `nodeId`. A canvas write from `tool-media` states the revision it read and follows the same conflict rule as the model tools. A call with `needs_choice` changes nothing. When `dsh-canvas` is not mounted the media tools behave as before and reject node parameters.
 
 ### Remote API and Sidebar tab
 
@@ -75,6 +90,6 @@ After a successful generation the tool adds a node for the written file with the
 
 ## Testing
 
-- Unit specs cover document validation and corrupt-file refusal, every operation with its skip reasons, layout (depth columns, overlap avoidance, placed nodes untouched, group bounds), group resolution order, and the media tools against a fake gateway: a group of two images reaches `/images/edits` as two images, and the result node carries a `derivation` edge from the group.
+- Unit specs cover document validation, the version-1 migration, corrupt and newer-version refusal, deployment bounds, every operation with its skip reasons and revision conflict, layout (depth columns, overlap avoidance, placed nodes untouched, group bounds), role inference and role-keyed edges, project and bible parsing with their revision guards, group resolution order, and the media tools against a fake gateway: a group of two images reaches `/images/edits` as two images, and the result node carries a `derivation` edge from the group and a version with the written path.
 - The real-gateway run uses the headless profile with a patch that enables `tool-media` against the product gateway and a key supplied only through the environment. It checks three conversations against `canvas.json`: text nodes created, connected, and grouped from one request; two generated images placed and grouped; one image generated from that group, with the edge from the group to the result. The key appears in no log, fixture, or commit.
 - The tab is checked in the Web Client on the canvas written by that run: nodes, group frame, and edges render, a dragged node keeps its position after reload, and an agent edit appears without reopening the tab.

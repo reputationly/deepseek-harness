@@ -241,7 +241,7 @@ function runtimeResources(): RuntimeResources {
     mediaRuntime: {
       ...(targetIncludesFfmpeg ? { ffmpegPath, ffprobePath } : {}),
       ...(fontFile === undefined ? {} : { fontFile }),
-      skillAssetRoot: join(process.resourcesPath, 'runtime', 'media-editing'),
+      skillsRoot: join(process.resourcesPath, 'runtime', 'skills'),
     },
   }
 }

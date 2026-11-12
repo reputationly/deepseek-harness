@@ -1,4 +1,4 @@
-import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -70,13 +70,13 @@ describe('bundled media-editing skill', () => {
     const candidate = ('candidates' in listed ? listed.candidates : listed)[0]
     if (candidate === undefined) throw new Error('media skill provider returned no candidate')
     await expect(provider.get({ ...candidate, locator: 42 }, { cwd: process.cwd() }))
-      .rejects.toThrow('invalid media-editing skill locator')
+      .rejects.toThrow('invalid skill locator')
   })
 
-  it('loads skill content from the configured absolute asset root', async () => {
+  it('loads skill content from the configured skill root', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-media-skill-'))
     try {
-      await cp(join(process.cwd(), 'packages/media/tool-media/assets/media-editing'), root, { recursive: true })
+      await cp(join(process.cwd(), 'packages/media/tool-media/assets'), root, { recursive: true })
       ctx = new Context()
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
@@ -84,12 +84,12 @@ describe('bundled media-editing skill', () => {
       await ctx.plugin(ToolMedia, {
         baseURL: 'https://gateway.example/v1',
         catalog: false,
-        skillAssetRoot: root,
+        skillsRoot: root,
       })
       const skill = await ctx.skills.get('media-editing')
       expect(skill?.resourceBase).toEqual({
         kind: 'directory',
-        path: root,
+        path: `${join(root, 'media-editing')}/`,
       })
       expect(skill?.content).toContain('## 替换音轨')
     } finally {
@@ -103,7 +103,8 @@ describe('bundled media-editing skill', () => {
   ])('rejects %s when the skills service is present', async (_label, content, message) => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-invalid-media-skill-'))
     try {
-      await writeFile(join(root, 'SKILL.md'), content)
+      await mkdir(join(root, 'media-editing'), { recursive: true })
+      await writeFile(join(root, 'media-editing', 'SKILL.md'), content)
       ctx = new Context()
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
@@ -111,7 +112,7 @@ describe('bundled media-editing skill', () => {
       await expect(ctx.plugin(ToolMedia, {
         baseURL: 'https://gateway.example/v1',
         catalog: false,
-        skillAssetRoot: root,
+        skillsRoot: root,
       })).rejects.toThrow(message)
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -120,7 +121,6 @@ describe('bundled media-editing skill', () => {
 
   it.each([
     ['fontFile', { fontFile: 'fonts/cjk.ttf' }, 'fontFile must be an absolute path'],
-    ['skillAssetRoot', { skillAssetRoot: 'media-editing' }, 'skillAssetRoot must be an absolute directory'],
   ])('requires an absolute %s path', async (_label, config, message) => {
     ctx = new Context()
     await ctx.plugin(SystemPrompt)
@@ -130,5 +130,102 @@ describe('bundled media-editing skill', () => {
       catalog: false,
       ...config,
     })).rejects.toThrow(message)
+  })
+})
+
+describe('bundled skill set', () => {
+  it('lists every skill directory under the root', async () => {
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(ToolMedia, { baseURL: 'https://gateway.example/v1', catalog: false })
+    const names = ['media-editing', 'studio-craft', 'studio-layout', 'studio-pipeline']
+    for (const name of names) {
+      expect(await ctx.skills.get(name)).toMatchObject({ name, provider: 'dsh-tool-media', source: 'bundled' })
+    }
+    expect((await ctx.skills.get('studio-pipeline'))?.content).toContain('设定集先行')
+  })
+
+  it('rejects a skill whose frontmatter names another directory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-mismatched-skill-'))
+    try {
+      await mkdir(join(root, 'studio-craft'), { recursive: true })
+      await writeFile(join(root, 'studio-craft', 'SKILL.md'), '---\nname: media-editing\ndescription: x\n---\n# Body\n')
+      ctx = new Context()
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SkillRegistry)
+      await expect(ctx.plugin(ToolMedia, {
+        baseURL: 'https://gateway.example/v1', catalog: false, skillsRoot: root,
+      })).rejects.toThrow('names skill media-editing but lives in studio-craft')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('resolves a relative root without a trailing slash', async () => {
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(ToolMedia, { baseURL: 'https://gateway.example/v1', catalog: false, skillsRoot: '../assets' })
+    expect(await ctx.skills.get('media-editing')).toMatchObject({ name: 'media-editing' })
+  })
+
+  it('rejects a root that does not exist', async () => {
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    await expect(ctx.plugin(ToolMedia, {
+      baseURL: 'https://gateway.example/v1', catalog: false, skillsRoot: join(tmpdir(), 'dsh-no-skills-here'),
+    })).rejects.toThrow('ENOENT')
+  })
+})
+
+describe('skill provider guards', () => {
+  it('rejects a skill without a name and refuses an unknown skill', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-unnamed-skill-'))
+    try {
+      await mkdir(join(root, 'nameless'), { recursive: true })
+      await writeFile(join(root, 'nameless', 'SKILL.md'), '---\ndescription: x\n---\n# Body\n')
+      ctx = new Context()
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SkillRegistry)
+      await expect(ctx.plugin(ToolMedia, {
+        baseURL: 'https://gateway.example/v1', catalog: false, skillsRoot: root,
+      })).rejects.toThrow('has no name')
+      await ctx.fiber.dispose()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    const registration = vi.spyOn(ctx.skills, 'registerProvider')
+    await ctx.plugin(ToolMedia, { baseURL: 'https://gateway.example/v1', catalog: false })
+    const create = registration.mock.calls.at(-1)?.[0]
+    if (create === undefined) throw new Error('skills provider was not registered')
+    const provider = create({ signal: new AbortController().signal, invalidate: () => {} })
+    const listed = await provider.list({ cwd: process.cwd() })
+    const candidate = ('candidates' in listed ? listed.candidates : listed)[0]
+    if (candidate === undefined) throw new Error('no candidate')
+    await expect(provider.get({ ...candidate, name: 'ghost' }, { cwd: process.cwd() }))
+      .rejects.toThrow('unknown skill ghost')
+  })
+})
+
+describe('retired configuration keys', () => {
+  it('rejects the retired skillAssetRoot key instead of falling back to the default root', async () => {
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    const retired = { baseURL: 'https://gateway.example/v1', catalog: false, skillAssetRoot: '/tmp/skills' }
+    // The old key is not in Config by design; a deployment that still carries it must fail at load.
+    await expect(ctx.plugin(ToolMedia, retired as never)).rejects.toThrow(/skillAssetRoot|unknown/i)
   })
 })

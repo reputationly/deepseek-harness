@@ -38,7 +38,7 @@ export function apply(ctx: Context): void {
     if (face === undefined) {
       const source = new CanvasSource({
         get: () => ctx.remote.canvas.get(sessionId),
-        apply: operations => ctx.remote.canvas.apply(sessionId, operations),
+        apply: (operations, baseRevision) => ctx.remote.canvas.apply(sessionId, operations, baseRevision),
       })
       sources.set(sessionId, source)
       face = {

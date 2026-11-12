@@ -1,0 +1,13 @@
+version: 1
+scenario: studio-p1-drama-setup
+profile: headless
+composition: studio-p1-drama-setup
+recording: live
+timeoutMs: 600000
+workspace:
+  final: true
+header:
+  class: studio-p1-drama-setup
+  pin: true
+input:
+  task: 创建一个短剧项目《雨夜便利店》，竖屏。写设定集：两个角色、一个场景。写第一集剧本，3 场。把剧本铺开到场景，每场写一张分镜表。

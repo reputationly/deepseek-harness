@@ -34,7 +34,7 @@ export interface BrandGatewayMediaRuntime {
   readonly ffmpegPath?: string
   readonly ffprobePath?: string
   readonly fontFile?: string
-  readonly skillAssetRoot: string
+  readonly skillsRoot: string
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -153,7 +153,7 @@ export function gatewayProfilePatch(
       ...(mediaRuntime.ffmpegPath === undefined ? [] : [`    ffmpegPath: ${scalar(mediaRuntime.ffmpegPath)}`]),
       ...(mediaRuntime.ffprobePath === undefined ? [] : [`    ffprobePath: ${scalar(mediaRuntime.ffprobePath)}`]),
       ...(mediaRuntime.fontFile === undefined ? [] : [`    fontFile: ${scalar(mediaRuntime.fontFile)}`]),
-      `    skillAssetRoot: ${scalar(mediaRuntime.skillAssetRoot)}`,
+      `    skillsRoot: ${scalar(mediaRuntime.skillsRoot)}`,
     ],
     ...productName === undefined || productName === '' ? [] : [`    displayName: ${scalar(productName)}`],
     '    models:',
