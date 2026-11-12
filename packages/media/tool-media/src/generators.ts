@@ -61,7 +61,7 @@ function heightOf(name: string): number | undefined {
  * @param requested - delivery resolution the project asks for.
  * @returns an offered tier, or the requested value when the catalog offers none.
  */
-function generationTier(catalog: MediaCatalog | undefined, requested: string | undefined): string | undefined {
+export function generationTier(catalog: MediaCatalog | undefined, requested: string | undefined): string | undefined {
   if (catalog === undefined || requested === undefined) return requested
   const tiers = capabilitiesFor(catalog, 'generate_video')
     .flatMap(capability => capability.paramSchema?.properties?.resolution?.enum ?? [])

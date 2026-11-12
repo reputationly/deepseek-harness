@@ -19,8 +19,8 @@ export interface PlannedNode {
   readonly calls: number
   /** Video seconds this node asks the gateway for. */
   readonly seconds?: number
-  /** Spoken lines this node synthesizes. */
-  readonly lines?: number
+  /** Lines this node contributes; a speech node voices one per line. */
+  readonly lines: number
   /** Titles of the shots this video segment covers. */
   readonly shots?: readonly string[]
 }
@@ -111,7 +111,7 @@ export function totalsOf(nodes: readonly PlannedNode[]): BudgetTotals {
     videoCalls: total(node => node.kind === 'video', node => node.calls),
     videoSeconds: Math.round(total(node => node.kind === 'video', node => node.seconds ?? 0) * 10) / 10,
     imageCalls: total(node => node.kind === 'image', node => node.calls),
-    speechLines: total(node => node.kind === 'speech', node => node.lines ?? node.calls),
+    speechLines: total(node => node.kind === 'speech', node => node.lines),
     musicCalls: total(node => node.kind === 'music', node => node.calls),
   }
 }

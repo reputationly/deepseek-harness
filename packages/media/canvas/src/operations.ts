@@ -338,6 +338,12 @@ export function applyOperations(
         else delete node.stale
         return
       }
+      case 'set_input_changed': {
+        const node = find(operation.node)
+        if (operation.changed) node.inputChanged = true
+        else delete node.inputChanged
+        return
+      }
       case 'set_tail': {
         const node = find(operation.node)
         if (operation.tailOf === null) delete node.tailOf

@@ -127,7 +127,12 @@ declare module '@deepseek-ai/dsh-jobs' {
 }
 
 /** Declared config keys; a deployment that carries a retired key must fail at load instead of silently falling back. */
-const CONFIG_KEYS: readonly string[] = Object.keys((Reflect.get(Config, 'dict') ?? {}) as Record<string, unknown>)
+const CONFIG_KEYS = [
+  'baseURL', 'apiKeyEnv', 'imageModel', 'speechModel', 'musicModel', 'videoModel', 'outputDir', 'taskTimeoutMs',
+  'pollIntervalMs', 'catalog', 'catalogCacheFile', 'videoDefaultDuration', 'videoRefModel', 'maxSegmentSeconds',
+  'generateConcurrency', 'confirmVideoCalls', 'confirmVideoSeconds', 'confirmSpeechLines', 'confirmImageCalls',
+  'confirmMusicCalls', 'ffmpegPath', 'ffprobePath', 'editTimeoutMs', 'fontFile', 'skillsRoot',
+] as const satisfies readonly (keyof Config)[]
 
 /**
  * Reject a config key this build does not declare.
@@ -136,7 +141,7 @@ const CONFIG_KEYS: readonly string[] = Object.keys((Reflect.get(Config, 'dict') 
  */
 function rejectUnknownKeys(config: Config): void {
   for (const key of Object.keys(config)) {
-    if (!CONFIG_KEYS.includes(key)) throw new Error(`tool-media: unknown config key ${key}`)
+    if (!(CONFIG_KEYS as readonly string[]).includes(key)) throw new Error(`tool-media: unknown config key ${key}`)
   }
 }
 
@@ -296,12 +301,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         let settle: (value: Awaited<ReturnType<typeof spec.run>>) => void = () => {}
         let reject: (error: unknown) => void = () => {}
         const done = new Promise<Awaited<ReturnType<typeof spec.run>>>((resolve, fail) => { settle = resolve; reject = fail })
+        const controller = new AbortController()
         const id = jobsRegistry.start({
           kind: 'media',
           label: spec.label,
           owner,
           run: (job: JobHandle) => {
-            const controller = new AbortController()
             job.append(`generating ${spec.label}\n`, { channel: 'log' })
             spec.run(controller.signal).then((value) => {
               settle(value)
@@ -319,7 +324,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
             }
           },
         })
-        return { id: String(id), done }
+        return { id, done, signal: controller.signal }
       },
     }),
     probe: async (path) => {

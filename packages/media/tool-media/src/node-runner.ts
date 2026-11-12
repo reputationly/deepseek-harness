@@ -7,7 +7,7 @@
 import {
   activeVersionOf, gateBibleFirst, gateStoryboardQuality, planShotSegments,
   type Bible, type CanvasDocument, type CanvasEdge, type CanvasEdgeRole, type CanvasNode, type CanvasNodeId,
-  type CanvasOperation, type Shot, type StoryboardSegment,
+  type CanvasOperation, type Shot, type StoryboardSegment, type VersionId,
 } from '@deepseek-ai/dsh-canvas'
 import type { GenerationPlan, PlannedNode } from './budget.ts'
 
@@ -29,7 +29,7 @@ export interface PlanLimits {
 /** One file an input edge supplies, resolved to the version it points at. */
 export interface ResolvedInput {
   readonly node: CanvasNodeId
-  readonly version: string
+  readonly version: VersionId
   readonly path: string
   readonly role: CanvasEdgeRole
 }
@@ -49,7 +49,7 @@ export interface PlannedGeneration extends PlannedNode {
   /** Storyboard this entry belongs to. */
   readonly storyboard?: CanvasNodeId
   /** Tail-frame image that becomes this segment's first frame. */
-  readonly tailChain?: { readonly node: CanvasNodeId; readonly version: string }
+  readonly tailChain?: { readonly node: CanvasNodeId; readonly version: VersionId }
   /** Whether this segment must continue the picture of the segment before it. */
   readonly chain?: boolean
 }
@@ -221,7 +221,7 @@ export function planNodes(
 
   for (const id of requested) {
     const node = document.nodes.find(candidate => candidate.id === id)
-    if (node === undefined) return refused({ gate: 'G4_stage_order', missing: [`node ${id} does not exist`] })
+    if (node === undefined) throw new Error(`canvas node ${id} does not exist`)
     if (node.type === 'storyboard') {
       const quality = gateStoryboardQuality(document, bible)
       if (quality !== undefined) return refused(quality)
@@ -230,7 +230,7 @@ export function planNodes(
       let previous: {
         readonly node: CanvasNodeId
         readonly generated: boolean
-        readonly tail?: { readonly node: CanvasNodeId; readonly version: string }
+        readonly tail?: { readonly node: CanvasNodeId; readonly version: VersionId }
       } | undefined
       for (const [index, segment] of plan.segments.entries()) {
         const existing = videoForSegment(document, node.id, segment)
@@ -243,6 +243,7 @@ export function planNodes(
           kind: 'video',
           model: existing?.gen?.model ?? model,
           calls: 1,
+          lines: 1,
           seconds: Math.min(segment.durationSec, limits.maxVideoSeconds),
           shots: covered.map(shot => shot.title),
           storyboard: node.id,
@@ -280,7 +281,7 @@ export function planNodes(
       continue
     }
     if (node.gen === undefined || (node.type !== 'image' && node.type !== 'video' && node.type !== 'audio')) {
-      return refused({ gate: 'G4_stage_order', missing: [`node ${node.id} does not generate media`] })
+      throw new Error(`canvas node ${node.id} does not generate media`)
     }
     if (node.gen.prompt.includes('@')) {
       const bibleGate = gateBibleFirst(bible)
@@ -309,6 +310,7 @@ export function planNodes(
       kind: node.gen.kind,
       model,
       calls: 1,
+      lines: 1,
       ...node.gen.kind === 'video' ? { seconds: Number(node.gen.params.duration ?? limits.videoDefaultDuration) } : {},
       ...node.gen.kind === 'speech' ? { lines: 1 } : {},
     })

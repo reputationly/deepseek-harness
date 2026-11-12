@@ -305,7 +305,7 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "nodeIds": {
+          "nodes": {
             "type": "array",
             "description": "Image, video, audio, or storyboard node ids.",
             "items": {
@@ -318,7 +318,7 @@
           }
         },
         "required": [
-          "nodeIds"
+          "nodes"
         ]
       }
     },

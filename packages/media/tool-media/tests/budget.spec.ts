@@ -3,7 +3,7 @@ import { budgetOf, canonicalJson, confirmToken, needsConfirmation, totalsOf, typ
 import type { CanvasNodeId } from '@deepseek-ai/dsh-canvas'
 
 const node = (id: string, kind: PlannedNode['kind'], calls = 1, extra: Partial<PlannedNode> = {}): PlannedNode => ({
-  node: id as CanvasNodeId, kind, model: 'm', calls, ...extra,
+  node: id as CanvasNodeId, kind, model: 'm', calls, lines: 1, ...extra,
 })
 
 const plan = (nodes: readonly PlannedNode[]): GenerationPlan => ({ nodes, create: [], stale: [], segments: [] })
@@ -42,7 +42,7 @@ describe('totals and confirmation', () => {
       node('n2', 'video', 1, { seconds: 12.5 }),
       node('n3', 'image', 3),
       node('n4', 'speech', 1, { lines: 4 }),
-      node('n6', 'speech', 2),
+      node('n6', 'speech', 2, { lines: 2 }),
       node('n5', 'music', 1),
     ])).toEqual({ videoCalls: 4, videoSeconds: 17.5, imageCalls: 3, speechLines: 6, musicCalls: 1 })
   })

@@ -1,10 +1,10 @@
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Bible, CanvasDocument, CanvasEditResult, CanvasNode, CanvasOperation, Shot } from '@deepseek-ai/dsh-canvas'
+import { CanvasConflictError, type Bible, type CanvasDocument, type CanvasEditResult, type CanvasNode, type CanvasOperation, type Shot } from '@deepseek-ai/dsh-canvas'
 import { EMPTY_CANVAS } from '@deepseek-ai/dsh-canvas/src/document.ts'
 import { resolveConfig } from '@deepseek-ai/dsh-canvas/src/config.ts'
 import { applyOperations } from '@deepseek-ai/dsh-canvas/src/operations.ts'
-import { runPlan, type MediaGenerator, type RunnerServices } from '../src/runner.ts'
+import { runPlan, startPlan, type MediaGenerator, type RunnerServices } from '../src/runner.ts'
 
 const limits = {
   maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
@@ -44,7 +44,7 @@ describe('runPlan', () => {
       read: async () => ({ document, revision }),
       bible: async () => bible,
       edit: async (operations: readonly CanvasOperation[], baseRevision: number): Promise<CanvasEditResult> => {
-        if (baseRevision !== revision) throw new Error(`stale revision ${String(baseRevision)}`)
+        if (baseRevision !== revision) throw new CanvasConflictError(baseRevision, revision)
         const outcome = applyOperations(document, operations, { limits: canvasLimits, origin: 'agent', now: () => '2026-11-12T00:00:00.000Z' })
         document = outcome.document
         revision += 1
@@ -53,12 +53,12 @@ describe('runPlan', () => {
     }
     const generator: MediaGenerator = {
       image: async (call) => {
-        if (fail) throw new Error('gateway said no')
+        if (fail) throw Object.assign(new Error('gateway said no'), { status: 500 })
         generated.push(`image:${call.node.id}`)
         return { path: join(directory, 'image.png'), model: 'image-model' }
       },
       video: async (call) => {
-        if (fail) throw new Error('gateway said no')
+        if (fail) throw Object.assign(new Error('gateway said no'), { status: 500 })
         generated.push(`video:${call.node.id}:${call.firstFramePath ?? ''}`)
         return { path: join(directory, 'video.mp4'), model: 'video-model' }
       },
@@ -75,8 +75,9 @@ describe('runPlan', () => {
         start: (spec) => {
           jobs += 1
           const controller = new AbortController()
-          return { id: `media-${String(jobs)}`, done: spec.run(controller.signal) }
+          return { id: `media-${String(jobs)}` as never, done: spec.run(controller.signal), signal: controller.signal }
         },
+        live: () => [],
       },
       probe: async () => ({ durationMs: 3000, width: 720, height: 1280 }),
       tailFrame: async () => join(directory, 'tail.png'),
@@ -160,6 +161,198 @@ describe('runPlan', () => {
     expect(video.tailOf?.node).toBe(document.nodes.find(node => node.type === 'image')?.id)
   })
 
+  it('writes three independent groups concurrently without losing a revision', async () => {
+    await edit([1, 2, 3].map(index => ({
+      op: 'add' as const, type: 'image' as const, title: `image ${String(index)}`,
+      gen: { kind: 'image' as const, prompt: `p${String(index)}`, params: {} },
+    })))
+    const outcome = await runPlan(services({ concurrency: 3 }), ['n1', 'n2', 'n3'], undefined)
+    expect(outcome.status).toBe('done')
+    if (outcome.status !== 'done') throw new Error('expected done')
+    expect(outcome.results.filter(result => result.ok)).toHaveLength(3)
+    for (const node of document.nodes) expect(node.versions).toHaveLength(1)
+  })
+
+  it('classifies a 4xx failure as not retryable and a cancellation as cancelled', async () => {
+    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    const denied = services({
+      generate: {
+        ...services().generate,
+        image: async () => { throw Object.assign(new Error('bad parameter'), { status: 422 }) },
+      },
+    })
+    const first = await runPlan(denied, ['n1'], undefined)
+    expect(first.status).toBe('done')
+    expect((document.nodes[0] as CanvasNode).status).toMatchObject({ state: 'failed', error: 'bad parameter', retryable: false })
+
+    const cancelled = services({
+      generate: {
+        ...services().generate,
+        image: async (_call) => {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          throw error
+        },
+      },
+    })
+    await runPlan(cancelled, ['n1'], undefined, { skipConfirmation: true })
+  })
+
+  it('retries a canvas write that lost a race and works without a live-job probe', async () => {
+    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    let conflicts = 1
+    const racing = services()
+    const baseEdit = racing.canvas.edit
+    const outcome = await runPlan({
+      ...racing,
+      canvas: {
+        ...racing.canvas,
+        edit: async (operations, baseRevision) => {
+          if (conflicts > 0) {
+            conflicts -= 1
+            throw new CanvasConflictError(baseRevision, baseRevision + 1)
+          }
+          return baseEdit(operations, baseRevision)
+        },
+      },
+      jobs: { start: (spec) => {
+        const controller = new AbortController()
+        return { id: 'media-x' as never, done: spec.run(controller.signal), signal: controller.signal }
+      } },
+    }, ['n1'], undefined)
+    expect(outcome.status).toBe('done')
+  })
+
+  it('repairs a status a previous process left running', async () => {
+    await edit([{ op: 'add', type: 'image', path: '/a.png', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    await edit([{ op: 'set_status', node: 'n1', status: { state: 'running', jobId: 'gone' as never, at: 'then' } }] as never)
+    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'q', params: {} } }] as never)
+    const outcome = await runPlan(services(), ['n2'], undefined)
+    expect(outcome.status).toBe('done')
+    expect((document.nodes.find(node => node.id === 'n1') as CanvasNode).status)
+      .toMatchObject({ state: 'failed', error: 'interrupted by a restart', retryable: true })
+  })
+
+  it('reports a cancellation and a non-Error rejection', async () => {
+    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    const cancelledServices = services({
+      generate: {
+        ...services().generate,
+        image: async (call) => {
+          if (call.signal.aborted) throw new Error('aborted')
+          return { path: join(directory, 'x.png'), model: 'image-model' }
+        },
+      },
+    })
+    const cancelled = await runPlan({
+      ...cancelledServices,
+      jobs: {
+        start: (spec) => {
+          const controller = new AbortController()
+          controller.abort()
+          return { id: 'media-c' as never, done: spec.run(controller.signal), signal: controller.signal }
+        },
+      },
+    }, ['n1'], undefined)
+    expect(cancelled.status).toBe('done')
+    expect((document.nodes[0] as CanvasNode).status).toMatchObject({ error: 'cancelled', retryable: true })
+
+    await runPlan(services({
+      generate: {
+        ...services().generate,
+        image: async () => { throw 'plain failure' },
+      },
+    }), ['n1'], undefined, { skipConfirmation: true })
+    expect((document.nodes[0] as CanvasNode).status).toMatchObject({ error: 'plain failure', retryable: true })
+  })
+
+  it('marks an orphan segment video stale before generating the new layout', async () => {
+    await edit([{
+      op: 'add', type: 'storyboard', title: '场1',
+      gen: { kind: 'video', prompt: '', params: {} },
+      shots: [shot('s1'), shot('s2')],
+    }] as never)
+    await edit([{
+      op: 'add', type: 'video', path: '/orphan.mp4',
+      gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'n1' as never, shots: ['sx' as never] } },
+    }] as never)
+    const outcome = await runPlan(services(), ['n1'], undefined)
+    expect(outcome.status).toBe('done')
+    expect((document.nodes.find(node => node.id === 'n2') as CanvasNode).stale).toBe(true)
+  })
+
+  it('uses a tail frame an earlier run recorded for the next segment', async () => {
+    await edit([{
+      op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
+      shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
+    }] as never)
+    await edit([{ op: 'add', type: 'image', path: '/tail.png' }] as never)
+    await edit([{
+      op: 'add', type: 'video', path: '/first.mp4',
+      gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'n1' as never, shots: ['s1' as never] } },
+    }] as never)
+    await edit([{ op: 'set_tail', node: 'n3', tailOf: { node: 'n2' as never, version: 'v1' as never } }] as never)
+    const outcome = await runPlan(services({ concurrency: 1 }), ['n1'], undefined)
+    expect(outcome.status).toBe('done')
+    expect(generated.some(call => call.includes('tail.png'))).toBe(true)
+  })
+
+  it('records a generation whose tail extraction fails as failed', async () => {
+    await edit([{
+      op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
+      shots: [shot('s1'), shot('s2')],
+    }] as never)
+    const broken = services()
+    const outcome = await runPlan({
+      ...broken,
+      tailFrame: async () => { throw new Error('ffmpeg failed') },
+    }, ['n1'], undefined)
+    expect(outcome.status).toBe('done')
+    const video = document.nodes.find(node => node.type === 'video') as CanvasNode
+    expect(video.status).toMatchObject({ state: 'failed', error: 'ffmpeg failed', retryable: true })
+    expect(video.versions).toHaveLength(1)
+  })
+
+  it('starts nothing when the request names no nodes', async () => {
+    const outcome = await runPlan(services(), [], undefined)
+    expect(outcome.status).toBe('done')
+    if (outcome.status !== 'done') throw new Error('expected done')
+    expect(outcome.results).toEqual([])
+  })
+
+  it('reports a preparation failure without starting a job', async () => {
+    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    const broken = services()
+    const outcome = await runPlan({
+      ...broken,
+      canvas: {
+        ...broken.canvas,
+        edit: async () => { throw new Error('canvas write failed') },
+      },
+    }, ['n1'], undefined)
+    expect(outcome.status).toBe('done')
+    if (outcome.status !== 'done') throw new Error('expected done')
+    expect(outcome.results).toEqual([{ node: 'n1', ok: false, error: 'canvas write failed', retryable: true }])
+  })
+
+  it('dispatches speech and music nodes to their generators', async () => {
+    await edit([
+      { op: 'add', type: 'audio', gen: { kind: 'speech', prompt: 'hello', params: { voice: 'v' } } },
+      { op: 'add', type: 'audio', gen: { kind: 'music', prompt: 'theme', params: {} } },
+    ] as never)
+    const calls: string[] = []
+    const outcome = await runPlan(services({
+      generate: {
+        image: async () => ({ path: join(directory, 'i.png'), model: 'image-model' }),
+        video: async () => ({ path: join(directory, 'v.mp4'), model: 'video-model' }),
+        speech: async () => { calls.push('speech'); return { path: join(directory, 's.mp3'), model: 'speech-model' } },
+        music: async () => { calls.push('music'); return { path: join(directory, 'm.mp3'), model: 'music-model' } },
+      },
+    }), ['n1', 'n2'], undefined)
+    expect(outcome.status).toBe('done')
+    expect(calls.sort()).toEqual(['music', 'speech'])
+  })
+
   it('passes a blocked plan back without generating anything', async () => {
     await edit([{
       op: 'add', type: 'storyboard', gen: { kind: 'video', prompt: '', params: {} },
@@ -168,5 +361,115 @@ describe('runPlan', () => {
     const outcome = await runPlan(services(), ['n1'], undefined)
     expect(outcome.status).toBe('blocked')
     expect(generated).toEqual([])
+  })
+
+  it('records the reference and frame files a call consumed', async () => {
+    await edit([
+      { op: 'add', type: 'image', path: '/ref.png' },
+      { op: 'add', type: 'image', path: '/first.png' },
+      { op: 'add', type: 'image', path: '/last.png' },
+      { op: 'add', type: 'video', gen: { kind: 'video', prompt: 'p', params: { duration: 6 } } },
+    ] as never)
+    await edit([
+      { op: 'connect', from: 'n1', to: 'n4', kind: 'reference', role: 'ref' },
+      { op: 'connect', from: 'n2', to: 'n4', kind: 'reference', role: 'first_frame' },
+      { op: 'connect', from: 'n3', to: 'n4', kind: 'reference', role: 'last_frame' },
+    ] as never)
+    const outcome = await runPlan(services(), ['n4'], undefined)
+    expect(outcome.status).toBe('done')
+    const video = document.nodes.find(node => node.id === 'n4') as CanvasNode
+    expect(video.versions?.[0]?.inputs?.map(input => [input.node, input.role])).toEqual([
+      ['n1', 'ref'], ['n2', 'first_frame'], ['n3', 'last_frame'],
+    ])
+  })
+
+  it('waits for a free generation slot when the bound is one', async () => {
+    await edit([
+      { op: 'add', type: 'image', gen: { kind: 'image', prompt: 'a', params: {} } },
+      { op: 'add', type: 'image', gen: { kind: 'image', prompt: 'b', params: {} } },
+    ] as never)
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const started = services({
+      concurrency: 1,
+      generate: {
+        ...services().generate,
+        image: async (call) => {
+          if (String(call.node.id) === 'n1') await gate
+          return { path: join(directory, `${String(call.node.id)}.png`), model: 'image-model' }
+        },
+      },
+    })
+    const outcome = await startPlan(started, ['n1', 'n2'], undefined, { skipConfirmation: true })
+    expect(outcome.status).toBe('started')
+    release()
+    if (outcome.status !== 'started') throw new Error('expected started')
+    expect((await outcome.settle).filter(result => result.ok)).toHaveLength(2)
+  })
+
+})
+
+describe('segment regeneration', () => {
+  it('updates the tail version and marks the next segment input-changed', async () => {
+    const directory = '/tmp/media-runner'
+    const limitsLocal = {
+      maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
+      imageModel: 'image-model', speechModel: 'speech-model', musicModel: 'music-model',
+    }
+    const confirmLimitsLocal = {
+      confirmVideoCalls: 9, confirmVideoSeconds: 90, confirmSpeechLines: 50, confirmImageCalls: 50, confirmMusicCalls: 5,
+    }
+    const canvasLimits = resolveConfig({})
+    let document: CanvasDocument = EMPTY_CANVAS
+    let revision = 0
+    let jobs = 0
+    const edit = (operations: readonly CanvasOperation[], origin: 'user' | 'agent' = 'user'): CanvasEditResult => {
+      const outcome = applyOperations(document, operations, { limits: canvasLimits, origin, now: () => '2026-11-12T00:00:00.000Z' })
+      document = outcome.document
+      revision += 1
+      return outcome.result
+    }
+    edit([{
+      op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
+      shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
+    }])
+    const services: RunnerServices = {
+      canvas: {
+        read: async () => ({ document, revision }),
+        bible: async () => undefined,
+        edit: async (operations, baseRevision) => {
+          if (baseRevision !== revision) throw new CanvasConflictError(baseRevision, revision)
+          return edit(operations, 'agent')
+        },
+      },
+      limits: limitsLocal,
+      confirmLimits: confirmLimitsLocal,
+      concurrency: 1,
+      generate: {
+        image: async () => ({ path: `${directory}/tail.png`, model: 'image-model' }),
+        video: async () => ({ path: `${directory}/video.mp4`, model: 'video-model' }),
+        speech: async () => ({ path: `${directory}/speech.mp3`, model: 'speech-model' }),
+        music: async () => ({ path: `${directory}/music.mp3`, model: 'music-model' }),
+      },
+      jobs: {
+        start: (spec) => {
+          jobs += 1
+          const controller = new AbortController()
+          return { id: `media-${String(jobs)}` as never, done: spec.run(controller.signal), signal: controller.signal }
+        },
+        live: () => [],
+      },
+      probe: async () => ({ durationMs: 3000, width: 720, height: 1280 }),
+      tailFrame: async () => `${directory}/tail.png`,
+      now: () => '2026-11-12T00:00:00.000Z',
+    }
+    expect((await runPlan(services, ['n1'], undefined)).status).toBe('done')
+    const first = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 1) as CanvasNode
+    const second = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 5) as CanvasNode
+    expect(first.tailOf?.version).toBe('v1')
+    expect((await runPlan(services, [String(first.id)], undefined)).status).toBe('done')
+    const refreshed = document.nodes.find(node => node.id === first.id) as CanvasNode
+    expect(refreshed.tailOf?.version).toBe('v2')
+    expect((document.nodes.find(node => node.id === second.id) as CanvasNode).inputChanged).toBe(true)
   })
 })

@@ -11,7 +11,7 @@ English | [中文](guide.zh.md)
 
 The media tools can now generate a node's media without the agent driving each call by hand:
 
-- `canvas_generate` plans a run over the nodes it is given, quotes its video calls, video seconds, image calls, spoken lines, and music calls, and starts it only after the user agrees to the quote. One storyboard becomes one video node per segment.
+- `canvas_generate` plans a run over the nodes it is given, quotes its video calls, video seconds, image calls, spoken lines, and music calls, and starts it only after the user agrees to the quote. One storyboard becomes one video node per segment. A started run returns immediately with its job ids; completion arrives as a job notice, and a node whose previous job is still queued or running is refused with `already_running`.
 - `storyboard_voice` creates one audio node per spoken line and keeps them matched to their line across storyboard rewrites.
 - `studio_stage` records and advances the production stage of the current episode.
 

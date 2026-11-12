@@ -332,6 +332,12 @@ export type CanvasOperation =
     readonly stale: boolean
   }
   | {
+    /** Host-side: mark or clear that an input of this node changed after it was generated. */
+    readonly op: 'set_input_changed'
+    readonly node: string
+    readonly changed: boolean
+  }
+  | {
     /** Host-side: record the frame a video node stores as its tail; `null` clears it. */
     readonly op: 'set_tail'
     readonly node: string

@@ -381,3 +381,12 @@ describe('host-side stale and tail operations', () => {
     expect(run(withTail, [{ op: 'set_tail', node: 'n1', tailOf: null }]).document.nodes[0]?.tailOf).toBeUndefined()
   })
 })
+
+describe('host-side input-changed operation', () => {
+  it('marks and clears that an input changed', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'video', path: '/a.mp4' }]).document
+    const changed = run(base, [{ op: 'set_input_changed', node: 'n1', changed: true }]).document
+    expect(changed.nodes[0]?.inputChanged).toBe(true)
+    expect(run(changed, [{ op: 'set_input_changed', node: 'n1', changed: false }]).document.nodes[0]?.inputChanged).toBeUndefined()
+  })
+})

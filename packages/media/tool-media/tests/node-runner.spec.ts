@@ -228,7 +228,7 @@ describe('planNodes', () => {
   it('plans a single image node with its model default', () => {
     const image = node('n1', 'image', { gen: { kind: 'image', prompt: 'a cat', params: {} } })
     const plan = planNodes(documentOf([image]), bible, ['n1'], limits)
-    expect(plan.entries).toEqual([{ node: 'n1', kind: 'image', model: 'image-model', calls: 1 }])
+    expect(plan.entries).toEqual([{ node: 'n1', kind: 'image', model: 'image-model', calls: 1, lines: 1 }])
   })
 
   it('plans video, speech, and music nodes with their own defaults', () => {
@@ -237,9 +237,9 @@ describe('planNodes', () => {
     const music = node('n3', 'audio', { gen: { kind: 'music', prompt: 'p', params: {} } })
     const plan = planNodes(documentOf([video, speech, music]), bible, ['n1', 'n2', 'n3'], limits)
     expect(plan.entries.map(entry => [entry.kind, entry.model, entry.lines])).toEqual([
-      ['video', 'video-model', undefined],
+      ['video', 'video-model', 1],
       ['speech', 'speech-model', 1],
-      ['music', 'music-model', undefined],
+      ['music', 'music-model', 1],
     ])
   })
 
@@ -306,10 +306,10 @@ describe('planNodes', () => {
     expect(planNodes(documentOf([orphan]), bible, ['v9'], limits).blocked).toBeUndefined()
   })
 
-  it('refuses nodes that do not exist or do not generate media', () => {
+  it('refuses nodes that do not exist or do not generate media by name', () => {
     const text = node('n1', 'text')
-    expect(planNodes(documentOf([text]), bible, ['n9'], limits).blocked?.missing).toEqual(['node n9 does not exist'])
-    expect(planNodes(documentOf([text]), bible, ['n1'], limits).blocked?.missing).toEqual(['node n1 does not generate media'])
+    expect(() => planNodes(documentOf([text]), bible, ['n9'], limits)).toThrow('canvas node n9 does not exist')
+    expect(() => planNodes(documentOf([text]), bible, ['n1'], limits)).toThrow('canvas node n1 does not generate media')
   })
 })
 
@@ -335,5 +335,21 @@ describe('mentions and reference images', () => {
       { id: 'n1->n2:ref', source: 'n1' as never, target: 'n2' as never, kind: 'reference', role: 'ref' },
     ])
     expect(collectInputs(document, document.nodes[1] as CanvasNode, bible).refs.map(ref => ref.node)).toEqual(['n1'])
+  })
+})
+
+describe('mention resolution details', () => {
+  it('matches an alias, keeps an unknown mention, and skips an entry without a usable image', () => {
+    const aliased: Bible = {
+      version: 1, revision: 0, logline: '', style: { visual: '', aspect: '9:16' },
+      entries: [
+        { id: 'c1' as never, kind: 'character', name: '林夏', aliases: ['小林'], description: '店员', imageNodes: [] },
+        { id: 'c2' as never, kind: 'character', name: '陈默', aliases: [], description: '客人', imageNodes: ['n404' as never] },
+      ],
+    }
+    const video = node('n2', 'video', { gen: { kind: 'video', prompt: '@小林 与 @陈默 与 @无名', params: {} } })
+    const inputs = collectInputs(documentOf([video]), video, aliased)
+    expect(inputs.prompt).toBe('林夏（店员） 与 陈默（客人） 与 @无名')
+    expect(inputs.refs).toEqual([])
   })
 })
