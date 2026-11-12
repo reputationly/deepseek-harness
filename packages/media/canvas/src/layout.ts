@@ -26,6 +26,9 @@ const SIZES: Readonly<Record<CanvasContentType, { readonly width: number; readon
   video: { width: 320, height: 220 },
   audio: { width: 280, height: 110 },
   text: { width: 280, height: 160 },
+  script: { width: 320, height: 260 },
+  storyboard: { width: 420, height: 300 },
+  timeline: { width: 420, height: 260 },
 }
 
 /**
