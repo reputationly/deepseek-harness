@@ -1,6 +1,6 @@
 # 蒜狸小助手 · 创作画布开发规格（MV / 短剧 / 漫剧）
 
-- 版本：v3（2026-11-12），开发用。v1 的路线「搬流程、不装插件」用户已认可；v3 按对照现有代码的评审修正了数据模型、分集、Skill 注册、异步任务和预算，修正点集中在第 12 节。
+- 版本：v4（2026-11-12），开发用。v1 的路线「搬流程、不装插件」用户已认可；v3 按对照现有代码的评审修正了数据模型、分集、Skill 注册、异步任务和预算，修正点集中在第 12 节；v4 把对账从 `planNodes` 移到 `runNodes`，并补齐输入版本和各文件的 revision。
 - 读者：负责实现的开发 Agent。每期一个 PR，按第 9 节的顺序做，各期的自测要求和验收条件写在第 10 节。
 - 仓库：`reputationly/deepseek-harness`，主干 `master`。分支命名 `devin/<unix秒>-<slug>`。
 - 参考源码（只读）：`reputationly/ovaijisuandesign`、[NINKCH/dsh-infinite_canvas](https://github.com/NINKCH/dsh-infinite_canvas) 0.20.5（Apache-2.0）。
@@ -100,7 +100,7 @@
 
 ### 2.1 原则
 - **一套操作，两个入口**：Agent 用 `canvas_edit`，界面用 Remote `canvas.apply`，最终都进入 `operations.ts` 的 `applyOperations(document, ops)`，用同一个校验器，报同样的错误。
-- **一套生成，两个入口**：Agent 用 `canvas_generate`，界面点「生成」走 Remote `media.generateNodes`，最终都进入 `tool-media/src/node-runner.ts` 的 `runNodes(nodeIds, confirmToken)`。预算确认、并发上限、落版本、状态更新都在这里。
+- **一套生成，两个入口**：Agent 用 `canvas_generate`，界面点「生成」走 Remote `media.generateNodes`，最终都进入 `tool-media/src/node-runner.ts` 的 `runNodes(nodeIds, confirmToken)`。`planNodes` 只做计算、不改画布；预算确认、建节点、标 stale、并发上限、落版本、状态更新都在 `runNodes` 里。
 - **节点自己描述生成方式**：生成参数存在节点的 `gen` 里，输入关系存在边上（`role`/`order`）。Agent 的工作就是把这些写好，再调一次「按节点生成」，和用户手动在检查器里填完点「生成」是同一回事。因此用户可以随时接手 Agent 做到一半的画布，Agent 也能接着用户手动设好的节点继续。
 - **Agent 能看到用户的改动**：用户手动改动不推送给模型，Agent 下一轮调 `canvas_get` 时就能读到。`canvas_get` 返回 `revision`，`canvas_edit` 和 Remote `canvas.apply` **必须**带 `baseRevision`（schema 必填），revision 不一致时整批被拒，调用方重新读一遍再改。这样两个会话写同一集、或 Agent 和用户同时改，都不会静默覆盖。
 
@@ -188,7 +188,7 @@ export interface CanvasNodeBase {
   readonly timeline?: TimelineRef                // 只有 timeline 节点有
   readonly tailOf?: { readonly node: CanvasNodeId; readonly version: VersionId } // 尾帧图片：来自哪个视频的哪个版本
   readonly stale?: boolean                       // 分镜改写后，这个视频节点对应的镜头组合已不存在（第 3.4 节），卡片显示「分镜已改」
-  readonly inputChanged?: boolean                // 上游输入换了新版本（如上一段重新生成、尾帧换了），卡片显示「输入已更新」，重新生成后清除
+  readonly inputChanged?: boolean                // 当前入边来源的 activeVersion 和 activeVersion 版本的 `inputs[].version` 不一致时为真（如上一段重新生成、尾帧换了），卡片显示「输入已更新」，重新生成后清除
 }
 
 export interface TimelineRef { readonly file: string; readonly durationMs: number; readonly exports: readonly ExportRecord[] } // file 相对 .canvas/
@@ -202,7 +202,7 @@ export interface NodeVersion {
   readonly prompt?: string                       // 实际发给模型的完整提示词（已展开 @引用）
   readonly model?: string
   readonly params?: Readonly<Record<string, string | number | boolean>>
-  readonly inputs?: readonly string[]            // 生成时实际用到的输入文件路径，按顺序
+  readonly inputs?: readonly { readonly node: CanvasNodeId; readonly version: VersionId; readonly role?: CanvasEdgeRole; readonly path: string }[] // 生成时实际用到的输入，按顺序
   readonly durationMs?: number                   // 音视频时长，生成后用 ffprobe 写入
   readonly width?: number; readonly height?: number
   readonly beats?: { readonly bpm: number; readonly beatsMs: readonly number[]; readonly sections: readonly { readonly fromMs: number; readonly toMs: number }[] } // audio_beats 写入
@@ -274,7 +274,10 @@ export interface StoryboardSegment {   // 由 planShotSegments 算出，不手�
 - 没有完全相同的：新建视频节点；
 - 旧节点的镜头集合不再对应任何一段：标 `stale: true`，卡片显示「分镜已改」，不删除，由用户或 Agent 决定删掉还是保留；
 - 闸门 G3 的判定条件因此是「同一张表、同一组镜头 id 只对应一个非 stale 的视频节点」。
-- 这一步对账由 tool-media 的 `planNodes` 执行（`canvas_generate`、`storyboard_voice` 和 Remote `media.planNodes` 都会调到），幂等：画布没变时重复执行不产生任何改动。`set_shots` 本身是 canvas 的纯操作，只改分镜表，不建也不标视频节点。
+- 对账分两步：tool-media 的 `planNodes` 是纯计算，返回切出的段、匹配到的已有节点 id、拟新建的节点、拟标 stale 的节点和预算，不改画布；`runNodes` 在令牌校验通过后，用一次 `canvas_edit`（带 `baseRevision`）把新建节点和 stale 标记写进去，再开始生成。所以检查器里弹预算对话框时画布不变；令牌对不上时什么都不写。
+- `storyboard_voice` 的计划只包含台词配音节点，不建也不标视频节点。
+- 之后重新切段时，stale 节点的镜头集合如果又和某一段完全相同，就复用它并清除 `stale`。
+- `set_shots` 本身是 canvas 的纯操作，只改分镜表，不建也不标视频节点。
 
 ### 3.5 设定集 `.canvas/bible.json`
 
@@ -318,7 +321,8 @@ export interface StudioProject {
 - 分集要贯穿存储、Remote 和事件，现在这些都只按目录：
   - `store.ts`：`canvasFile(directory)` 改成 `canvasFile(directory, episode?)`，按 `project.json` 里该集的 `file` 解析；串行锁从按文件改成按项目目录，`project.json`、`bible.json`、`production.json` 和各集文件共用一把锁；
   - Remote `canvas/get(sessionId)`、`canvas/apply(sessionId, operations)` 现在不传目录，目录由 session 推导，这一点不变；新增可选参数 `episode?: EpisodeId`，不带时用该会话绑定的那一集；
-  - `CanvasChange` 增加 `episode?: EpisodeId`、`revision: number` 和 `files: ('canvas' | 'project' | 'bible' | 'production')[]`，界面只在变的是当前显示的那一集、或是项目级文件时重载。
+  - `CanvasChange` 增加 `episode?: EpisodeId` 和 `revisions: { readonly canvas?: number; readonly project?: number; readonly bible?: number; readonly production?: number }`，只列这次改动写过的文件及其新 revision；界面只在变的是当前显示的那一集、或是项目级文件时重载。
+  - `canvas.json`、`project.json`、`bible.json`、`production.json` 的 `revision` 都由 `store.ts` 在锁内每写一次加 1，调用方不手动设置；`canvas_get` 的 `include` 带回哪个文件，就同时带回它的 `revision`。
 
 ### 3.7 制作进度 `.canvas/production.json`
 ```ts ignore-check
@@ -326,6 +330,7 @@ export type StageId = 'brief' | 'bible' | 'assets' | 'script' | 'storyboard' | '
 export type GateId = 'G1_bible_first' | 'G2_storyboard_quality' | 'G3_one_video_per_shots' | 'G4_stage_order' | 'G5_destructive' | 'tail_chain'
 export interface Production {
   readonly version: 1
+  readonly revision: number
   readonly episodes: Readonly<Record<string, { readonly stage: StageId; readonly overrides: readonly { readonly gate: GateId; readonly at: string; readonly reason: string }[] }>>
 }
 ```
@@ -358,7 +363,7 @@ Host 侧代码用 `ctx.jobs.start()` 注册任务、`ctx.jobs.kill()` 取消；�
 ### 4.2 `packages/media/canvas/src/` 文件清单
 | 文件 | 状态 | 内容 |
 |:--|:--|:--|
-| `package.json` | 改 | 新增 `@deepseek-ai/schemastery` 依赖（写法同 tool-media） |
+| `package.json` | 改 | 新增 `@deepseek-ai/schemastery` 依赖（写法同 tool-media）；`NodeStatus.jobId` 用到 `JobId`，把 `@deepseek-ai/dsh-jobs` 按 Harness 包约定写进 `peerDependencies` 和 `devDependencies`，只做类型导入 |
 | `config.ts` | 新 | canvas 包现在没有 Config。新增 `Config`：`maxNodes`、`maxEdges`、`maxPromptLength`、`maxBatchOperations`、`versionLimit`、`textVersionLimit`、`maxShotsPerStoryboard`、`journalLimit`，在 `index.ts` 导出并接到 `CanvasService` |
 | `types.ts` | 改 | 第 3 节的全部类型 |
 | `document.ts` | 改 | `parseDocument`（v1→v2 迁移）、`serialize`、`activeVersionOf`、上限校验 |
@@ -373,7 +378,7 @@ Host 侧代码用 `ctx.jobs.start()` 注册任务、`ctx.jobs.kill()` 取消；�
 | `timeline.ts` | 新（P4） | 第 8.2 节的 `TimelineOp` 纯函数和诊断 |
 | `store.ts` | 改 | 多文件原子写：沿用 tmp+rename；按项目目录一把串行锁；`canvasFile(directory, episode?)`（第 3.6 节） |
 | `tools.ts` | 改 | `canvas_get`、`canvas_edit` 扩展；新增 `studio_*` 工具 |
-| `index.ts` | 改 | Remote `get`/`apply` 新增可选参数 `episode`；新增 `project`、`bible`、`episodes`、`undo`、`redo`；`canvas/change` 带 `episode`、`revision`、`files` |
+| `index.ts` | 改 | Remote `get`/`apply` 新增可选参数 `episode`；新增 `project`、`bible`、`episodes`、`undo`、`redo`；`canvas/change` 带 `episode`、`revisions` |
 
 工具 schema 变化（`canvas_get` 加 `detail`/`include`，`canvas_edit` 加操作和必填 `baseRevision`）要在同一个 PR 里重录工具 schema 快照和受影响的会话快照。
 
@@ -399,7 +404,7 @@ type CanvasEditOperation =
 ### 4.4 `tool-media/src/` 新增文件
 | 文件 | 内容 |
 |:--|:--|
-| `node-runner.ts` | `planNodes(nodes)` → `GenerationPlan`；`runNodes(nodeIds, token)`：执行前按当前画布重新 `planNodes`、重算令牌，和传入的不一致就不执行，返回新的预算单和令牌；一致时每个节点用 `ctx.jobs.start()` 注册一个 kind 为 `media` 的任务（带 `toolCall`）并发执行；按节点收集输入（第 4.5 节）；调用现有的 `generate_*` 实现函数；结果追加成新版本；更新 `status` |
+| `node-runner.ts` | `planNodes(nodeIds)` → `GenerationPlan`（纯计算：段、复用/新建/标 stale 的节点、预算，不改画布）；`runNodes(nodeIds, token)`：执行前按当前画布重新 `planNodes`、重算令牌，和传入的不一致就不执行，返回新的预算单和令牌；一致时先用一次带 `baseRevision` 的 canvas 编辑落下新建节点和 stale 标记，然后一致时每个节点用 `ctx.jobs.start()` 注册一个 kind 为 `media` 的任务（带 `toolCall`）并发执行；按节点收集输入（第 4.5 节）；调用现有的 `generate_*` 实现函数；结果追加成新版本；更新 `status` |
 | `budget.ts` | `GenerationPlan` → 预算单：每个节点的类型、调用次数、模型，视频总秒数、配音句数、图片张数、音乐次数；`confirmToken = sha256(canonicalJson(plan))` 取前 16 位 |
 | `voice.ts` | `planDialogue(storyboard, bible)`：每句台词对应一个音频节点 `gen.kind='speech'`、`gen.dialogue`；音色取设定条目的 `voice` |
 | `beats.ts` | `detectBeats(file)`：ffmpeg 解码成单声道 22050 Hz s16le PCM，计算能量通量，取峰值，估算 BPM 和节拍网格；返回 `{bpm, beatsMs[], sections[]}`（段落按能量变化切分） |
@@ -660,7 +665,7 @@ export interface Clip {
 - `operations.spec.ts`：第 4.3 节每种操作的成功路径和每条校验规则的失败路径（每条一个用例）；role 推断表全覆盖；连成环时拒绝；`baseRevision` 不一致时整批拒绝；一次调用对一张分镜表只产生一个版本；`versionLimit` 超出时丢掉最旧的非 active 版本（含 active 恰好最旧的情况）；同一对节点不同 role 可并存、同 role 拒绝；`disconnect` 带和不带 role；不带 `baseRevision` 被 schema 拒绝。
 - `storyboard.spec.ts`：`parseScenes` 能识别【场1】、`## 场1`、`第1场`，并能处理全角和半角数字；镜头校验（景别缺失、时长越界、角色不在设定集里）。
 - `bible.spec.ts`：`expandMentions` 能处理别名、同一角色多次提及、不存在的 @名字（原样保留并给出警告）；删除仍被引用的条目时拒绝。
-- `project.spec.ts`：没有 project.json 时行为与旧版一致；创建项目后 canvas.json 变成第 1 集，且文件不移动；会话绑定和切换；`canvas/change` 带正确的 `episode` 和 `files`；两集并发写互不覆盖。
+- `project.spec.ts`：没有 project.json 时行为与旧版一致；创建项目后 canvas.json 变成第 1 集，且文件不移动；会话绑定和切换；`canvas/change` 带正确的 `episode` 和 `revisions`；两集并发写互不覆盖。
 - `config.spec.ts`：canvas Config 默认值和非法值在加载时报错。
 - tool-media `skills.spec.ts`：枚举多个 skill 子目录；frontmatter 名和目录名不一致时报错；旧字段 `skillAssetRoot` 被拒绝。`prepare.ts` 的测试覆盖整个 `assets/` 被复制。
 - `layout.spec.ts`：新类型的分列顺序；铺开 6 场后节点不重叠。
@@ -770,7 +775,7 @@ export interface Clip {
 | # | 问题 | 决定 | 位置 |
 |:--|:--|:--|:--|
 | 1 | 同一对节点只能一条边，表达不了「既是参考图又是首帧」 | 参考边 id 带 role，同对节点同 role 唯一；`disconnect` 可带 role；迁移时补 role | 3.1、3.2、4.3、7.5 |
-| 2 | 分集没贯穿存储、Remote、事件 | `canvasFile(directory, episode?)`；按项目目录加锁；Remote 新增可选 `episode` 参数；`canvas/change` 带 episode、revision、files | 3.6、4.2 |
+| 2 | 分集没贯穿存储、Remote、事件 | `canvasFile(directory, episode?)`；按项目目录加锁；Remote 新增可选 `episode` 参数；`canvas/change` 带 episode 和按文件的 revisions | 3.6、4.2 |
 | 3 | Skill 注册只认一个目录 | `skillAssetRoot` 改名 `skillsRoot`（父目录），枚举子目录；改 desktop 和 prepare.ts；写升级指南 | 6.1、4.4 |
 | 4 | canvas 包没有 Config | 新增 `config.ts` 和 schemastery 依赖 | 4.2 |
 | 5 | `needs_choice` 形状另起一套 | 沿用 `ParamChoice` | 4.5、5.3 |
@@ -788,4 +793,5 @@ export interface Clip {
 | 17 | 微信回传怎么判定 | 沿用微信插件按工具名单回传，P4 加 `timeline_export` | 8.4 |
 | 18 | `versionLimit` 与 active | 丢最旧的非 active 版本 | 3.3 |
 | 19 | 第二轮评审 | Remote 签名、G3 措辞、`stale` 与 `inputChanged` 分开、微信旧句、`ctx.jobs` 与模型工具分开、`JobKind` 登记、`JobId`、Config 总表、项目级文件的 revision、对账时机、导出注册 job、`canvas_get` 带分集 | 3.3、3.4、3.6、4.1、4.7、5.1、5.2、8.4 |
-| 20 | 其他一致性问题 | `canvas_get` 的 `full`、工具归属表、`timeline.ts`、懒加载定死、取消可重试、预设位置、可复现的失败验收、长任务阈值、删掉排障记录 | 4.1、4.2、4.6、5.1、6.2、10 |
+| 20 | 第三轮评审 | `planNodes` 纯计算、对账结果在 `runNodes` 令牌校验后落地；`inputs` 记录来源节点和版本，`inputChanged` 可机械判定；`Production` 加 `revision`；`CanvasChange` 改成按文件的 `revisions`；revision 由 store 递增；canvas 依赖 `dsh-jobs`；stale 节点重新匹配时清除标记 | 3.3、3.4、3.6、3.7、4.2、4.4 |
+| 21 | 其他一致性问题 | `canvas_get` 的 `full`、工具归属表、`timeline.ts`、懒加载定死、取消可重试、预设位置、可复现的失败验收、长任务阈值、删掉排障记录 | 4.1、4.2、4.6、5.1、6.2、10 |
