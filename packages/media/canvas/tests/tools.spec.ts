@@ -234,9 +234,13 @@ describe('studio tools', () => {
     })
     expect(full.text).toContain('c1 Lin')
     const bare = await call('studio_bible_update', {
-      upsert: [{ id: 'p1', kind: 'prop', name: 'Cup', description: 'a cup' }],
+      upsert: [{ id: 'p1', kind: 'prop', name: 'Cup', description: 'a cup', voice: {} }],
     })
     expect(bare.text).toContain('p1 Cup')
+    const partial = await call('studio_bible_update', {
+      upsert: [{ id: 'p2', kind: 'prop', name: 'Mug', description: 'a mug', voice: { voice: 'v9' } }],
+    })
+    expect(partial.text).toContain('p2 Mug')
     const stale = await call('studio_bible_update', { logline: 'x', baseRevision: 1 })
     expect(stale.isError).toBe(true)
     expect(stale.text).toContain('canvas revision is')

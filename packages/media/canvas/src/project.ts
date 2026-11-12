@@ -74,7 +74,7 @@ export function parseProject(source: string): StudioProject {
   try {
     value = JSON.parse(source)
   } catch (error: unknown) {
-    throw new Error(`project.json: ${error instanceof Error ? error.message : 'invalid JSON'}`)
+    throw new Error(`project.json: ${String(error)}`)
   }
   const raw = record(value, 'document')
   if (raw.version !== 1) throw new Error(`project.json: unsupported version ${JSON.stringify(raw.version)}`)

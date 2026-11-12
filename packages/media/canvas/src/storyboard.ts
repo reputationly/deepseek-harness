@@ -16,11 +16,12 @@ export interface Scene {
   readonly body: string
 }
 
-/** Scene heading written as 【场1】 or 【场1 标题】. */
-const BRACKETED = /^[ \t]*(?:#{1,6}[ \t]*)?【[ \t]*场[ \t]*([0-9０-９]+)[ \t]*】[ \t]*(.*)$/u
-
-/** Scene heading written as 第1场 or 场1, optionally followed by a title. */
-const NUMBERED = /^[ \t]*(?:#{1,6}[ \t]*)?(?:第[ \t]*([0-9０-９]+)[ \t]*场|场[ \t]*([0-9０-９]+))[ \t]*[：:.、]?[ \t]*(.*)$/u
+/** Scene heading marker: 【场1】, 第1场, or 场1, up to where the title starts. */
+const HEADING = new RegExp([
+  '^[ \\t]*(?:#{1,6}[ \\t]*)?',
+  '(?:【[ \\t]*场[ \\t]*([0-9０-９]+)[ \\t]*】|第[ \\t]*([0-9０-９]+)[ \\t]*场|场[ \\t]*([0-9０-９]+))',
+  '[ \\t]*[：:.、]?',
+].join(''), 'u')
 
 function halfWidth(digits: string): number {
   return Number(digits.replace(/[０-９]/gu, digit => String.fromCharCode(digit.charCodeAt(0) - 0xfee0)))
@@ -35,12 +36,11 @@ export function parseScenes(text: string): readonly Scene[] {
   const scenes: Scene[] = []
   let current: { number: number; title: string; lines: string[] } | undefined
   for (const line of text.split(/\r?\n/u)) {
-    const bracketed = BRACKETED.exec(line)
-    const numbered = bracketed === null ? NUMBERED.exec(line) : null
-    const digits = bracketed?.[1] ?? numbered?.[1] ?? numbered?.[2]
-    if (digits !== undefined) {
+    const heading = HEADING.exec(line)
+    const digits = heading?.[1] ?? heading?.[2] ?? heading?.[3]
+    if (heading !== null && digits !== undefined) {
       if (current !== undefined) scenes.push({ number: current.number, title: current.title, body: current.lines.join('\n').trim() })
-      current = { number: halfWidth(digits), title: (bracketed?.[2] ?? numbered?.[3] ?? '').trim(), lines: [] }
+      current = { number: halfWidth(digits), title: line.slice(heading[0].length).trim(), lines: [] }
       continue
     }
     if (current !== undefined) current.lines.push(line)

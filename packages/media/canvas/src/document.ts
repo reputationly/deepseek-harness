@@ -35,7 +35,6 @@ export class CanvasUnsupportedVersionError extends Error {
 export const EMPTY_CANVAS: CanvasDocument = { version: 2, revision: 0, nextId: 1, nodes: [], edges: [] }
 
 const NODE_TYPES: readonly CanvasNodeType[] = ['image', 'video', 'audio', 'text', 'script', 'storyboard', 'timeline', 'group']
-const CONTENT_TYPES: readonly CanvasNodeType[] = ['image', 'video', 'audio', 'text', 'script', 'storyboard', 'timeline']
 const EDGE_KINDS: readonly CanvasEdgeKind[] = ['derivation', 'reference']
 const EDGE_ROLES: readonly CanvasEdgeRole[] = ['prompt', 'ref', 'first_frame', 'last_frame', 'audio', 'source']
 const GENERATION_KINDS: readonly GenerationKind[] = ['image', 'video', 'speech', 'music']
@@ -321,7 +320,6 @@ export function assertCanvas(document: CanvasDocument): void {
     if (node.group === undefined) continue
     if (node.type === 'group') throw new CanvasCorruptError(`group ${node.id} is nested in ${node.group}`)
     if (byId.get(node.group)?.type !== 'group') throw new CanvasCorruptError(`node ${node.id} names missing group ${node.group}`)
-    if (!CONTENT_TYPES.includes(node.type)) throw new CanvasCorruptError(`node ${node.id} has unknown content type ${node.type}`)
   }
   const edges = new Set<string>()
   for (const edge of document.edges) {
@@ -441,7 +439,7 @@ export function parseCanvas(source: string, limits?: ResolvedConfig): CanvasDocu
   try {
     value = JSON.parse(source)
   } catch (error: unknown) {
-    throw new CanvasCorruptError(error instanceof Error ? error.message : 'invalid JSON')
+    throw new CanvasCorruptError(String(error))
   }
   const raw = record(value, 'document')
   const version = count(raw.version, 'version')

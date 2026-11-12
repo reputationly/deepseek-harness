@@ -156,13 +156,14 @@ export function layoutCreated(nodes: ReadonlyMap<string, DraftNode>, edges: read
       if (place(node, false)) progressed = true
     }
     if (progressed) continue
-    const [stuck] = pending
-    if (stuck === undefined) break
-    const node = nodes.get(stuck)
-    if (node === undefined) {
-      pending.delete(stuck)
-      continue
+    for (const stuck of pending) {
+      const node = nodes.get(stuck)
+      if (node === undefined) {
+        pending.delete(stuck)
+        continue
+      }
+      place(node, true)
+      break
     }
-    place(node, true)
   }
 }

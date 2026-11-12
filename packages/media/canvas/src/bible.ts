@@ -99,7 +99,7 @@ export function parseBible(source: string): Bible {
   try {
     value = JSON.parse(source)
   } catch (error: unknown) {
-    throw new Error(`bible.json: ${error instanceof Error ? error.message : 'invalid JSON'}`)
+    throw new Error(`bible.json: ${String(error)}`)
   }
   const raw = record(value, 'document')
   if (raw.version !== 1) throw new Error(`bible.json: unsupported version ${JSON.stringify(raw.version)}`)

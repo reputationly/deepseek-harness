@@ -62,3 +62,10 @@ describe('project', () => {
     expect(fromEmpty.project.episodes).toHaveLength(1)
   })
 })
+
+describe('episode numbering', () => {
+  it('numbers a new episode from a non-numeric id', () => {
+    const odd: StudioProject = { ...project, episodes: [{ id: 'draft' as never, title: 'x', file: 'canvas.json' }] }
+    expect(withEpisode(odd, 'next').episode.id).toBe('e1')
+  })
+})

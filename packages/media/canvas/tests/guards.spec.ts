@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -128,5 +128,45 @@ describe('canvas files', () => {
     await writeFile(join(directory, '.canvas', 'project.json'), '{"version":9}')
     await expect(ctx.canvas.read(session)).rejects.toThrow('unsupported version')
     expect(await readFile(join(directory, '.canvas', 'project.json'), 'utf8')).toBe('{"version":9}')
+  })
+})
+
+describe('last branches', () => {
+  it('counts a storyboard with no version as referencing nothing', async () => {
+    await mkdir(join(directory, '.canvas'), { recursive: true })
+    await writeFile(join(directory, '.canvas', 'canvas.json'), JSON.stringify({
+      version: 2, revision: 0, nextId: 2,
+      nodes: [{ id: 'n1', type: 'storyboard', title: 'board', x: 0, y: 0, width: 1, height: 1 }],
+      edges: [],
+    }))
+    expect([...(await ctx.canvas.bibleReferences(session)).keys()]).toEqual([])
+  })
+
+  it('keeps the canvas file when a write cannot replace it', async () => {
+    await ctx.canvas.edit(session, [{ op: 'add', type: 'text', text: 'a' }], { baseRevision: 0 })
+    const root = join(directory, '.canvas')
+    await chmod(root, 0o500)
+    try {
+      await expect(ctx.canvas.edit(session, [{ op: 'add', type: 'text', text: 'b' }], { baseRevision: 1 }))
+        .rejects.toMatchObject({ code: 'EACCES' })
+    } finally {
+      await chmod(root, 0o700)
+    }
+  })
+})
+
+describe('storyboard duplicates', () => {
+  it('lists each entry once when a shot repeats it', async () => {
+    const { bibleEntriesOf } = await import('../src/storyboard.ts')
+    const shot = {
+      id: 's1' as never, title: 't', shotSize: 'medium', visual: '', motion: '', camera: '', durationSec: 2,
+      characters: ['c1' as never, 'c1' as never], props: [], scene: 'c1' as never,
+      dialogue: [
+        { id: 'd1' as never, speaker: { kind: 'character' as const, entry: 'c1' as never }, line: 'x' },
+        { id: 'd2' as never, speaker: { kind: 'character' as const, entry: 'c1' as never }, line: 'y' },
+      ],
+      sfx: '', negative: '',
+    }
+    expect(bibleEntriesOf([shot])).toEqual(['c1'])
   })
 })
