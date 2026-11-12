@@ -143,6 +143,23 @@ describe('runPlan', () => {
     expect((await runPlan(strict, ['n1'], asked.budget.token)).status).toBe('done')
   })
 
+  it('regenerates a video without adding nodes, refreshing its tail frame', async () => {
+    await edit([{
+      op: 'add', type: 'storyboard', title: '场1',
+      gen: { kind: 'video', prompt: '', params: {} },
+      shots: [shot('s1'), shot('s2')],
+    }] as never)
+    const first = await runPlan(services({ concurrency: 1 }), ['n1'], undefined)
+    expect(first.status).toBe('done')
+    const before = document.nodes.length
+    const second = await runPlan(services({ concurrency: 1 }), ['n1'], undefined)
+    expect(second.status).toBe('done')
+    expect(document.nodes.length).toBe(before)
+    const video = document.nodes.find(node => node.type === 'video') as CanvasNode
+    expect(video.versions).toHaveLength(2)
+    expect(video.tailOf?.node).toBe(document.nodes.find(node => node.type === 'image')?.id)
+  })
+
   it('passes a blocked plan back without generating anything', async () => {
     await edit([{
       op: 'add', type: 'storyboard', gen: { kind: 'video', prompt: '', params: {} },

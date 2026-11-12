@@ -49,6 +49,8 @@ Generated files land in `outputDir` resolved against the process working directo
 
 When the gateway publishes a capability catalog (`GET /v1/ov/capabilities`), `generate_image` and `generate_video` take their models and accepted parameter values from it instead of `imageModel` and `videoModel`. The catalog is read per key, cached in memory for 60 seconds, and mirrored to `catalogCacheFile` (default `<DSH_HOME>/cache/ov-catalog.json`) under a key digest, so an outage falls back to the last catalog that key saw. Set `catalog: false` to use the configured models only. `videoDefaultDuration` (default 5) is the length recommended when the user names none.
 
+`canvas_generate` plans and runs the media of named canvas nodes: one storyboard becomes one video node per segment, an existing node that already covers a segment is reused, and a segment that must continue the previous picture uses its last frame as the first. Above `confirmVideoCalls`, `confirmVideoSeconds`, `confirmImageCalls`, `confirmSpeechLines`, or `confirmMusicCalls` the tool returns the quote and a token instead of spending money; the model shows the quote and calls again with the token. `storyboard_voice` creates one audio node per spoken line and reuses nodes by line id. Each call runs as a `media` job, so it can be cancelled and reported like other background work. Reference images an `@name` mention implies are added to the call and connected as `ref` edges; the project's resolution is mapped to the tier the gateway's catalog offers.
+
 FFmpeg and FFprobe default to executables on `PATH`. Desktop packages for macOS arm64 and Windows x64 include both binaries; other deployments must install them or set their paths. Set `fontFile` to an absolute font path when using non-ASCII text with `drawtext`.
 
 Use `merge_videos` to concatenate clips. For complex edits, load the bundled `media-editing` skill first. The `ffmpeg` tool writes its result directly to the canvas, so do not call `canvas_edit` to add the same node; `-f null` runs a dry check without writing a file or canvas node.
@@ -63,6 +65,13 @@ The table highlights the gateway and editing fields. The generated [configuratio
 | `ffmpegPath` / `ffprobePath` | `ffmpeg` / `ffprobe` | Local executables used for media editing. |
 | `editTimeoutMs` | `600000` | Time limit for one local edit. |
 | `fontFile` | unset | Absolute font path for non-ASCII `drawtext`. |
+| `videoRefModel` | `minimax-h3-ref2va` | Video model for a segment that has reference images but no first frame. |
+| `maxSegmentSeconds` | `15` | Longest video segment one generation call may cover. |
+| `generateConcurrency` | `3` | Media jobs one run may have in flight. |
+| `confirmVideoCalls` / `confirmVideoSeconds` | `2` / `20` | Quote thresholds for video. |
+| `confirmImageCalls` | `8` | Quote threshold for images. |
+| `confirmSpeechLines` | `20` | Quote threshold for spoken lines. |
+| `confirmMusicCalls` | `2` | Quote threshold for music. |
 
 -----
 

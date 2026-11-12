@@ -55,7 +55,7 @@ kind: "package-reference"
 
 版本 1 的画布在读取时迁移：节点内容变成版本 `v1`，参考边按两端节点类型推断出 role，下一次写入持久化为版本 2。
 
-`applyOperations` 按顺序应用 `add`、`update`、`remove`、`set_gen`、`set_text`、`set_shots`、`update_shot`、`insert_shot`、`remove_shot`、`move_shot`、`set_version`、`connect`、`disconnect`、`reorder_refs`、`group`、`ungroup`、`move`、`resize`，最后把 `revision` 推进一次。`ref` 可以在同一批里被后续操作引用。同一次调用里对一张分镜的多次改写只产生一个版本。引用不存在的节点或镜头、重复的边或 role、会成环的连接、或节点类型放不下的内容，会被跳过并给出原因，其余操作照常应用。
+`applyOperations` 按顺序应用 `add`、`update`、`remove`、`set_gen`、`set_text`、`set_shots`、`update_shot`、`insert_shot`、`remove_shot`、`move_shot`、`set_version`、`connect`、`disconnect`、`reorder_refs`、`group`、`ungroup`、`move`、`resize`，最后把 `revision` 推进一次。宿主侧生成写回用 `append_version`、`set_status`、`set_stale`、`set_tail`，模型可见的 `canvas_edit` schema 不暴露它们；只写了生成参数、还没有文件的 `add` 会创建待生成节点。`planShotSegments` 把分镜表切成生成段：段首必须落在切点（换场、新角色、特写）上，连续续帧镜头不跨段，需要承接上一段画面的段标 `needsTailChain`；预算单和执行用同一个函数，报价不会与实际调用不一致。`production.ts` 保存阶段顺序、推进规则和 `G1`/`G2` 闸门，`production.json` 记录每一集的阶段与豁免；场次组用 `sceneOrigin` 记录来源剧本与场号，`studio_expand_script` 据此去重。`ref` 可以在同一批里被后续操作引用。同一次调用里对一张分镜的多次改写只产生一个版本。引用不存在的节点或镜头、重复的边或 role、会成环的连接、或节点类型放不下的内容，会被跳过并给出原因，其余操作照常应用。
 
 边的 id 按 role 区分：派生边是 `<source>-><target>`，参考边是 `<source>-><target>:<role>`，所以一张图可以同时是某个视频的参考图和首帧。参考顺序由 `order` 字段表示，`reorder_refs` 负责重写。
 

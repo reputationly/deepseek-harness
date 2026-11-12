@@ -9,7 +9,7 @@ import type { CanvasNode } from '@deepseek-ai/dsh-canvas'
 const PNG = Buffer.from('iVBORw0KGgo=', 'base64')
 const MP4 = Buffer.from('AAAA', 'base64')
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
-const binary = (bytes: Buffer, type: string) => new Response(bytes, { headers: { 'content-type': type } })
+const binary = (bytes: Buffer, type: string) => new Response(new Uint8Array(bytes), { headers: { 'content-type': type } })
 
 let directory: string
 let fetchSpy: MockInstance<typeof fetch>

@@ -13,7 +13,7 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { bibleFile, EMPTY_BIBLE, parseBible, type Bible, type BibleEntry } from './bible.ts'
 import type z from '@deepseek-ai/schemastery'
-import { Config as configSchema, resolveConfig, type Config as CanvasConfig, type ResolvedConfig } from './config.ts'
+import { Config as configSchema, resolveConfig, type Config, type ResolvedConfig } from './config.ts'
 import { activeVersionOf, assertWithinLimits, CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
 import { applyOperations, CanvasConflictError, checkRevision } from './operations.ts'
 import { episodeOf, parseProject, withBinding, withEpisode, type ProjectSpec, type ProductionFormat, type StudioProject } from './project.ts'
@@ -83,7 +83,7 @@ export interface BibleReferences {
 export class CanvasService extends TypertRemoteService {
   static inject = ['tools', 'workingDirectory']
 
-  static Config: z<CanvasConfig> = configSchema
+  static Config: z<Config> = configSchema
 
   private readonly store: CanvasStore
   private readonly limits: ResolvedConfig
@@ -92,7 +92,7 @@ export class CanvasService extends TypertRemoteService {
    * @param ctx - Host context carrying the tool registry and Session directories.
    * @param config - deployment bounds for canvas documents.
    */
-  constructor(ctx: Context, config: CanvasConfig = {}) {
+  constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'canvas')
     this.limits = resolveConfig(config)
     this.store = new CanvasStore(this.limits)

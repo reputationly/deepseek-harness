@@ -331,7 +331,7 @@ describe('host-side version and status operations', () => {
     const { document } = run(base, [{
       op: 'append_version',
       node: 'n1',
-      version: { path: '/a-v2.png', prompt: 'again', model: 'm', durationMs: 1000, origin: 'agent' },
+      version: { path: '/a-v2.png', prompt: 'again', model: 'm', durationMs: 1000, createdAt: 'then', origin: 'agent' },
     }])
     expect(document.nodes[0]?.versions?.map(version => [version.id, version.path, version.origin])).toEqual([
       ['v1', '/a.png', 'user'],

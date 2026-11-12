@@ -160,6 +160,7 @@ function inputsOf(inputs: ReturnType<typeof collectInputs>): readonly NodeInput[
  * @param services - canvas access, generators, jobs, and deployment bounds.
  * @param requested - node ids to generate.
  * @param token - budget token the caller confirmed, when it confirmed one.
+ * @param options - `skipConfirmation` lets a caller that already confirmed a wider plan start this one.
  * @returns the refusal, the budget the caller must confirm, or what each node produced.
  */
 export async function runPlan(
@@ -262,7 +263,7 @@ export async function runPlan(
         ], revision)).revision
         revision = (await services.canvas.read()).revision
         if (current.type === 'video') {
-          const tail = await recordTail(services, node, media.path, revision)
+          const tail = await recordTail(services, node, media.path, revision, current.tailOf)
           if (tail !== undefined) previousTail = tail
           revision = (await services.canvas.read()).revision
         }
@@ -305,8 +306,18 @@ async function recordTail(
   video: CanvasNodeId,
   path: string,
   revision: number,
+  existing: { readonly node: CanvasNodeId; readonly version: string } | undefined,
 ): Promise<{ readonly node: CanvasNodeId; readonly path: string } | undefined> {
   const tailPath = await services.tailFrame(path)
+  if (existing !== undefined) {
+    // Regenerating a video refreshes the frame it already stores instead of adding another node.
+    await services.canvas.edit([{
+      op: 'append_version',
+      node: existing.node,
+      version: { path: tailPath, createdAt: services.now(), origin: 'agent' },
+    }], revision)
+    return { node: existing.node, path: tailPath }
+  }
   const edit = await services.canvas.edit([
     { op: 'add', ref: 'tail', type: 'image', title: `${video} · 尾帧`, path: tailPath },
   ], revision)
@@ -314,6 +325,7 @@ async function recordTail(
   if (tailId === undefined) return undefined
   await services.canvas.edit([
     { op: 'connect', from: video, to: tailId, kind: 'derivation' },
+    // A freshly added node carries its first version as v1.
     { op: 'set_tail', node: video, tailOf: { node: tailId, version: 'v1' as never } },
   ], (await services.canvas.read()).revision)
   return { node: tailId, path: tailPath }

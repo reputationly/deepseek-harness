@@ -72,7 +72,9 @@ describe('planDialogue', () => {
   })
 
   it('plans nothing for a storyboard without a version', () => {
-    const empty: CanvasNode = { ...storyboard, versions: [], activeVersion: undefined }
+    const { activeVersion: _omitted, ...rest } = storyboard
+    void _omitted
+    const empty: CanvasNode = { ...rest, versions: [] }
     expect(planDialogue(empty, bible, [], 'm')).toEqual({ create: [], nodes: [] })
   })
 

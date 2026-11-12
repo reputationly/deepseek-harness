@@ -79,7 +79,11 @@ function musicPrompt(call: MediaCall): string {
   return call.prompt === '' ? `${call.node.title}` : call.prompt
 }
 
-/** Generator implementation bound to one deployment. */
+/**
+ * Generator implementation bound to one deployment.
+ * @param deps - endpoint, catalog, file writer, and task bounds.
+ * @returns the four media generators the runner calls.
+ */
 export function createGenerator(deps: GeneratorDeps): MediaGenerator {
   const catalogOf = async (gateway: GatewayRequest): Promise<MediaCatalog | undefined> => {
     if (deps.catalog === undefined) return undefined

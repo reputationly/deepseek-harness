@@ -90,7 +90,8 @@ export interface Config {
   skillsRoot?: string
 }
 
-const CONFIG_FIELDS = {
+/** Config fields one deployment may set; the schema below gives every default. */
+export const Config: z<Config> = z.object({
   baseURL: z.string(),
   apiKeyEnv: z.string().role('credential-ref').default('DSH_MAAS_API_KEY'),
   imageModel: z.string().default('qwen-image-pro'),
@@ -116,9 +117,7 @@ const CONFIG_FIELDS = {
   editTimeoutMs: z.number().default(600_000),
   fontFile: z.string().min(1),
   skillsRoot: z.string().min(1).default('../assets/'),
-} satisfies Record<keyof Config, unknown>
-
-export const Config: z<Config> = z.object(CONFIG_FIELDS)
+})
 
 declare module '@deepseek-ai/dsh-jobs' {
   interface JobKindMap {
@@ -127,7 +126,7 @@ declare module '@deepseek-ai/dsh-jobs' {
 }
 
 /** Declared config keys; a deployment that carries a retired key must fail at load instead of silently falling back. */
-const CONFIG_KEYS: readonly string[] = Object.keys(CONFIG_FIELDS)
+const CONFIG_KEYS: readonly string[] = Object.keys((Reflect.get(Config, 'dict') ?? {}) as Record<string, unknown>)
 
 /**
  * Reject a config key this build does not declare.
