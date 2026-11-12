@@ -24,7 +24,7 @@ import type {
 } from './types.ts'
 
 export type * from './types.ts'
-export { CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
+export { activeVersionOf, CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
 export { CanvasConflictError } from './operations.ts'
 export { Config } from './config.ts'
 export type { StudioProject, ProjectSpec, ProductionFormat } from './project.ts'

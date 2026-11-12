@@ -1,6 +1,7 @@
 /** Pure mapping between the canvas document and the flow the tab draws and edits. */
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
-import type { CanvasDocument, CanvasNode, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CanvasDocument, CanvasNode, CanvasNodeId, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ReadCanvasFile } from './face.ts'
 import type { NS } from './locales.ts'
@@ -76,9 +77,9 @@ export function moveOperations(
   document: CanvasDocument, dropped: readonly Pick<CanvasFlowNode, 'id' | 'position'>[],
 ): CanvasOperation[] {
   const nodes = new Map(document.nodes.map(node => [node.id, node]))
-  const moved = new Set(dropped.map(node => node.id))
+  const moved = new Set<string>(dropped.map(node => node.id))
   return dropped.flatMap((drop): CanvasOperation[] => {
-    const node = nodes.get(drop.id)
+    const node = nodes.get(brandString<CanvasNodeId>(drop.id))
     if (node === undefined || (node.group !== undefined && moved.has(node.group))) return []
     const parent = node.group === undefined ? undefined : nodes.get(node.group)
     const x = Math.round(drop.position.x + (parent?.x ?? 0))
@@ -99,7 +100,7 @@ export function deleteOperations(
 ): CanvasOperation[] {
   const nodes = new Map(document.nodes.map(node => [node.id, node]))
   const selected = nodeIds.flatMap((id) => {
-    const node = nodes.get(id)
+    const node = nodes.get(brandString<CanvasNodeId>(id))
     return node === undefined ? [] : [node]
   })
   const groups = new Set(selected.filter(node => node.type === 'group').map(node => node.id))

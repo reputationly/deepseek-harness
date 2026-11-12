@@ -279,7 +279,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       })
       const path = await writeArtifact(resolved.outputDir, 'speech', audio.contentType, audio.bytes)
       const placement = await placeMediaArtifact(ctx.get('canvas'), exec.agent?.session, {
-        type: 'audio', path, title: 'Speech', prompt: input.text, model: resolved.speechModel,
+        type: 'audio', kind: 'speech', path, title: 'Speech', prompt: input.text, model: resolved.speechModel,
       })
       return { path, model: resolved.speechModel, ...placement }
     },
@@ -325,7 +325,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const media = await downloadMedia(gateway, url)
       const path = await writeArtifact(resolved.outputDir, 'music', media.contentType, media.bytes)
       const placement = await placeMediaArtifact(ctx.get('canvas'), exec.agent?.session, {
-        type: 'audio', path, title: 'Music', prompt: input.prompt, model,
+        type: 'audio', kind: 'music', path, title: 'Music', prompt: input.prompt, model,
       })
       return { path, model, ...placement }
     },

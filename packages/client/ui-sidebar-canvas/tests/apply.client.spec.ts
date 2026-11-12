@@ -12,7 +12,12 @@ import { CanvasTitle } from '../src/client/CanvasTitle.tsx'
 import type { CanvasInjected } from '../src/client/face.ts'
 import { de, en, es, fr, ja, pt, ru, zh } from '../src/client/locales.ts'
 
-const view = (directory: string) => ({ directory, document: { version: 1 as const, nextId: 1, nodes: [], edges: [] } })
+const view = (directory: string) => ({
+  directory,
+  episode: { id: 'e1' as never, title: 'Canvas' },
+  revisions: { canvas: 0 },
+  document: { version: 2 as const, revision: 0, nextId: 1, nodes: [], edges: [] },
+})
 
 async function mountPlugin() {
   const ctx = new Context()
@@ -97,7 +102,7 @@ it('gives each Session one stable face that reads, edits, and follows Host chang
     await second.load()
 
     await first.edit([{ op: 'remove', node: 'n1' }])
-    expect(h.canvas.apply).toHaveBeenLastCalledWith('s1', [{ op: 'remove', node: 'n1' }])
+    expect(h.canvas.apply).toHaveBeenLastCalledWith('s1', [{ op: 'remove', node: 'n1' }], 0)
 
     h.canvas.get.mockClear()
     h.emitChange('/projects/s2')

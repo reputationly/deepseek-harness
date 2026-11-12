@@ -150,7 +150,8 @@ describe('visual tools on a canvas', () => {
     }
     const document = await ctx.canvas.read(session)
     expect(document.nodes.find(node => node.id === 'n5')).toMatchObject({
-      type: 'image', path: join(directory, 'image-1.out'), prompt: 'merge the two cats', model: 'image-model',
+      type: 'image',
+      versions: [{ path: join(directory, 'image-1.out'), prompt: 'merge the two cats', model: 'image-model' }],
     })
     expect(document.edges).toEqual([{ id: 'g4->n5', source: 'g4', target: 'n5', kind: 'derivation' }])
   })
@@ -188,7 +189,9 @@ describe('visual tools on a canvas', () => {
     expect(result).toEqual({ isError: false, text: `Wrote ${join(directory, 'video-1.out')}. It is canvas node n3.` })
     expect(JSON.stringify(requestBody(0))).toContain((await readFile(join(directory, 'a.png'))).toString('base64'))
     const document = await ctx.canvas.read(session)
-    expect(document.nodes.find(node => node.id === 'n3')).toMatchObject({ type: 'video', model: 'video-model' })
+    expect(document.nodes.find(node => node.id === 'n3')).toMatchObject({
+      type: 'video', versions: [{ model: 'video-model' }],
+    })
     expect(document.edges.map(edge => edge.id)).toEqual(['n1->n3', 'n2->n3'])
   })
 

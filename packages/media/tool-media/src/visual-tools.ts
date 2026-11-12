@@ -8,7 +8,7 @@
 import { readFile } from 'node:fs/promises'
 import { basename, extname, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import type { CanvasService } from '@deepseek-ai/dsh-canvas'
+import { activeVersionOf, type CanvasService } from '@deepseek-ai/dsh-canvas'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { CatalogSource, MediaCatalog } from './catalog.ts'
@@ -56,6 +56,8 @@ function canvasLink(deps: VisualToolDeps, exec: ToolExecution): CanvasLink | und
 /** Metadata required to place a media artifact on a project canvas. */
 export interface MediaPlacementNode {
   readonly type: 'image' | 'video' | 'audio'
+  /** What produced the artifact; a canvas node of type audio holds speech or music. */
+  readonly kind?: 'image' | 'video' | 'speech' | 'music'
   readonly path: string
   readonly title?: string
   readonly prompt?: string
@@ -74,13 +76,25 @@ export async function placeMediaArtifact(
   try {
     const document = await canvas.read(session)
     const fromFiles = sourceFiles.flatMap(file =>
-      document.nodes.filter(candidate => candidate.path === resolve(file)).map(candidate => candidate.id))
+      document.nodes.filter(candidate => activeVersionOf(candidate)?.path === resolve(file)).map(candidate => candidate.id))
     const sources = [...new Set([...sourceNodes.filter(Boolean), ...fromFiles])]
     const title = node.title ?? (node.prompt === undefined ? basename(node.path) : node.prompt.length > 40 ? `${node.prompt.slice(0, 40)}…` : node.prompt)
     const result = await canvas.edit(session, [
-      { op: 'add', ref: 'result', ...node, title },
+      {
+        op: 'add', ref: 'result', type: node.type, path: node.path, title,
+        ...node.prompt === undefined
+          ? {}
+          : {
+            gen: {
+              kind: node.kind ?? (node.type === 'image' ? 'image' : node.type === 'video' ? 'video' : 'speech'),
+              prompt: node.prompt,
+              params: {},
+              ...node.model === undefined ? {} : { model: node.model },
+            },
+          },
+      },
       ...sources.map(source => ({ op: 'connect' as const, from: source, to: 'result', kind: 'derivation' as const })),
-    ])
+    ], { baseRevision: document.revision, origin: 'agent' })
     const nodeId = result.refs.result
     return nodeId === undefined ? { canvasError: result.skipped[0]?.reason ?? 'the node was not created' } : { nodeId }
   } catch (error: unknown) {
@@ -229,7 +243,7 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
       const path = await deps.write('image', media.contentType, media.bytes)
       return {
         status: 'done' as const, model: plan.model, path,
-        ...await place(link, { type: 'image', path, prompt: input.prompt, model: plan.model }, input.referenceNodes ?? [], input.referenceImages ?? []),
+        ...await place(link, { type: 'image', kind: 'image', path, prompt: input.prompt, model: plan.model }, input.referenceNodes ?? [], input.referenceImages ?? []),
       }
     },
   }))
@@ -289,7 +303,7 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
       const sourceFiles = [input.firstFrame, input.lastFrame, ...input.referenceImages ?? []].filter(file => file !== undefined)
       return {
         status: 'done' as const, model: plan.model, path,
-        ...await place(link, { type: 'video', path, prompt: input.prompt, model: plan.model }, sourceNodes, sourceFiles),
+        ...await place(link, { type: 'video', kind: 'video', path, prompt: input.prompt, model: plan.model }, sourceNodes, sourceFiles),
       }
     },
   }))
