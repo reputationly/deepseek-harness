@@ -6,8 +6,8 @@
 
 import {
   activeVersionOf, gateBibleFirst, gateStoryboardQuality, planShotSegments,
-  type Bible, type CanvasDocument, type CanvasEdge, type CanvasNode, type CanvasNodeId, type CanvasOperation, type Shot,
-  type StoryboardSegment,
+  type Bible, type CanvasDocument, type CanvasEdge, type CanvasEdgeRole, type CanvasNode, type CanvasNodeId,
+  type CanvasOperation, type Shot, type StoryboardSegment,
 } from '@deepseek-ai/dsh-canvas'
 import type { GenerationPlan, PlannedNode } from './budget.ts'
 
@@ -31,7 +31,7 @@ export interface ResolvedInput {
   readonly node: CanvasNodeId
   readonly version: string
   readonly path: string
-  readonly role: string
+  readonly role: CanvasEdgeRole
 }
 
 /** Everything one generation call consumes from the canvas. */
@@ -50,6 +50,8 @@ export interface PlannedGeneration extends PlannedNode {
   readonly storyboard?: CanvasNodeId
   /** Tail-frame image that becomes this segment's first frame. */
   readonly tailChain?: { readonly node: CanvasNodeId; readonly version: string }
+  /** Whether this segment must continue the picture of the segment before it. */
+  readonly chain?: boolean
 }
 
 /** One plan plus the generation entries the runner executes. */
@@ -106,7 +108,7 @@ function resolveInput(document: CanvasDocument, edge: CanvasEdge): ResolvedInput
   if (source === undefined) return undefined
   const version = activeVersionOf(source)
   if (version?.path === undefined) return undefined
-  return { node: source.id, version: version.id, path: version.path, role: edge.role ?? edge.kind }
+  return { node: source.id, version: version.id, path: version.path, role: edge.role ?? 'source' }
 }
 
 /**
@@ -216,6 +218,7 @@ export function planNodes(
           seconds: Math.min(segment.durationSec, limits.maxVideoSeconds),
           shots: covered.map(shot => shot.title),
           storyboard: node.id,
+          ...segment.needsTailChain ? { chain: true } : {},
           ...segment.needsTailChain && previous?.tail !== undefined ? { tailChain: previous.tail } : {},
         }
         if (existing === undefined) {

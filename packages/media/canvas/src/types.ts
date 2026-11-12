@@ -326,6 +326,18 @@ export type CanvasOperation =
     readonly version: Omit<NodeVersion, 'id'> & { readonly id?: string }
   }
   | {
+    /** Host-side: mark or clear that a node's input changed after it was generated. */
+    readonly op: 'set_stale'
+    readonly node: string
+    readonly stale: boolean
+  }
+  | {
+    /** Host-side: record the frame a video node stores as its tail; `null` clears it. */
+    readonly op: 'set_tail'
+    readonly node: string
+    readonly tailOf: { readonly node: CanvasNodeId; readonly version: VersionId } | null
+  }
+  | {
     /** Host-side: mirror a generation task's state on the node; `null` clears it. */
     readonly op: 'set_status'
     readonly node: string

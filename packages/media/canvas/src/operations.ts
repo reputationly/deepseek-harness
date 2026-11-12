@@ -200,7 +200,9 @@ export function applyOperations(
         const group = operation.group === undefined ? undefined : joinGroup(operation.group)
         const content = isTextType(operation.type) ? operation.text : operation.path
         const needsContent = operation.type !== 'storyboard' && operation.type !== 'timeline'
-        if (needsContent && (content === undefined || content === '')) {
+        // A node that names only what it will generate exists so a job can fill it later.
+        const pending = operation.gen !== undefined && (content === undefined || content === '') && operation.shots === undefined
+        if (needsContent && !pending && (content === undefined || content === '')) {
           throw new Skip(isTextType(operation.type) ? `a ${operation.type} node needs text` : `${operation.type === 'image' || operation.type === 'audio' ? 'an' : 'a'} ${operation.type} node needs path`)
         }
         if (operation.gen !== undefined && operation.gen.prompt.length > options.limits.maxPromptLength) {
@@ -223,8 +225,8 @@ export function applyOperations(
         const title = operation.title ?? (content === undefined || content === '' ? operation.type : isTextType(operation.type) ? content.slice(0, 24) : basename(content))
         nodes.set(id, {
           id, type: operation.type, title, x: 0, y: 0, ...nodeSize(operation.type),
-          versions: [version],
-          activeVersion: version.id,
+          versions: pending ? [] : [version],
+          ...pending ? {} : { activeVersion: version.id },
           ...operation.gen === undefined ? {} : { gen: operation.gen },
           ...operation.bible === undefined ? {} : { bible: operation.bible },
           ...group === undefined ? {} : { group: brandString<CanvasNodeId>(group) },
@@ -328,6 +330,18 @@ export function applyOperations(
           createdAt: body.createdAt ?? now(),
           origin: body.origin ?? origin,
         })
+        return
+      }
+      case 'set_stale': {
+        const node = find(operation.node)
+        if (operation.stale) node.stale = true
+        else delete node.stale
+        return
+      }
+      case 'set_tail': {
+        const node = find(operation.node)
+        if (operation.tailOf === null) delete node.tailOf
+        else node.tailOf = operation.tailOf
         return
       }
       case 'set_status': {

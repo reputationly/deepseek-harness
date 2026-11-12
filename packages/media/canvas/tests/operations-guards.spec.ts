@@ -360,3 +360,24 @@ describe('host-side version and status operations', () => {
     expect(cleared.nodes[0]?.status).toBeUndefined()
   })
 })
+
+describe('host-side stale and tail operations', () => {
+  it('marks and clears a stale node', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'video', path: '/a.mp4' }]).document
+    const stale = run(base, [{ op: 'set_stale', node: 'n1', stale: true }]).document
+    expect(stale.nodes[0]?.stale).toBe(true)
+    expect(run(stale, [{ op: 'set_stale', node: 'n1', stale: false }]).document.nodes[0]?.stale).toBeUndefined()
+  })
+
+  it('records and clears the tail frame of a video node', () => {
+    const base = run(EMPTY_CANVAS, [
+      { op: 'add', type: 'video', path: '/a.mp4' },
+      { op: 'add', type: 'image', path: '/tail.png' },
+    ]).document
+    const withTail = run(base, [{
+      op: 'set_tail', node: 'n1', tailOf: { node: 'n2' as never, version: 'v1' as never },
+    }]).document
+    expect(withTail.nodes[0]?.tailOf).toEqual({ node: 'n2', version: 'v1' })
+    expect(run(withTail, [{ op: 'set_tail', node: 'n1', tailOf: null }]).document.nodes[0]?.tailOf).toBeUndefined()
+  })
+})
