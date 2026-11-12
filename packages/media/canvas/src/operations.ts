@@ -318,6 +318,24 @@ export function applyOperations(
         node.activeVersion = brandString<VersionId>(operation.version)
         return
       }
+      case 'append_version': {
+        const node = find(operation.node)
+        if (node.type === 'group') throw new Skip(`node ${node.id} is a group`)
+        const { id, ...body } = operation.version
+        setVersion(node, {
+          ...body,
+          id: id === undefined ? nextVersionId(node.versions) : brandString<VersionId>(id),
+          createdAt: body.createdAt ?? now(),
+          origin: body.origin ?? origin,
+        })
+        return
+      }
+      case 'set_status': {
+        const node = find(operation.node)
+        if (operation.status === null) delete node.status
+        else node.status = operation.status
+        return
+      }
       case 'connect': {
         const from = find(operation.from)
         const to = find(operation.to)

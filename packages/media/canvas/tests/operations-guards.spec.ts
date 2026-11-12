@@ -324,3 +324,39 @@ describe('search and lookup paths', () => {
       .toEqual([{ index: 0, op: 'move_shot', reason: 'shot s9 does not exist' }])
   })
 })
+
+describe('host-side version and status operations', () => {
+  it('appends a version a generation produced', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'image', path: '/a.png' }]).document
+    const { document } = run(base, [{
+      op: 'append_version',
+      node: 'n1',
+      version: { path: '/a-v2.png', prompt: 'again', model: 'm', durationMs: 1000, origin: 'agent' },
+    }])
+    expect(document.nodes[0]?.versions?.map(version => [version.id, version.path, version.origin])).toEqual([
+      ['v1', '/a.png', 'user'],
+      ['v2', '/a-v2.png', 'agent'],
+    ])
+    expect(document.nodes[0]?.activeVersion).toBe('v2')
+  })
+
+  it('accepts an explicit version id and the call clock, and rejects a group', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'image', path: '/a.png' }, { op: 'group', nodes: ['n1'] }]).document
+    const { document } = run(base, [{
+      op: 'append_version', node: 'n1', version: { id: 'v9', path: '/b.png', createdAt: 'then', origin: 'user' },
+    }])
+    expect(document.nodes[0]?.versions?.[1]).toMatchObject({ id: 'v9', createdAt: 'then', origin: 'user' })
+    expect(run(base, [{ op: 'append_version', node: 'g2', version: { path: '/b.png', createdAt: 'now', origin: 'user' } }]).result.skipped)
+      .toEqual([{ index: 0, op: 'append_version', reason: 'node g2 is a group' }])
+  })
+
+  it('mirrors and clears a generation status', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'image', path: '/a.png' }]).document
+    const running = run(base, [{
+      op: 'set_status', node: 'n1', status: { state: 'running', jobId: 'media-1' as never, at: 'now', progress: 0.4 },
+    }]).document
+    expect(running.nodes[0]?.status).toEqual({ state: 'running', jobId: 'media-1', at: 'now', progress: 0.4 })
+    const cleared = run(running, [{ op: 'set_status', node: 'n1', status: null }]).document
+    expect(cleared.nodes[0]?.status).toBeUndefined()
+  })
+})

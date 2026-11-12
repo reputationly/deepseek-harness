@@ -30,7 +30,8 @@ export { activeVersionOf, CanvasCorruptError, CanvasUnsupportedVersionError } fr
 export { CanvasConflictError } from './operations.ts'
 export { Config } from './config.ts'
 export type { StudioProject, ProjectSpec, ProductionFormat } from './project.ts'
-export { STAGE_ORDER } from './production.ts'
+export { gateBibleFirst, gateStoryboardQuality, STAGE_ORDER, videoNodesByShots } from './production.ts'
+export { planShotSegments, shotSegmentKind } from './segments.ts'
 export type { Bible, BibleEntry } from './bible.ts'
 
 /** Project metadata file relative to `.canvas/`. */

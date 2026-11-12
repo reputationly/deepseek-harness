@@ -319,6 +319,18 @@ export type CanvasOperation =
   | { readonly op: 'remove_shot'; readonly node: string; readonly shot: string }
   | { readonly op: 'move_shot'; readonly node: string; readonly shot: string; readonly after?: string }
   | { readonly op: 'set_version'; readonly node: string; readonly version: string }
+  | {
+    /** Host-side: append a version a generation produced. Callers never build this from a model request. */
+    readonly op: 'append_version'
+    readonly node: string
+    readonly version: Omit<NodeVersion, 'id'> & { readonly id?: string }
+  }
+  | {
+    /** Host-side: mirror a generation task's state on the node; `null` clears it. */
+    readonly op: 'set_status'
+    readonly node: string
+    readonly status: NodeStatus | null
+  }
   | { readonly op: 'connect'; readonly from: string; readonly to: string; readonly kind?: CanvasEdgeKind; readonly role?: CanvasEdgeRole; readonly order?: number }
   | { readonly op: 'disconnect'; readonly from: string; readonly to: string; readonly role?: CanvasEdgeRole }
   | { readonly op: 'reorder_refs'; readonly node: string; readonly sources: readonly string[] }
