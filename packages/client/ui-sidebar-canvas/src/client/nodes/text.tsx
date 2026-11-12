@@ -34,8 +34,8 @@ export function ScriptNode({ data, selected }: NodeProps<CanvasFlowNode>): React
 
 /** A storyboard: a small shot table and the segmentation summary. */
 export function StoryboardNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
-  const { node, t } = data
-  const view = storyboardCardView(node)
+  const { node, t, segments = [] } = data
+  const view = storyboardCardView(node, segments)
   return <NodeCard data={data} selected={selected} className={css.storyboardCard}>
     <div className={css.shotTable} role="table" aria-label={node.title}>
       {view.rows.map(row => <div key={row.id} className={css.shotRow} role="row">

@@ -1,5 +1,5 @@
 /** What each node card shows besides the node itself: its state, versions, badges, and short summaries. */
-import type { CanvasNode, NodeStatus } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasNode, NodeStatus, StoryboardSegment } from '@deepseek-ai/dsh-canvas/client'
 import { summaryOf, rowsOf } from './table.ts'
 
 /** One version the version bar offers. */
@@ -58,12 +58,16 @@ export function cardState(status: NodeStatus | undefined, now: number): CardStat
  * @param scene - scene number the group records, when known.
  * @returns e.g. `场2·段1`, or undefined when the node is not a storyboard segment.
  */
-export function shotBadge(node: CanvasNode, board?: CanvasNode, scene?: number): string | undefined {
+export function shotBadge(
+  node: CanvasNode,
+  board?: CanvasNode,
+  scene?: number,
+  boardSegments: readonly StoryboardSegment[] = [],
+): string | undefined {
   const shots = node.gen?.shot?.shots
   if (shots === undefined || shots.length === 0) return undefined
   const key = [...shots].sort().join(',')
-  const segments = board === undefined ? [] : summaryOf(board).segments
-  const index = segments.findIndex(segment => [...segment.shots].sort().join(',') === key)
+  const index = board === undefined ? -1 : boardSegments.findIndex(segment => [...segment.shots].sort().join(',') === key)
   const segment = index < 0 ? undefined : `段${String(index + 1)}`
   const prefix = scene === undefined ? undefined : `场${String(scene)}`
   if (prefix === undefined && segment === undefined) return undefined
@@ -126,11 +130,14 @@ export interface StoryboardCardView {
  * @param maxSegmentSec - longest segment one generation call may cover.
  * @returns rows capped for the card plus the summary line.
  */
-export function storyboardCardView(node: CanvasNode, maxSegmentSec = 15): StoryboardCardView {
+export function storyboardCardView(
+  node: CanvasNode,
+  segments: readonly StoryboardSegment[] = [],
+): StoryboardCardView {
   const rows = rowsOf(node).map(shot => ({
     id: shot.id, title: shot.title, shotSize: shot.shotSize, seconds: shot.durationSec, visual: shot.visual,
   }))
-  const summary = summaryOf(node, maxSegmentSec)
+  const summary = summaryOf(node, segments)
   const text = [
     `${String(summary.shots)} 镜`, `${String(summary.seconds)} 秒`,
     `${String(summary.segments.length)} 段`, `${String(summary.videoCalls)} 次生成`,

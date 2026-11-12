@@ -18,6 +18,7 @@ import { activeVersionOf, assertWithinLimits, CanvasCorruptError, CanvasUnsuppor
 import { applyOperations, CanvasConflictError, checkRevision } from './operations.ts'
 import { episodeOf, parseProject, withBinding, withEpisode, type ProjectSpec, type ProductionFormat, type StudioProject } from './project.ts'
 import { advanceStage, EMPTY_PRODUCTION, parseProductionFile, stageOf } from './production.ts'
+import { planShotSegments } from './segments.ts'
 import { canvasFile, CanvasStore } from './store.ts'
 import { registerCanvasTools } from './tools.ts'
 import type {
@@ -33,6 +34,25 @@ export type { StudioProject, ProjectSpec, ProductionFormat } from './project.ts'
 export { gateBibleFirst, gateStoryboardQuality, STAGE_ORDER, videoNodesByShots } from './production.ts'
 export { planShotSegments, shotSegmentKind } from './segments.ts'
 export type { Bible, BibleEntry } from './bible.ts'
+
+/**
+ * Generation segments of every storyboard in one document.
+ * @param document - canvas document.
+ * @param maxSegmentSeconds - longest segment one generation call may cover.
+ * @returns segments keyed by storyboard node id.
+ */
+function storyboardSegments(
+  document: CanvasDocument,
+  maxSegmentSeconds: number,
+): Readonly<Record<string, readonly import('./types.ts').StoryboardSegment[]>> {
+  const segments: Record<string, readonly import('./types.ts').StoryboardSegment[]> = {}
+  for (const node of document.nodes) {
+    if (node.type !== 'storyboard') continue
+    const shots = (node.versions ?? []).find(version => version.id === node.activeVersion)?.shots ?? []
+    segments[node.id] = planShotSegments(shots, { maxSegmentSec: maxSegmentSeconds }).segments
+  }
+  return segments
+}
 
 /** Project metadata file relative to `.canvas/`. */
 const PROJECT_FILE = 'project.json'
@@ -449,7 +469,13 @@ export class CanvasService extends TypertRemoteService {
   async get(session: Session, episode?: EpisodeId): Promise<CanvasView> {
     const target = await this.targetOf(session, episode)
     const document = await this.remote(target.directory, target.file, () => this.read(session, target.episode.id))
-    return { directory: target.directory, episode: target.episode, revisions: { canvas: document.revision }, document }
+    return {
+      directory: target.directory,
+      episode: target.episode,
+      revisions: { canvas: document.revision },
+      document,
+      segments: storyboardSegments(document, this.limits.maxSegmentSeconds),
+    }
   }
 
   /**

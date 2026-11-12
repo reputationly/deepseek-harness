@@ -17,6 +17,8 @@ export interface StoryboardTableProps {
   readonly edit: (operations: readonly CanvasOperation[]) => Promise<void>
   readonly close: () => void
   readonly t: PropsLocale<typeof NS>['t']
+  /** Segments the Host computed for this storyboard. */
+  readonly segments?: readonly import('@deepseek-ai/dsh-canvas/client').StoryboardSegment[]
 }
 
 const SHOT_SIZES = ['extreme_wide', 'wide', 'full', 'medium', 'medium_close', 'close', 'extreme_close', 'insert'] as const
@@ -26,9 +28,9 @@ const SHOT_SIZES = ['extreme_wide', 'wide', 'full', 'medium', 'medium_close', 'c
  * @param props - storyboard node, edit call, and copy.
  * @returns the table with its summary and row actions.
  */
-export function StoryboardTable({ node, edit, close, t }: StoryboardTableProps): ReactNode {
+export function StoryboardTable({ node, edit, close, t, segments = [] }: StoryboardTableProps): ReactNode {
   const rows = rowsOf(node)
-  const summary = summaryOf(node)
+  const summary = summaryOf(node, segments)
   const [dragging, setDragging] = useState<number>()
   const change = (shot: Shot, field: TableField, value: string | number | readonly string[]): void => {
     void edit([cellOperation(node, shot.id, field, value)])

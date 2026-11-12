@@ -11,6 +11,7 @@ describe('canvas Config', () => {
       versionLimit: 8,
       textVersionLimit: 20,
       maxShotsPerStoryboard: 24,
+      maxSegmentSeconds: 15,
       journalLimit: 200,
     })
   })

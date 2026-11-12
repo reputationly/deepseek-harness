@@ -1,5 +1,5 @@
 /** The storyboard table's rows, cell edits, and the segmentation summary under it. */
-import { planShotSegments, type CanvasNode, type CanvasOperation, type Shot, type ShotId, type StoryboardSegment } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasNode, CanvasOperation, Shot, ShotId, StoryboardSegment } from '@deepseek-ai/dsh-canvas/client'
 
 /** Shots a storyboard currently shows. */
 export function rowsOf(node: CanvasNode | undefined): readonly Shot[] {
@@ -21,14 +21,14 @@ export interface StoryboardSummary {
  * @param maxSegmentSec - longest segment one generation call may cover.
  * @returns the counts the table footer shows.
  */
-export function summaryOf(node: CanvasNode | undefined, maxSegmentSec = 15): StoryboardSummary {
+export function summaryOf(node: CanvasNode | undefined, segments: readonly StoryboardSegment[] = []): StoryboardSummary {
   const shots = rowsOf(node)
-  const plan = planShotSegments(shots, { maxSegmentSec })
+  const seconds = shots.reduce((sum, shot) => sum + Math.max(0.3, shot.durationSec), 0)
   return {
     shots: shots.length,
-    seconds: Math.round(plan.totalSec * 10) / 10,
-    segments: plan.segments,
-    videoCalls: plan.segments.length,
+    seconds: Math.round(seconds * 10) / 10,
+    segments,
+    videoCalls: segments.length,
   }
 }
 

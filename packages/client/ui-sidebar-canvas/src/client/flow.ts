@@ -1,7 +1,7 @@
 /** Pure mapping between the canvas document and the flow the tab draws and edits. */
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { CanvasDocument, CanvasNode, CanvasNodeId, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasDocument, CanvasNode, CanvasNodeId, CanvasOperation, StoryboardSegment } from '@deepseek-ai/dsh-canvas/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { edgeLabel, edgeStyle } from './model/edges.ts'
 import type { ReadCanvasFile } from './face.ts'
@@ -16,7 +16,11 @@ export type CanvasNodeFace = {
 }
 
 /** One drawn node: the document node, its group size, and the face its card reads. */
-export type CanvasFlowNode = Node<{ node: CanvasNode; members?: number } & CanvasNodeFace>
+export type CanvasFlowNode = Node<{
+  node: CanvasNode
+  members?: number
+  segments?: readonly StoryboardSegment[]
+} & CanvasNodeFace>
 
 /** One drawn edge. */
 export type CanvasFlowEdge = Edge
@@ -27,7 +31,11 @@ export type CanvasFlowEdge = Edge
  * @param face - media reads and copy handed to every card.
  * @returns groups first, then content nodes, as the flow requires parents before children.
  */
-export function flowNodes(document: CanvasDocument, face: CanvasNodeFace): CanvasFlowNode[] {
+export function flowNodes(
+  document: CanvasDocument,
+  face: CanvasNodeFace,
+  segments: Readonly<Record<string, readonly StoryboardSegment[]>> = {},
+): CanvasFlowNode[] {
   const groups = new Map(document.nodes.filter(node => node.type === 'group').map(node => [node.id, node]))
   return [...groups.values(), ...document.nodes.filter(node => node.type !== 'group')].map((node) => {
     const parent = node.group === undefined ? undefined : groups.get(node.group)
@@ -41,6 +49,7 @@ export function flowNodes(document: CanvasDocument, face: CanvasNodeFace): Canva
       data: {
         node,
         ...node.type === 'group' ? { members: document.nodes.filter(child => child.group === node.id).length } : {},
+        ...node.type === 'storyboard' && segments[node.id] !== undefined ? { segments: segments[node.id] } : {},
         ...face,
       },
       ...parent === undefined ? {} : { parentId: parent.id },

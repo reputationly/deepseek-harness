@@ -9,6 +9,7 @@ const view = (directory: string, nextId = 1): CanvasView => ({
   episode: { id: 'e1' as never, title: 'Canvas' },
   revisions: { canvas: 3 },
   document: { version: 2, revision: 3, nextId, nodes: [], edges: [] },
+  segments: {},
 })
 const ok = <T>(value: T): RemoteResult<T> => ({ ok: true, value })
 const failure = (message: string, code = 'internal'): RemoteResult<never> => ({ ok: false, error: { code, message } as never })

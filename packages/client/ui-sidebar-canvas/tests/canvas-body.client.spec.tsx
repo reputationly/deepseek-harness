@@ -23,7 +23,7 @@ const filled: CanvasDocument = {
     versions: [{ id: 'v1' as never, text: 'brief', createdAt: 'now', origin: 'user' }],
   }],
 }
-const view = { directory: '/project', episode: { id: 'e1', title: 'Canvas' }, revisions: { canvas: 0 }, document: filled }
+const view = { directory: '/project', episode: { id: 'e1', title: 'Canvas' }, revisions: { canvas: 0 }, document: filled, segments: {} }
 const emptyView = { ...view, document: empty }
 
 function mount(initial: Partial<CanvasState>) {

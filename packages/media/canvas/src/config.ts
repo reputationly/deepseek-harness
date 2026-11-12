@@ -21,6 +21,8 @@ export interface Config {
   textVersionLimit?: number
   /** Largest number of shots one storyboard table may hold. */
   maxShotsPerStoryboard?: number
+  /** Longest video segment one generation call may cover, in seconds. */
+  maxSegmentSeconds?: number
   /** Edits kept in the undo journal of one episode. */
   journalLimit?: number
 }
@@ -37,6 +39,7 @@ export const Config: z<Config> = z.object({
   versionLimit: z.number().default(8),
   textVersionLimit: z.number().default(20),
   maxShotsPerStoryboard: z.number().default(24),
+  maxSegmentSeconds: z.number().default(15),
   journalLimit: z.number().default(200),
 })
 
@@ -55,6 +58,7 @@ export function resolveConfig(config: Config): ResolvedConfig {
     versionLimit: config.versionLimit ?? 8,
     textVersionLimit: config.textVersionLimit ?? 20,
     maxShotsPerStoryboard: config.maxShotsPerStoryboard ?? 24,
+    maxSegmentSeconds: config.maxSegmentSeconds ?? 15,
     journalLimit: config.journalLimit ?? 200,
   }
   for (const [field, value] of Object.entries(resolved)) {

@@ -107,7 +107,8 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
         document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}
         edit={edit} close={() => { setSelectedId(undefined) }} openTable={setTableId} t={t}
       />}
-      {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t} />}
+      {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t}
+        segments={state.view?.segments[table.id] ?? []} />}
       {panel ? <BibleAssetsPanel document={document} bible={shared} edit={edit} close={() => { setPanel(false) }}
         select={(nodeId) => { setSelectedId(nodeId) }} t={t} /> : undefined}</>}
   </section>

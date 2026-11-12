@@ -30,6 +30,8 @@ export type CanvasFlowProps = CanvasNodeFace & {
   readonly onSelect?: (nodeId: string | undefined) => void
   /** Undo stack for the edits this tab applies. */
   readonly history?: EditHistory
+  /** Generation segments of each storyboard, computed by the Host. */
+  readonly segments?: Readonly<Record<string, readonly import('@deepseek-ai/dsh-canvas/client').StoryboardSegment[]>>
 }
 
 /** One icon-only toolbar action with its tooltip and accessible name. */
@@ -94,7 +96,7 @@ function Toolbar({ document, nodes, edges, edit, reload, t, undo, redo, canUndo,
  * @param props - document, media reads, copy, and the edit and reload calls.
  * @returns the flow with its toolbar and overview.
  */
-export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, history }: CanvasFlowProps): ReactNode {
+export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, history, segments = {} }: CanvasFlowProps): ReactNode {
   const [menu, setMenu] = useState<{ x: number; y: number; source: string; target: string }>()
   const pointer = useRef({ x: 0, y: 0 })
   const apply = useCallback(async (operations: readonly CanvasOperation[]) => {
@@ -111,11 +113,11 @@ export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, hist
   }, [history, edit])
   const face = { readFile, t, edit: apply }
   const [drawn, setDrawn] = useState({ document, readFile, t, edit })
-  const [nodes, setNodes] = useState(() => flowNodes(document, face))
+  const [nodes, setNodes] = useState(() => flowNodes(document, face, segments))
   const [edges, setEdges] = useState(() => flowEdges(document, t))
   if (drawn.document !== document || drawn.readFile !== readFile || drawn.t !== t || drawn.edit !== edit) {
     setDrawn({ document, readFile, t, edit })
-    setNodes(keepSelection(flowNodes(document, face), nodes))
+    setNodes(keepSelection(flowNodes(document, face, segments), nodes))
     setEdges(keepSelection(flowEdges(document, t), edges))
   }
   const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {

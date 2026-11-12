@@ -405,6 +405,8 @@ export interface CanvasView {
   /** Revisions of the files the view read. */
   readonly revisions: CanvasRevisions
   readonly document: CanvasDocument
+  /** Generation segments each storyboard currently splits into, keyed by node id. */
+  readonly segments: Readonly<Record<string, readonly StoryboardSegment[]>>
 }
 
 /** Notification that one project's canvas files changed. */

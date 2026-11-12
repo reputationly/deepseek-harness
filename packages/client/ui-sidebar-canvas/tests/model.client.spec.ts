@@ -6,6 +6,7 @@ import { inspectorPlacement } from '../src/client/model/inspector.ts'
 import { cardState, currentVersion, durationSeconds, groupScene, scriptPreview, scriptScenes, shotBadge, storyboardCardView, versionChoices } from '../src/client/model/cards.ts'
 import { frameOf, genOperation, modelChoices, operationFor, orderedRefs, paramControls, reorderOperation } from '../src/client/model/inspector.ts'
 import { movedForward, newNodeIds } from '../src/client/model/changes.ts'
+import { planShotSegments } from '@deepseek-ai/dsh-canvas/client'
 import { appendShotOperation, cellOperation, moveShotOperation, removeShotOperation, rowsOf, segmentOfShot, summaryOf } from '../src/client/model/table.ts'
 
 const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
@@ -153,7 +154,7 @@ describe('storyboard table', () => {
 
   it('reads the current rows and summarises the segmentation', () => {
     expect(rowsOf(board).map(row => row.id)).toEqual(['s1', 's2', 's3'])
-    const summary = summaryOf(board)
+    const summary = summaryOf(board, planShotSegments(rowsOf(board)).segments)
     expect(summary.shots).toBe(3)
     expect(summary.seconds).toBe(10)
     expect(summary.videoCalls).toBeGreaterThan(0)
@@ -219,7 +220,7 @@ describe('card view models', () => {
     const segment = node('v9', 'video', {
       gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'b1' as never, shots: ['s1' as never, 's2' as never] } },
     })
-    expect(shotBadge(segment, board, 2)).toBe('场2·段1')
+    expect(shotBadge(segment, board, 2, planShotSegments(rowsOf(board)).segments)).toBe('场2·段1')
     expect(shotBadge(node('x', 'image'))).toBeUndefined()
     expect(storyboardCardView(board).rows).toHaveLength(2)
     expect(storyboardCardView(board).summary).toContain('2 镜')
