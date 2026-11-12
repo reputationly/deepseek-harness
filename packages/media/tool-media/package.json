@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-tool-media",
-  "description": "Model-facing image, speech, music, and video generation tools over an OpenAI-compatible media gateway",
+  "description": "Model-facing media generation and local FFmpeg editing tools with project-canvas outputs",
   "version": "0.2.2-rc.1",
   "type": "module",
   "main": "lib/index.js",
@@ -23,15 +23,20 @@
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~",
     "@deepseek-ai/dsh-canvas": "workspace:*",
-    "@deepseek-ai/dsh-session": "workspace:*"
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-skill": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-canvas": "workspace:*",
-    "@deepseek-ai/dsh-session": "workspace:*"
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-skill": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-canvas": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-skill": {
       "optional": true
     }
   },
@@ -49,6 +54,7 @@
   },
   "files": [
     "lib/index.js",
+    "assets",
     "lib/types/**/*.d.ts"
   ]
 }

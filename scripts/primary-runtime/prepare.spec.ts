@@ -3,14 +3,66 @@ import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
+import { gzipSync } from 'node:zlib'
 import { zipSync } from 'fflate'
-import { expect, it } from 'vitest'
-import { downloadPrimaryRuntimeAsset, prepareOfficeSkillAssets, primaryRuntimePayloadDigest, prunePnpmForeignNativePackages, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
+import { expect, it, vi } from 'vitest'
+import { downloadPrimaryRuntimeAsset, prepareFfmpegAssets, prepareMediaEditingSkillAssets, prepareOfficeSkillAssets, primaryRuntimePayloadDigest, prunePnpmForeignNativePackages, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
 import lock from './lock.json' with { type: 'json' }
 
 it('covers every SDK wheel target with the shared interpreter lock', () => {
   const platforms = JSON.parse(readFileSync(new URL('../../python/sdk-runtime/platforms.json', import.meta.url), 'utf8')) as Record<string, unknown>
   expect(Object.keys(lock.targets).sort()).toEqual(Object.keys(platforms).map(target => target.replace('macos-', 'mac-')).sort())
+})
+
+it('locks ffmpeg-static assets only for mac-arm64 and win-x64', () => {
+  expect(lock.targets['mac-arm64'].ffmpeg).toEqual({
+    ffmpeg: {
+      url: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-darwin-arm64.gz',
+      sha256: '6be74d6f449889c2e87a75873894f8520cad56c08ac76f2a628d85b0519daaca',
+    },
+    ffprobe: {
+      url: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffprobe-darwin-arm64.gz',
+      sha256: 'a4db76bafdb8529312e138fb55aaf143cad21b6d672e2634c9dd07ae83c6a310',
+    },
+  })
+  expect(lock.targets['win-x64'].ffmpeg.ffmpeg.url).toContain('ffmpeg-win32-x64.gz')
+  expect('ffmpeg' in lock.targets['linux-x64']).toBe(false)
+})
+
+it('verifies, decompresses, and stages target ffmpeg executables', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'primary-ffmpeg-'))
+  const runtimeLock = structuredClone(lock)
+  const archives = new Map<string, Buffer>()
+  for (const target of ['mac-arm64', 'win-x64'] as const) {
+    for (const name of ['ffmpeg', 'ffprobe'] as const) {
+      const url = `https://assets.example/${target}/${name}.gz`
+      const bytes = gzipSync(Buffer.from(`${target}-${name}`))
+      runtimeLock.targets[target].ffmpeg[name] = {
+        url,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      }
+      archives.set(url, bytes)
+    }
+  }
+  const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const bytes = archives.get(url)
+    if (bytes === undefined) throw new Error('unexpected locked asset')
+    return new Response(new Blob([Uint8Array.from(bytes)]))
+  })
+  try {
+    const mac = join(root, 'primary-runtime', 'ffmpeg')
+    await prepareFfmpegAssets('mac-arm64', mac, join(root, 'cache'), runtimeLock)
+    expect(await readFile(join(mac, 'ffmpeg'), 'utf8')).toBe('mac-arm64-ffmpeg')
+    expect(((await stat(join(mac, 'ffprobe'))).mode & 0o111) !== 0).toBe(true)
+    const windows = join(root, 'windows', 'ffmpeg')
+    await prepareFfmpegAssets('win-x64', windows, join(root, 'cache'), runtimeLock)
+    expect(await readFile(join(windows, 'ffmpeg.exe'), 'utf8')).toBe('win-x64-ffmpeg')
+    expect(await readFile(join(windows, 'ffprobe.exe'), 'utf8')).toBe('win-x64-ffprobe')
+  } finally {
+    fetchSpy.mockRestore()
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 const libraryWheel = Buffer.from('UEsDBAoAAAAAAASeLl0sYMPjDAAAAAwAAAAJAAAAc2FtcGxlLnB5c2FtcGxlID0gNDIKUEsBAh4DCgAAAAAABJ4uXSxgw+MMAAAADAAAAAkAAAAAAAAAAQAAAKSBAAAAAHNhbXBsZS5weVBLBQYAAAAAAQABADcAAAAzAAAAAAA=', 'base64')
@@ -34,6 +86,9 @@ it('keeps a target payload identity independent of other target archives', () =>
   changed.targets['win-x64'].wheels[0]!.sha256 = 'a'.repeat(64)
   expect(primaryRuntimePayloadDigest('mac-arm64', changed, '11.7.0')).toBe(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.0'))
   expect(primaryRuntimePayloadDigest('win-x64', changed, '11.7.0')).not.toBe(primaryRuntimePayloadDigest('win-x64', lock, '11.7.0'))
+  const ffmpeg = structuredClone(lock)
+  ffmpeg.targets['mac-arm64'].ffmpeg.ffmpeg.sha256 = 'b'.repeat(64)
+  expect(primaryRuntimePayloadDigest('mac-arm64', ffmpeg, '11.7.0')).not.toBe(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.0'))
 })
 
 it('invalidates payload identity for shared wheels, package versions and package-manager changes', () => {
@@ -149,6 +204,21 @@ it('copies complete Office resources outside the application archive and removes
       expect(await readFile(join(destination, name, 'SKILL.md'), 'utf8')).toBe(`# ${name}\n`)
     }
     await expect(readFile(join(destination, 'obsolete.py'))).rejects.toMatchObject({ code: 'ENOENT' })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+it('copies the media-editing skill beside primary-runtime for packaged dsh discovery', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'desktop-media-skill-'))
+  try {
+    const source = join(root, 'package', 'assets', 'media-editing')
+    const destination = join(root, 'Contents', 'Resources', 'runtime', 'media-editing')
+    await mkdir(source, { recursive: true })
+    await writeFile(join(source, 'SKILL.md'), '# Media editing\n')
+    await prepareMediaEditingSkillAssets(source, destination)
+    await writeFile(join(destination, 'obsolete.txt'), 'old')
+    await prepareMediaEditingSkillAssets(source, destination)
+    expect(await readFile(join(destination, 'SKILL.md'), 'utf8')).toBe('# Media editing\n')
+    await expect(readFile(join(destination, 'obsolete.txt'))).rejects.toMatchObject({ code: 'ENOENT' })
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

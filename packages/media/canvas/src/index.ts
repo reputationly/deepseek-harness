@@ -130,6 +130,26 @@ export class CanvasService extends TypertRemoteService {
   }
 
   /**
+   * Resolve image, video, and audio nodes to their local media files.
+   * @param session - Session opened on the project.
+   * @param ids - media node ids in the order the caller will consume them.
+   * @returns absolute media paths in input order.
+   * @throws {@link CanvasInputError} when an id is unknown, is not a media node, or has no path.
+   */
+  async resolveMedia(session: Session, ids: readonly string[]): Promise<string[]> {
+    const document = await this.read(session)
+    return ids.map((id) => {
+      const node = document.nodes.find(candidate => candidate.id === id)
+      if (node === undefined) throw new CanvasInputError(`canvas node ${id} does not exist`)
+      if (node.type !== 'image' && node.type !== 'video' && node.type !== 'audio') {
+        throw new CanvasInputError(`canvas node ${id} is a ${node.type} node, not a media node`)
+      }
+      if (node.path === undefined) throw new CanvasInputError(`canvas media node ${id} has no path`)
+      return node.path
+    })
+  }
+
+  /**
    * Read the canvas shown for a Session.
    * @param session - Session opened on the project.
    * @returns the project directory and its canvas document.

@@ -9,7 +9,7 @@
 | 所有者 | 职责 |
 |---|---|
 | [canvas](../../packages/media/canvas/README.zh.md) | `ctx.canvas`：文档及其校验和原子写入、自动布局、`canvas_get` 和 `canvas_edit` 工具，以及 `canvas` Remote 命名空间 |
-| [tool-media](../../packages/media/tool-media/README.zh.md) | 把画布节点和组解析为生成输入，并把每个结果作为带派生边的节点放回画布 |
+| [tool-media](../../packages/media/tool-media/README.zh.md) | 解析图片、视频和音频节点以供媒体操作使用，并把产物作为带派生边的节点放到画布 |
 | [画布标签页 Client](../../packages/client/ui-sidebar-canvas/README.zh.md) | 显示节点、组和边，并把用户的移动、连线、编组和删除发送给 Host |
 
 ## 文档与操作
@@ -20,9 +20,11 @@
 
 `CanvasView` 是 Remote 调用方收到的文档及其项目目录。每次成功的编辑都会发出 `canvas/change`，其中的 `CanvasChange` 指明该目录，Remote 命名空间会把它转发给已连接的 Client。
 
-## 生成输入
+## 媒体输入
 
-`resolveImages` 把节点 id 转换为媒体工具使用的图片文件路径。图片节点代表它的文件。组代表其中的图片成员，按阅读顺序排列：先从上到下，再从左到右。其他节点类型、未知 id 或不含图片的组，都会在调用网关之前失败。
+`resolveImages` 把节点 id 转换为供媒体生成使用的图片文件路径。图片节点代表它的文件。组代表其中的图片成员，按阅读顺序排列：先从上到下，再从左到右。其他节点类型、未知 id 或不含图片的组，都会在调用网关之前失败。
+
+`resolveMedia` 按输入顺序把图片、视频和音频节点 id 转换为供剪辑和探测使用的文件路径。它会对组、文本节点、没有路径的节点和未知 id 抛出 `CanvasInputError`；`resolveImages` 保持原有的图片和组行为。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

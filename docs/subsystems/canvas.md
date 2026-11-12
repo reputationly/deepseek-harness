@@ -9,7 +9,7 @@ The [media package family](../../packages/media/README.md) keeps one canvas docu
 | Owner | Responsibility |
 |---|---|
 | [canvas](../../packages/media/canvas/README.md) | `ctx.canvas`: the document, its validation and atomic writes, automatic layout, the `canvas_get` and `canvas_edit` tools, and the `canvas` Remote namespace |
-| [tool-media](../../packages/media/tool-media/README.md) | Resolves canvas nodes and groups into generation inputs and places each result as a node with derivation edges |
+| [tool-media](../../packages/media/tool-media/README.md) | Resolves image and video/audio nodes for media operations and places outputs as nodes with derivation edges |
 | [Canvas tab Client](../../packages/client/ui-sidebar-canvas/README.md) | Shows nodes, groups, and edges, and sends the user's moves, connections, grouping, and deletions to the Host |
 
 ## Document and operations
@@ -20,9 +20,11 @@ The [media package family](../../packages/media/README.md) keeps one canvas docu
 
 `CanvasView` is the document a Remote caller receives together with its project directory. Each successful edit emits `canvas/change` with a `CanvasChange` naming that directory, and the Remote namespace forwards it to connected Clients.
 
-## Generation inputs
+## Media inputs
 
-`resolveImages` turns node ids into image file paths for the media tools. An image node stands for its file. A group stands for its image members in reading order, top to bottom and then left to right. Any other node type, an unknown id, or a group without an image fails before the gateway is called.
+`resolveImages` turns node ids into image file paths for generation. An image node stands for its file. A group stands for its image members in reading order, top to bottom and then left to right. Any other node type, an unknown id, or a group without an image fails before the gateway is called.
+
+`resolveMedia` turns image, video, and audio node ids into file paths in input order for editing and probing. It rejects groups, text nodes, nodes without paths, and unknown ids with `CanvasInputError`; `resolveImages` keeps its image and group behavior.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

@@ -6,7 +6,7 @@
  */
 
 import { readFile } from 'node:fs/promises'
-import { extname, resolve } from 'node:path'
+import { basename, extname, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CanvasService } from '@deepseek-ai/dsh-canvas'
 import type { Session } from '@deepseek-ai/dsh-session'
@@ -53,6 +53,41 @@ function canvasLink(deps: VisualToolDeps, exec: ToolExecution): CanvasLink | und
   return canvas === undefined || exec.agent === undefined ? undefined : { canvas, session: exec.agent.session }
 }
 
+/** Metadata required to place a media artifact on a project canvas. */
+export interface MediaPlacementNode {
+  readonly type: 'image' | 'video' | 'audio'
+  readonly path: string
+  readonly title?: string
+  readonly prompt?: string
+  readonly model?: string
+}
+
+/** Place one written media artifact and connect its known source nodes and paths. */
+export async function placeMediaArtifact(
+  canvas: CanvasService | undefined,
+  session: Session | undefined,
+  node: MediaPlacementNode,
+  sourceNodes: readonly string[] = [],
+  sourceFiles: readonly string[] = [],
+): Promise<Pick<VisualResult, 'nodeId' | 'canvasError'>> {
+  if (canvas === undefined || session === undefined) return {}
+  try {
+    const document = await canvas.read(session)
+    const fromFiles = sourceFiles.flatMap(file =>
+      document.nodes.filter(candidate => candidate.path === resolve(file)).map(candidate => candidate.id))
+    const sources = [...new Set([...sourceNodes.filter(Boolean), ...fromFiles])]
+    const title = node.title ?? (node.prompt === undefined ? basename(node.path) : node.prompt.length > 40 ? `${node.prompt.slice(0, 40)}…` : node.prompt)
+    const result = await canvas.edit(session, [
+      { op: 'add', ref: 'result', ...node, title },
+      ...sources.map(source => ({ op: 'connect' as const, from: source, to: 'result', kind: 'derivation' as const })),
+    ])
+    const nodeId = result.refs.result
+    return nodeId === undefined ? { canvasError: result.skipped[0]?.reason ?? 'the node was not created' } : { nodeId }
+  } catch (error: unknown) {
+    return { canvasError: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 async function nodeImages(tool: string, link: CanvasLink | undefined, ids: readonly string[]): Promise<string[]> {
   if (ids.length === 0) return []
   if (link === undefined) throw new Error(`${tool}: no canvas is available here; pass image files instead of canvas nodes`)
@@ -66,26 +101,11 @@ async function nodeImages(tool: string, link: CanvasLink | undefined, ids: reado
 /** Put a generated file on the canvas with derivation edges from the nodes and files it was made from. */
 async function place(
   link: CanvasLink | undefined,
-  node: { readonly type: 'image' | 'video'; readonly path: string; readonly prompt: string; readonly model: string },
+  node: MediaPlacementNode,
   sourceNodes: readonly string[],
   sourceFiles: readonly string[],
 ): Promise<Pick<VisualResult, 'nodeId' | 'canvasError'>> {
-  if (link === undefined) return {}
-  try {
-    const document = await link.canvas.read(link.session)
-    const fromFiles = sourceFiles.flatMap(file =>
-      document.nodes.filter(candidate => candidate.path === resolve(file)).map(candidate => candidate.id))
-    const sources = [...new Set([...sourceNodes, ...fromFiles])]
-    const result = await link.canvas.edit(link.session, [
-      { op: 'add', ref: 'result', ...node, title: node.prompt.length > 40 ? `${node.prompt.slice(0, 40)}…` : node.prompt },
-      ...sources.map(source => ({ op: 'connect' as const, from: source, to: 'result', kind: 'derivation' as const })),
-    ])
-    const nodeId = result.refs.result
-    return nodeId === undefined ? { canvasError: result.skipped[0]?.reason ?? 'the node was not created' } : { nodeId }
-  } catch (error: unknown) {
-    // The file is already written and paid for; the canvas failure is reported beside it.
-    return { canvasError: error instanceof Error ? error.message : String(error) }
-  }
+  return placeMediaArtifact(link?.canvas, link?.session, node, sourceNodes, sourceFiles)
 }
 
 const IMAGE_TYPES: Readonly<Record<string, string>> = {

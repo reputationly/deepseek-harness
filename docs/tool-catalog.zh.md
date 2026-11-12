@@ -2830,6 +2830,50 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ## `@deepseek-ai/dsh-tool-media`
 
+### `ffmpeg`
+
+使用 FFmpeg 剪辑本地媒体。`args` 中不要传输出路径；输入使用本地绝对路径或项目相对路径。工具会生成结果文件并在可用时添加到画布。音轨、帧和片段会成为新节点；不要再次调用 `canvas_edit` 添加。视频拼接请用 `merge_videos`；复杂剪辑先加载 `media-editing` skill。`-f null` 只做试运行，不生成文件或画布节点。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "args": {
+      "type": "array",
+      "description": "FFmpeg arguments without an output path; include local inputs with -i.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "input_node_ids": {
+      "type": "array",
+      "description": "Canvas node ids aligned with -i order; use an empty string for an unknown source.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "output_type": {
+      "type": "string",
+      "default": "video",
+      "enum": [
+        "video",
+        "audio",
+        "image"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Optional title for the result canvas node."
+    }
+  },
+  "required": [
+    "args"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/edit-tools.ts`](../packages/media/tool-media/src/edit-tools.ts)
+
 ### `generate_image`
 
 根据文本提示词生成图片，或编辑、合成本地参考图。结果状态为 needs_choice 时没有生成任何内容：向用户询问列出的问题，然后再次调用。
@@ -2992,3 +3036,71 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 来源：[`packages/media/tool-media/src/visual-tools.ts`](../packages/media/tool-media/src/visual-tools.ts)
 
 模型和可接受的参数值在调用时取自网关能力目录，而不是 schema。
+
+### `media_probe`
+
+剪辑前探测本地媒体文件或画布媒体节点，返回时长、容器、流编码以及视频和音频属性。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Absolute path or path relative to the project directory."
+    },
+    "node_id": {
+      "type": "string",
+      "description": "Canvas image, video, or audio node id."
+    }
+  }
+}
+```
+
+来源：[`packages/media/tool-media/src/edit-tools.ts`](../packages/media/tool-media/src/edit-tools.ts)
+
+### `merge_videos`
+
+按顺序拼接两个或多个本地视频。工具会探测并统一视频尺寸和帧率，为缺失或较短的音轨补充静音。复杂剪辑先加载 `media-editing` skill。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "video_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "input_node_ids": {
+      "type": "array",
+      "description": "Canvas node ids aligned with video_paths; use an empty string for an unknown source.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scale_mode": {
+      "type": "string",
+      "default": "first",
+      "enum": [
+        "first",
+        "max",
+        "min",
+        "custom"
+      ]
+    },
+    "target_width": {
+      "type": "integer"
+    },
+    "target_height": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "video_paths"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/edit-tools.ts`](../packages/media/tool-media/src/edit-tools.ts)

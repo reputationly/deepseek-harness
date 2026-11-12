@@ -9,7 +9,7 @@
   en: 6cc2cd9ced70bb09
   zh: 1c0e6cb4ba2ed637
 /tool-schema-catalog/tool-package-map:
-  en: 79ccb169872791b9
+  en: 21a7ab48cdbe5449
   zh: 6ff416996428cf3e
 /tool-schema-catalog/deepseek-ai-dsh-plugin-manager:
   en: e0143916bb634762
@@ -344,6 +344,9 @@
 /tool-schema-catalog/deepseek-ai-dsh-tool-media:
   en: 0b42ffcb73ba66a9
   zh: 0b42ffcb73ba66a9
+/tool-schema-catalog/deepseek-ai-dsh-tool-media/ffmpeg:
+  en: c9a3c347a82d62bf
+  zh: 8db4a55fca5cfecc
 /tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-image:
   en: bf9585b25890d259
   zh: 40bc70609b1fff61
@@ -354,5 +357,11 @@
   en: ada7121019815f5b
   zh: 90a877e50fadfd6d
 /tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-video:
-  en: a03fc239f6711d57
+  en: b55a17d6cdb1ae3a
   zh: 312db47d277e4538
+/tool-schema-catalog/deepseek-ai-dsh-tool-media/media-probe:
+  en: 1ba1dd06008ae0bf
+  zh: a79c180324627e31
+/tool-schema-catalog/deepseek-ai-dsh-tool-media/merge-videos:
+  en: f6466d239809455c
+  zh: 2eeac902336c294f

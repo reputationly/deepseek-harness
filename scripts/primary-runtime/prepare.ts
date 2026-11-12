@@ -2,12 +2,13 @@
 
 import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { cp } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { gunzipSync } from 'node:zlib'
 import extractZip from 'extract-zip'
 import { x as extractTar } from 'tar'
 import { copyPrimaryRuntime, parsePrimaryRuntime, workspaceDependencyPaths, type PrimaryRuntimeManifest } from '@deepseek-ai/dsh-tool-workspace-dependencies'
@@ -126,7 +127,7 @@ export function primaryRuntimePayloadDigest(
   // Identity preserves key order within the selected target, wheel records and distribution map, plus wheel-entry order.
   // Bump format when extraction or assembly changes payload bytes without changing locked inputs.
   return createHash('sha256').update(JSON.stringify({
-    format: 8, target, pythonVersion, pythonRelease, nodeVersion: pnpmVersion === undefined ? undefined : nodeVersion,
+    format: 9, target, pythonVersion, pythonRelease, nodeVersion: pnpmVersion === undefined ? undefined : nodeVersion,
     artifact: runtimeLock.targets[target], wheels, pythonPackages, pnpm: pnpmVersion,
   })).digest('hex')
 }
@@ -183,6 +184,40 @@ export async function prepareOfficeSkillAssets(source: string, destination: stri
   await cp(source, destination, { recursive: true, dereference: true })
 }
 
+/**
+ * Copy the bundled media-editing skill to ordinary filesystem resources.
+ * @param source - Package directory containing `SKILL.md`.
+ * @param destination - External Desktop runtime directory.
+ * @returns Resolves after replacing the destination with the skill assets.
+ */
+export async function prepareMediaEditingSkillAssets(source: string, destination: string): Promise<void> {
+  rmSync(destination, { recursive: true, force: true })
+  await cp(source, destination, { recursive: true, dereference: true })
+}
+
+/**
+ * Decompress and stage the target's locked FFmpeg and FFprobe executables.
+ * @param target - Runtime target that owns the locked assets.
+ * @param destination - `ffmpeg/` directory beneath `primary-runtime/`.
+ * @param cache - SHA-256-addressed archive cache.
+ * @param runtimeLock - Runtime lock source, injectable for focused preparation tests.
+ * @returns Resolves after both executables are verified and staged; targets without assets are unchanged.
+ */
+export async function prepareFfmpegAssets(
+  target: PrimaryRuntimeTarget, destination: string, cache: string, runtimeLock: typeof lock = lock,
+): Promise<void> {
+  const artifact = runtimeLock.targets[target]
+  if (!('ffmpeg' in artifact)) return
+  rmSync(destination, { recursive: true, force: true })
+  mkdirSync(destination, { recursive: true })
+  for (const name of ['ffmpeg', 'ffprobe'] as const) {
+    const archive = await downloadPrimaryRuntimeAsset(artifact.ffmpeg[name].url, artifact.ffmpeg[name].sha256, cache)
+    const path = join(destination, `${name}${target === 'win-x64' ? '.exe' : ''}`)
+    writeFileSync(path, gunzipSync(readFileSync(archive)), { mode: target === 'win-x64' ? 0o644 : 0o755 })
+    if (target !== 'win-x64') chmodSync(path, 0o755)
+  }
+}
+
 /** A locked interpreter and wheel target. */
 export type PrimaryRuntimeTarget = keyof typeof lock.targets
 
@@ -190,7 +225,7 @@ export type PrimaryRuntimeTarget = keyof typeof lock.targets
 export interface PreparePrimaryRuntimeOptions {
   /** Target whose archives and wheels are downloaded. */
   readonly target: PrimaryRuntimeTarget
-  /** Resource directory receiving primary-runtime/ and office-skills/. */
+  /** Resource directory receiving primary-runtime/ and packaged skill assets. */
   readonly output: string
   /** SHA-256-addressed archive cache. */
   readonly cache: string
@@ -200,6 +235,8 @@ export interface PreparePrimaryRuntimeOptions {
   readonly pnpmArchive?: RuntimeNpmArchive
   /** Ordinary filesystem Office assets; build hosts otherwise resolve the workspace package. */
   readonly skillSource?: string
+  /** Ordinary filesystem media-editing skill assets; build hosts otherwise resolve the workspace package. */
+  readonly mediaEditingSkillSource?: string
   /** Omit Node.js and pnpm for carriers providing only Python. */
   readonly pythonOnly?: boolean
 }
@@ -256,12 +293,16 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
     const destination = join(paths.runtime, 'primary-runtime')
     rmSync(destination, { recursive: true, force: true })
     await copyPrimaryRuntime(output, destination, manifest)
+    await prepareFfmpegAssets(target, join(destination, 'ffmpeg'), paths.downloads)
   } finally {
     rmSync(staging, { recursive: true, force: true })
   }
   const assets = options.skillSource ?? join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-skill-office/package.json')), 'assets')
   await prepareOfficeSkillAssets(assets,
     join(paths.runtime, 'office-skills'))
+  const mediaSkillAssets = options.mediaEditingSkillSource
+    ?? join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-tool-media/package.json')), 'assets', 'media-editing')
+  await prepareMediaEditingSkillAssets(mediaSkillAssets, join(paths.runtime, 'media-editing'))
 }
 
 /**
