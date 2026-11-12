@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CanvasDocument, CanvasNode, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
-import type { MediaCapabilityView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { MediaCapabilityView, MediaPlanView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   genOperation, modelChoices, operationFor, orderedRefs, paramControls, reorderOperation, type ParamControl,
@@ -23,6 +23,10 @@ export interface InspectorProps {
   readonly edit: (operations: readonly CanvasOperation[]) => Promise<void>
   readonly close: () => void
   readonly openTable?: (nodeId: string) => void
+  /** Plans generation for this node, when the deployment has the media namespace. */
+  readonly planNodes?: (nodes: readonly string[]) => Promise<MediaPlanView | undefined>
+  /** Starts generation for this node after the budget is accepted. */
+  readonly generateNodes?: (nodes: readonly string[], token: string | undefined) => Promise<MediaPlanView | undefined>
   readonly t: PropsLocale<typeof NS>['t']
 }
 
@@ -52,7 +56,9 @@ function ParamField({ control, onChange }: { control: ParamControl; onChange: (n
  * @param props - node, catalog, edit call, and copy.
  * @returns the panel with generation, references, frames, versions, and the table entry for storyboards.
  */
-export function Inspector({ document, node, placement, capabilities, edit, close, openTable, t }: InspectorProps): ReactNode {
+export function Inspector({
+  document, node, placement, capabilities, edit, close, openTable, planNodes, generateNodes, t,
+}: InspectorProps): ReactNode {
   const kind = node.gen?.kind
   const [models, setModels] = useState<readonly MediaCapabilityView[]>([])
   const [modelId, setModelId] = useState(node.gen?.model ?? '')
@@ -79,6 +85,8 @@ export function Inspector({ document, node, placement, capabilities, edit, close
   const choices = modelChoices(models, first !== undefined || last !== undefined, refs.length > 0)
   const nameOf = (id: string): string => document.nodes.find(candidate => candidate.id === id)?.title ?? id
   const [dragging, setDragging] = useState<number>()
+  const [plan, setPlan] = useState<MediaPlanView>()
+  const [note, setNote] = useState<string>()
   const apply = (): void => {
     const numeric: Record<string, string | number | boolean> = {}
     for (const [key, value] of Object.entries(params)) {
@@ -106,6 +114,21 @@ export function Inspector({ document, node, placement, capabilities, edit, close
         onChange={(next) => { setParams(current => ({ ...current, [control.id]: next })) }} />)}
       <PromptField value={prompt} onChange={setPrompt} t={t} />
       <Button variant="primary" size="sm" onClick={apply}>{t('inspector.apply')}</Button>
+      {planNodes === undefined || generateNodes === undefined ? undefined
+        : <Button variant="outline" size="sm" onClick={() => {
+          setNote(undefined)
+          void planNodes([node.id]).then(async (planned) => {
+            if (planned === undefined) return
+            if (planned.state === 'ready') {
+              const started = await generateNodes([node.id], undefined)
+              setNote(started === undefined ? undefined : t('inspector.started', { count: started.jobs.length }))
+              return
+            }
+            if (planned.state === 'needs_confirmation') { setPlan(planned); return }
+            setNote(planned.message ?? planned.state)
+          }).catch((error: unknown) => { setNote(error instanceof Error ? error.message : String(error)) })
+        }}>{t('inspector.generateNow')}</Button>}
+      {note === undefined ? undefined : <p className={css.note} role="status">{note}</p>}
     </section>}
     {node.type === 'storyboard' && <section className={css.section}>
       <Button variant="outline" size="sm" onClick={() => { openTable?.(node.id) }}>{t('inspector.openTable')}</Button>
@@ -155,5 +178,31 @@ export function Inspector({ document, node, placement, capabilities, edit, close
         </li>)}
       </ol>
     </section>
+    {plan === undefined ? undefined : <div className={css.dialogBackdrop} role="presentation">
+      <div className={css.dialog} role="dialog" aria-label={t('budget.title')}>
+        <span className={css.dialogTitle}>{t('budget.title')}</span>
+        <ul className={css.dialogLines}>
+          {plan.lines.map(line => <li key={line.node}>
+            {t('budget.line', {
+              node: nameOf(line.node), kind: line.kind, model: line.model, calls: line.calls,
+            })}
+          </li>)}
+        </ul>
+        <span className={css.dialogTotals}>{t('budget.totals', {
+          video: plan.totals.videoCalls, seconds: plan.totals.videoSeconds, images: plan.totals.imageCalls,
+          speech: plan.totals.speechLines, music: plan.totals.musicCalls,
+        })}</span>
+        <div className={css.dialogActions}>
+          <Button size="sm" onClick={() => { setPlan(undefined) }}>{t('budget.cancel')}</Button>
+          <Button variant="primary" size="sm" onClick={() => {
+            const token = plan.token
+            setPlan(undefined)
+            void generateNodes?.([node.id], token).then((started) => {
+              setNote(started === undefined ? undefined : t('inspector.started', { count: started.jobs.length }))
+            }).catch((error: unknown) => { setNote(error instanceof Error ? error.message : String(error)) })
+          }}>{t('budget.confirm')}</Button>
+        </div>
+      </div>
+    </div>}
   </aside>
 }

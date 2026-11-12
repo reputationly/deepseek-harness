@@ -26,6 +26,12 @@ import type { JobHandle } from '@deepseek-ai/dsh-jobs'
 import { createGenerator } from './generators.ts'
 import { registerNodeTools } from './node-tools.ts'
 import { MediaService } from './remote.ts'
+import { runnerServicesOf } from './node-tools.ts'
+import type { NodeToolDeps } from './node-tools.ts'
+import { budgetOf, type Budget } from './budget.ts'
+import { planNodes, type NodePlan } from './node-runner.ts'
+import { startPlan } from './runner.ts'
+import type { MediaPlanView } from './types.ts'
 import { awaitTask, downloadMedia, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
 import { placeMediaArtifact, registerVisualTools } from './visual-tools.ts'
 
@@ -268,7 +274,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     const gateway = await request(AbortSignal.timeout(resolved.taskTimeoutMs))
     return new CatalogSource({ baseURL: resolved.baseURL, cacheFile }).load(gateway.apiKey, gateway.signal)
   }
-  void new MediaService(ctx, catalogOf)
   const generator = createGenerator({
     request,
     ...resolved.catalog ? {
@@ -283,7 +288,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     videoDefaultDuration: resolved.videoDefaultDuration,
   })
   const jobsRegistry = ctx.get('jobs')
-  registerNodeTools(ctx, {
+  const nodeToolDeps: NodeToolDeps = {
     canvas: () => ctx.get('canvas') as import('@deepseek-ai/dsh-canvas').CanvasService | undefined,
     limits: {
       maxVideoSeconds: resolved.maxSegmentSeconds,
@@ -356,6 +361,65 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       await rename(scratch, target)
       return target
     },
+  }
+  registerNodeTools(ctx, nodeToolDeps)
+  const canvasOf = (): import('@deepseek-ai/dsh-canvas').CanvasService => {
+    const canvas = ctx.get('canvas') as import('@deepseek-ai/dsh-canvas').CanvasService | undefined
+    /* v8 ignore next -- the deployment enables the canvas row with these tools */
+    if (canvas === undefined) throw new Error('tool-media: the canvas service is not available')
+    return canvas
+  }
+  const emptyView = (state: MediaPlanView['state'], lines: MediaPlanView['lines'], message?: string): MediaPlanView => ({
+    state,
+    ...message === undefined ? {} : { message },
+    lines,
+    totals: { videoCalls: 0, videoSeconds: 0, imageCalls: 0, speechLines: 0, musicCalls: 0 },
+    jobs: [],
+  })
+  const viewOfBudget = (budget: Budget): MediaPlanView => ({
+    state: budget.needsConfirmation ? 'needs_confirmation' : 'ready',
+    ...budget.needsConfirmation ? { token: budget.token } : {},
+    lines: budget.lines.map(line => ({
+      node: line.node,
+      kind: line.kind,
+      model: line.model,
+      calls: line.calls,
+      ...line.seconds === undefined ? {} : { seconds: line.seconds },
+    })),
+    totals: budget.totals,
+    jobs: [],
+  })
+  void new MediaService(ctx, catalogOf, {
+    plan: async (session, nodes) => {
+      const services = await runnerServicesOf(canvasOf, nodeToolDeps, session)
+      const loaded = await services.canvas.read()
+      const bible = await services.canvas.bible()
+      const plan: NodePlan = planNodes(loaded.document, bible, nodes.slice(), nodeToolDeps.limits)
+      const view = viewOfBudget(budgetOf(plan, nodeToolDeps.confirmLimits))
+      return plan.blocked === undefined
+        ? view
+        : { ...view, state: 'blocked', message: `${plan.blocked.gate}: ${plan.blocked.missing.join(', ')}` }
+    },
+    generate: async (session, nodes, token) => {
+      const outcome = await startPlan(await runnerServicesOf(canvasOf, nodeToolDeps, session), nodes.slice(), token)
+      if (outcome.status === 'blocked') {
+        const blocked = outcome.plan.blocked
+        return {
+          ...viewOfBudget(budgetOf(outcome.plan, nodeToolDeps.confirmLimits)),
+          state: 'blocked',
+          ...blocked === undefined ? {} : { message: `${blocked.gate}: ${blocked.missing.join(', ')}` },
+        }
+      }
+      if (outcome.status === 'already_running') return emptyView('already_running', [], outcome.nodes.join(', '))
+      const view = viewOfBudget(outcome.status === 'needs_confirmation' ? outcome.budget : budgetOf(outcome.plan, nodeToolDeps.confirmLimits))
+      if (outcome.status === 'needs_confirmation') return view
+      return {
+        ...view,
+        state: 'started',
+        jobs: outcome.status === 'started' ? outcome.jobs.map(job => ({ node: job.node, jobId: job.jobId })) : [],
+      }
+    },
+    cancel: (session, jobId) => jobsRegistry?.kill(jobId as never, session.id) === 'requested',
   })
   const skills = ctx.get('skills')
   if (skills !== undefined) registerMediaSkills(ctx, skills, resolveSkillRoot(resolved.skillsRoot))

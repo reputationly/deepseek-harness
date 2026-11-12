@@ -210,6 +210,9 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'canvas/get': 'owner-only', // node media is read through owner-only Workspace file access
   'canvas/bible': 'owner-only', // the shared bible names the project's cast and locations
   'media/capabilities': 'owner-only', // the deployment's gateway catalog is owner configuration
+  'media/planNodes': 'owner-only', // planning reads the owner's project and spends the owner's budget
+  'media/generateNodes': 'owner-only', // generation spends the owner's gateway budget
+  'media/cancelMediaJob': 'owner-only', // only the owner cancels its own jobs
   'pluginInventory/list': 'owner-only', // owner plugin inventory
   'mcpManager/probe': 'owner-only', // owner MCP server management
   'mcpManager/restart': 'owner-only', // owner MCP server management

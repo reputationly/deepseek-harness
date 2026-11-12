@@ -46,6 +46,20 @@ export function apply(ctx: Context): void {
         load: source.load,
         edit: source.edit,
         dismiss: source.dismiss,
+        planNodes: async (nodes) => {
+          const media = ctx.get('remote.media')
+          if (media === undefined) return undefined
+          const result = await media.planNodes(sessionId, nodes)
+          if (!result.ok) throw new Error(result.error.message)
+          return result.value
+        },
+        generateNodes: async (nodes, token) => {
+          const media = ctx.get('remote.media')
+          if (media === undefined) return undefined
+          const result = await media.generateNodes(sessionId, nodes, token)
+          if (!result.ok) throw new Error(result.error.message)
+          return result.value
+        },
         bible: async () => {
           const result = await ctx.remote.canvas.bible(sessionId)
           if (!result.ok) throw new Error(result.error.message)

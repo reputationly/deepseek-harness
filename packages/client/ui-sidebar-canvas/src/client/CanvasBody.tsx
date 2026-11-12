@@ -24,7 +24,9 @@ export type CanvasBodyProps = PropsRuntime<'sidebar.right.pane.tab'> & PropsLoca
  * @param props - canvas state hook, edit and read calls, and copy.
  * @returns a spinner, a retryable failure, the empty hint, or the flow under any notice.
  */
-export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilities, bible, t }: CanvasBodyProps): ReactNode {
+export function CanvasBody({
+  useCanvas, load, edit, dismiss, readFile, capabilities, bible, planNodes, generateNodes, t,
+}: CanvasBodyProps): ReactNode {
   const state = useCanvas(value => value)
   useEffect(() => { void load() }, [load])
   const root = useRef<HTMLElement>(null)
@@ -113,7 +115,9 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
         onSelect={setSelectedId} history={history} />
       {selected === undefined ? undefined : <Inspector
         document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}
-        edit={edit} close={() => { setSelectedId(undefined) }} openTable={setTableId} t={t}
+        edit={edit} close={() => { setSelectedId(undefined) }} openTable={setTableId}
+        {...planNodes === undefined ? {} : { planNodes }}
+        {...generateNodes === undefined ? {} : { generateNodes }} t={t}
       />}
       {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t}
         segments={state.view?.segments[table.id] ?? []} />}

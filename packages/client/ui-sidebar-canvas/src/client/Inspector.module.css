@@ -21,3 +21,11 @@
 .versionRow { display: flex; align-items: center; gap: 6px; }
 .versionLabel { color: var(--dsw-alias-label-primary); font-size: 12px; }
 .versionModel { flex: 1; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
+
+.note { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.dialogBackdrop { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: light-dark(#00000033, #00000080); }
+.dialog { display: flex; flex-direction: column; gap: 8px; width: min(420px, calc(100vw - 32px)); padding: 14px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-bg-layer-1); box-shadow: 0 12px 32px light-dark(#00000026, #00000080); }
+.dialogTitle { color: var(--dsw-alias-label-primary); font-size: 13px; font-weight: 500; }
+.dialogLines { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0 0 0 16px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.dialogTotals { color: var(--dsw-alias-label-primary); font-size: 12px; }
+.dialogActions { display: flex; justify-content: flex-end; gap: 6px; }

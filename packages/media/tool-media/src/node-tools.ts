@@ -84,6 +84,44 @@ const resultSchema = {
   },
 }
 
+
+/**
+ * Build the runner services one Session's generation runs against.
+ * @param canvasOf - reads the canvas service, which the composition must have enabled.
+ * @param deps - generators, jobs, and deployment bounds.
+ * @param session - Session that owns the project and its jobs.
+ * @returns runner services bound to that Session.
+ */
+export async function runnerServicesOf(
+  canvasOf: () => CanvasService,
+  deps: NodeToolDeps,
+  session: Parameters<CanvasService['read']>[0],
+): Promise<RunnerServices> {
+  const project = await canvasOf().projectOf(session)
+  const spec = project.project === undefined
+    ? undefined
+    : { aspect: project.project.spec.aspect, resolution: project.project.spec.resolution }
+  return {
+    ...spec === undefined ? {} : { spec },
+    canvas: {
+      read: async () => {
+        const document = await canvasOf().read(session)
+        return { document, revision: document.revision }
+      },
+      bible: async () => (await canvasOf().bibleOf(session)).bible,
+      edit: (operations, baseRevision) => canvasOf().edit(session, operations, { baseRevision }),
+    },
+    limits: deps.limits,
+    confirmLimits: deps.confirmLimits,
+    concurrency: deps.concurrency,
+    generate: deps.generate,
+    jobs: deps.jobs(session),
+    probe: deps.probe,
+    tailFrame: deps.tailFrame,
+    now: () => new Date().toISOString(),
+  }
+}
+
 /**
  * Register the generation tools.
  * @param ctx - context whose tool registry receives them.
@@ -96,31 +134,8 @@ export function registerNodeTools(ctx: import('@deepseek-ai/cordis').Context, de
     if (canvas === undefined) throw new Error('tool-media: the canvas service is not available')
     return canvas
   }
-  const servicesOf = async (session: Parameters<CanvasService['read']>[0]): Promise<RunnerServices> => {
-    const project = await canvasOf().projectOf(session)
-    const spec = project.project === undefined
-      ? undefined
-      : { aspect: project.project.spec.aspect, resolution: project.project.spec.resolution }
-    return {
-      ...spec === undefined ? {} : { spec },
-      canvas: {
-        read: async () => {
-          const document = await canvasOf().read(session)
-          return { document, revision: document.revision }
-        },
-        bible: async () => (await canvasOf().bibleOf(session)).bible,
-        edit: (operations, baseRevision) => canvasOf().edit(session, operations, { baseRevision }),
-      },
-      limits: deps.limits,
-      confirmLimits: deps.confirmLimits,
-      concurrency: deps.concurrency,
-      generate: deps.generate,
-      jobs: deps.jobs(session),
-      probe: deps.probe,
-      tailFrame: deps.tailFrame,
-      now: () => new Date().toISOString(),
-    }
-  }
+  const servicesOf = (session: Parameters<CanvasService['read']>[0]): Promise<RunnerServices> =>
+    runnerServicesOf(canvasOf, deps, session)
   void ctx
 
   ctx.tools.register(defineTool({

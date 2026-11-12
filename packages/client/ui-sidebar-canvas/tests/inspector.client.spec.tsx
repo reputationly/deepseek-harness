@@ -102,3 +102,37 @@ it('closes through its header button and opens the table editor for a storyboard
   fireEvent.click(screen.getByRole('button', { name: 'inspector.openTable' }))
   expect(openTable).toHaveBeenCalledWith('v1')
 })
+
+it('asks for the budget and starts generation once the user confirms', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 'tok', lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 2, seconds: 12 }],
+    totals: { videoCalls: 2, videoSeconds: 12, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => ({
+    state: 'started' as const, lines: [], totals: { videoCalls: 2, videoSeconds: 12, imageCalls: 0, speechLines: 0, musicCalls: 0 },
+    jobs: [{ node: 'v1', jobId: 'j1' }],
+  }))
+  mount({ planNodes, generateNodes })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
+  expect(screen.getByText(/budget.totals/)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['v1'], 'tok') })
+  expect(screen.getByRole('status').textContent).toContain('inspector.started')
+})
+
+it('starts a plan that needs no confirmation directly', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'ready' as const, lines: [], totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => ({
+    state: 'started' as const, lines: [], totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 },
+    jobs: [{ node: 'v1', jobId: 'j1' }],
+  }))
+  mount({ planNodes, generateNodes })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['v1'], undefined) })
+  expect(screen.queryByRole('dialog')).toBeNull()
+})

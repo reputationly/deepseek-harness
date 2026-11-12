@@ -66,7 +66,9 @@ export type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
 export type {} from '@deepseek-ai/dsh-api-account-controller/remote'
 export type {} from '@deepseek-ai/dsh-canvas/remote'
 export type {} from '@deepseek-ai/dsh-tool-media/remote'
-export type { MediaCapabilityView } from '@deepseek-ai/dsh-tool-media/types'
+export type {
+  MediaCapabilityView, MediaJobRef, MediaParamView, MediaPlanLine, MediaPlanTotals, MediaPlanView,
+} from '@deepseek-ai/dsh-tool-media/types'
 export type {} from '@deepseek-ai/dsh-goal/remote'
 export type {} from '@deepseek-ai/dsh-schedule/remote'
 export type {} from '@deepseek-ai/dsh-office-to-pdf/remote'
