@@ -6,19 +6,22 @@ import { deleteOperations, flowEdges, flowNodes, groupable, keepSelection, moveO
 
 const face = { readFile: async () => ({ ok: false as const, message: 'unused' }), t: (key: string) => key }
 
+const version = { id: 'v1' as never, createdAt: 'now', origin: 'user' as const }
+
 const document: CanvasDocument = {
-  version: 1,
+  version: 2,
+  revision: 0,
   nextId: 6,
   nodes: [
-    { id: 'n1', type: 'text', title: 'Brief', x: 0, y: 0, width: 280, height: 160, text: 'brief' },
-    { id: 'n2', type: 'image', title: 'a.png', x: 360, y: 40, width: 280, height: 280, path: '/p/a.png', group: 'g4' },
-    { id: 'n3', type: 'image', title: 'b.png', x: 360, y: 360, width: 280, height: 280, path: '/p/b.png', group: 'g4' },
-    { id: 'g4', type: 'group', title: 'Candidates', x: 330, y: -30, width: 340, height: 700 },
-    { id: 'n5', type: 'video', title: 'out.mp4', x: 760, y: 0, width: 320, height: 220, path: '/p/out.mp4' },
+    { id: 'n1' as never, type: 'text', title: 'Brief', x: 0, y: 0, width: 280, height: 160, activeVersion: 'v1' as never, versions: [{ ...version, text: 'brief' }] },
+    { id: 'n2' as never, type: 'image', title: 'a.png', x: 360, y: 40, width: 280, height: 280, group: 'g4' as never, activeVersion: 'v1' as never, versions: [{ ...version, path: '/p/a.png' }] },
+    { id: 'n3' as never, type: 'image', title: 'b.png', x: 360, y: 360, width: 280, height: 280, group: 'g4' as never, activeVersion: 'v1' as never, versions: [{ ...version, path: '/p/b.png' }] },
+    { id: 'g4' as never, type: 'group', title: 'Candidates', x: 330, y: -30, width: 340, height: 700, versions: [] },
+    { id: 'n5' as never, type: 'video', title: 'out.mp4', x: 760, y: 0, width: 320, height: 220, activeVersion: 'v1' as never, versions: [{ ...version, path: '/p/out.mp4' }] },
   ],
   edges: [
-    { id: 'n1->n2', source: 'n1', target: 'n2', kind: 'reference' },
-    { id: 'g4->n5', source: 'g4', target: 'n5', kind: 'derivation' },
+    { id: 'n1->n2:prompt', source: 'n1' as never, target: 'n2' as never, kind: 'reference', role: 'prompt' },
+    { id: 'g4->n5', source: 'g4' as never, target: 'n5' as never, kind: 'derivation' },
   ],
 }
 
@@ -36,7 +39,7 @@ it('draws groups before their members and positions members inside the group', (
 
 it('draws a derivation as a solid arrow and a reference as a dashed one', () => {
   expect(flowEdges(document)).toEqual([
-    { id: 'n1->n2', source: 'n1', target: 'n2', markerEnd: { type: MarkerType.ArrowClosed }, style: { strokeDasharray: '6 4' } },
+    { id: 'n1->n2:prompt', source: 'n1', target: 'n2', markerEnd: { type: MarkerType.ArrowClosed }, style: { strokeDasharray: '6 4' } },
     { id: 'g4->n5', source: 'g4', target: 'n5', markerEnd: { type: MarkerType.ArrowClosed } },
   ])
 })

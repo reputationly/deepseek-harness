@@ -5,7 +5,7 @@
  */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { JobId } from '@deepseek-ai/dsh-jobs'
+import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 
 /** Node kinds a canvas holds. */
 export type CanvasNodeType = 'image' | 'video' | 'audio' | 'text' | 'script' | 'storyboard' | 'timeline' | 'group'

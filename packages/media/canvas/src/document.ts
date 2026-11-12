@@ -5,7 +5,7 @@
 
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ResolvedConfig } from './config.ts'
-import type { JobId } from '@deepseek-ai/dsh-jobs'
+import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type {
   BibleEntryId, CanvasDocument, CanvasEdge, CanvasEdgeKind, CanvasEdgeRole, CanvasNode, CanvasNodeId, CanvasNodeType,
   DialogueId, DialogueLine, ExportRecord, GenerationKind, GenerationSpec, NodeInput, NodeStatus, NodeVersion, Shot, ShotId,
