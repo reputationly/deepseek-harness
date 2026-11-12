@@ -159,7 +159,7 @@ describe('last branches', () => {
 describe('storyboard duplicates', () => {
   it('lists each entry once when a shot repeats it', async () => {
     const { bibleEntriesOf } = await import('../src/storyboard.ts')
-    const shot = {
+    const shot: Shot = {
       id: 's1' as never, title: 't', shotSize: 'medium', visual: '', motion: '', camera: '', durationSec: 2,
       characters: ['c1' as never, 'c1' as never], props: [], scene: 'c1' as never,
       dialogue: [

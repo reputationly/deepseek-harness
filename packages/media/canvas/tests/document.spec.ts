@@ -236,8 +236,10 @@ describe('parseCanvas', () => {
       activeVersion: 'v1' as never,
     }
     expect(activeVersionOf(node)?.text).toBe('one')
-    expect(activeVersionOf({ ...node, activeVersion: undefined })?.text).toBe('two')
+    const { activeVersion: _active, ...withoutActive } = node
+    expect(activeVersionOf(withoutActive)?.text).toBe('two')
     expect(activeVersionOf({ ...node, versions: [] })).toBeUndefined()
-    expect(activeVersionOf({ ...node, versions: undefined })).toBeUndefined()
+    const { versions: _versions, ...withoutVersions } = node
+    expect(activeVersionOf(withoutVersions)).toBeUndefined()
   })
 })
