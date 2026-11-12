@@ -5,7 +5,7 @@ import type { Bible, CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { CanvasInjected } from './face.ts'
-import { LazyCanvasFlow } from './LazyCanvasFlow.tsx'
+import { CanvasFlow } from './CanvasFlow.tsx'
 import { Inspector } from './Inspector.tsx'
 import { StoryboardTable } from './StoryboardTable.tsx'
 import { BibleAssetsPanel } from './BibleAssetsPanel.tsx'
@@ -45,6 +45,21 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
     observer.observe(element)
     return () => { observer.disconnect() }
   }, [state.view === undefined])
+  const visibleDocument = state.view?.document
+  const addedHere = useMemo(() => {
+    if (visibleDocument === undefined) return []
+    const previous = seen.current
+    const fresh = movedForward(previous?.revision, visibleDocument.revision)
+      ? newNodeIds(previous?.document, visibleDocument) : []
+    seen.current = { revision: visibleDocument.revision, document: visibleDocument }
+    return fresh
+  }, [visibleDocument])
+  useEffect(() => {
+    if (addedHere.length === 0) return
+    setAdded(addedHere)
+    const timer = setTimeout(() => { setAdded([]) }, 1500)
+    return () => { clearTimeout(timer) }
+  }, [addedHere])
   const retry = <Button variant="outline" size="sm" onClick={() => { void load() }}>{t('retry')}</Button>
   if (state.view === undefined) {
     return <section className={css.root} data-sidebar-canvas>
@@ -54,18 +69,6 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
     </section>
   }
   const { document } = state.view
-  const addedHere = useMemo(() => {
-    const previous = seen.current
-    const fresh = movedForward(previous?.revision, document.revision) ? newNodeIds(previous?.document, document) : []
-    seen.current = { revision: document.revision, document }
-    return fresh
-  }, [document])
-  useEffect(() => {
-    if (addedHere.length === 0) return
-    setAdded(addedHere)
-    const timer = setTimeout(() => { setAdded([]) }, 1500)
-    return () => { clearTimeout(timer) }
-  }, [addedHere])
   const selected = selectedId === undefined ? undefined : document.nodes.find(node => node.id === selectedId)
   const table = tableId === undefined ? undefined : document.nodes.find(node => node.id === tableId)
   const exportJson = (): void => {
@@ -88,7 +91,12 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
       <Button size="sm" variant="outline" onClick={exportJson}>{t('canvas.export')}</Button>
       <Button size="sm" variant="outline" icon={<IconFullscreenOutlineRegular />}
         aria-label={fullscreen ? t('canvas.exitFullscreen') : t('canvas.fullscreen')}
-        onClick={() => { setFullscreen(value => !value) }}>
+        onClick={() => {
+          setFullscreen((value) => {
+            if (!value) setTimeout(() => { window.dispatchEvent(new Event('canvas:fit')) }, 50)
+            return !value
+          })
+        }}>
         {fullscreen ? t('canvas.exitFullscreen') : t('canvas.fullscreen')}
       </Button>
     </div>
@@ -101,7 +109,7 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
     </div>}
     {document.nodes.length === 0
       ? <div className={css.center}><p className={css.message}>{t('empty')}</p></div>
-      : <><LazyCanvasFlow document={document} readFile={readFile} t={t} edit={edit} reload={load}
+      : <><CanvasFlow document={document} readFile={readFile} t={t} edit={edit} reload={load}
         onSelect={setSelectedId} history={history} />
       {selected === undefined ? undefined : <Inspector
         document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}

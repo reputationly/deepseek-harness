@@ -1,4 +1,4 @@
-.root { position: absolute; top: 0; right: 0; bottom: 0; z-index: 6; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; width: 320px; padding: 10px; overflow-y: auto; border-left: 0.5px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-1); box-shadow: var(--dsw-elevation-stroke); }
+.root { position: absolute; top: 36px; right: 0; bottom: 0; z-index: 6; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; width: 320px; padding: 10px; overflow-y: auto; border-left: 0.5px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-1); box-shadow: var(--dsw-elevation-stroke); }
 .drawer { box-shadow: 0 8px 24px light-dark(#0000001a, #00000060); }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .title { overflow: hidden; color: var(--dsw-alias-label-primary); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }

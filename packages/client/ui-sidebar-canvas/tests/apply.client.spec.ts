@@ -99,7 +99,7 @@ it('gives each Session one stable face that reads, edits, and follows Host chang
     expect(second).not.toBe(first)
 
     await first.load()
-    expect(h.canvas.get).toHaveBeenLastCalledWith('s1')
+    expect(h.canvas.get).toHaveBeenLastCalledWith('s1', undefined)
     expect(first.hooks.canvas.getSnapshot()).toMatchObject({ status: 'ready', view: view('/projects/s1') })
     await second.load()
 
@@ -108,11 +108,11 @@ it('gives each Session one stable face that reads, edits, and follows Host chang
 
     h.canvas.get.mockClear()
     h.emitChange('/projects/s2')
-    expect(h.canvas.get.mock.calls).toEqual([['s2']])
+    expect(h.canvas.get.mock.calls).toEqual([['s2', undefined]])
 
     h.canvas.get.mockClear()
     h.ctx.emit('connection/reset')
-    expect(h.canvas.get.mock.calls).toEqual([['s1'], ['s2']])
+    expect(h.canvas.get.mock.calls).toEqual([['s1', undefined], ['s2', undefined]])
     expect(first.hooks.canvas.getSnapshot().status).toBe('loading')
   } finally {
     await h.dispose()

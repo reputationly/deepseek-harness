@@ -64,6 +64,11 @@ function Toolbar({ document, nodes, edges, edit, reload, t, undo, redo, canUndo,
   const removal = deleteOperations(document, selectedNodes, selectedEdges)
   const created = document.nextId
   useEffect(() => { void flow.fitView({ duration: 200, padding: 0.15 }) }, [created, flow])
+  useEffect(() => {
+    const onFit = (): void => { void flow.fitView({ duration: 200, padding: 0.15 }) }
+    window.addEventListener('canvas:fit', onFit)
+    return () => { window.removeEventListener('canvas:fit', onFit) }
+  }, [flow])
   return <div className={css.toolbar} role="toolbar" aria-label={t('toolbar')}>
     <Tool label={t('zoomOut')} onClick={() => { void flow.zoomOut() }}>
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">

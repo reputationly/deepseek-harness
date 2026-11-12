@@ -118,3 +118,11 @@ it('opens the bible panel with the shared entries', async () => {
   await waitFor(() => { expect(h.bible).toHaveBeenCalledOnce() })
   expect(screen.getByRole('tab', { name: 'bible.tab' })).toBeTruthy()
 })
+
+it('moves from the loading pane to the drawn canvas without changing hook order', async () => {
+  const h = mount({})
+  expect(screen.getByRole('status').getAttribute('aria-label')).toBe('loading')
+  h.state.set({ status: 'ready', view: view as never, error: undefined, notice: undefined, conflict: false })
+  h.rerender()
+  await waitFor(() => { expect(drawn).toHaveBeenCalled() })
+})
