@@ -79,3 +79,32 @@ it('titles the tab with the layers icon and the tab title', () => {
   expect(container.querySelector('svg')).not.toBeNull()
   expect(container.textContent).toBe('Canvas')
 })
+
+it('toggles the fullscreen studio without replacing the flow', () => {
+  mount({ status: 'ready', view: view as never })
+  const toggle = screen.getByRole('button', { name: 'canvas.fullscreen' })
+  fireEvent.click(toggle)
+  expect(document.querySelector('[data-sidebar-canvas]')?.getAttribute('data-fullscreen')).toBe('true')
+  fireEvent.click(screen.getByRole('button', { name: 'canvas.exitFullscreen' }))
+  expect(document.querySelector('[data-sidebar-canvas]')?.getAttribute('data-fullscreen')).toBeNull()
+  expect(drawn.mock.calls.every(call => (call[0] as { document: unknown }).document === filled)).toBe(true)
+})
+
+it('reports nodes an external change added', async () => {
+  const h = mount({ status: 'ready', view: view as never })
+  const next = {
+    ...view,
+    revisions: { canvas: 1 },
+    document: {
+      ...filled,
+      revision: 1,
+      nodes: [...filled.nodes, {
+        id: 'n2' as never, type: 'text' as const, title: 'New', x: 0, y: 0, width: 100, height: 60,
+        activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, text: 'new', createdAt: 'now', origin: 'user' as const }],
+      }],
+    },
+  }
+  h.state.set({ ...h.state.getSnapshot(), view: next as never })
+  h.rerender()
+  await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('canvas.added') })
+})

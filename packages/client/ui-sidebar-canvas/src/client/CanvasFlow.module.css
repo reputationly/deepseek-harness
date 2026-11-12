@@ -67,3 +67,9 @@
 .sceneBadge { flex: none; margin-right: 6px; padding: 0 5px; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-interactive-bg-hover); }
 .groupName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .memberCount { margin-left: 6px; color: var(--dsw-alias-label-tertiary); }
+
+.flash { animation: canvas-flash 1.5s ease-out; }
+@keyframes canvas-flash {
+  0% { box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary); }
+  100% { box-shadow: 0 0 0 2px transparent; }
+}

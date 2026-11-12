@@ -5,6 +5,7 @@ import { automaticRole, edgeLabel, edgeStyle, roleMenu } from '../src/client/mod
 import { inspectorPlacement } from '../src/client/model/inspector.ts'
 import { cardState, currentVersion, durationLabel, groupScene, scriptPreview, scriptScenes, shotBadge, storyboardCardView, versionChoices } from '../src/client/model/cards.ts'
 import { frameOf, genOperation, modelChoices, operationFor, orderedRefs, paramControls, reorderOperation } from '../src/client/model/inspector.ts'
+import { movedForward, newNodeIds } from '../src/client/model/changes.ts'
 import { appendShotOperation, cellOperation, moveShotOperation, removeShotOperation, rowsOf, segmentOfShot, summaryOf } from '../src/client/model/table.ts'
 
 const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
@@ -282,5 +283,17 @@ describe('inspector model', () => {
     expect(frameOf(doc, 'n', 'last_frame')).toBe('l')
     expect(frameOf(doc, 'n', 'first_frame')).toBe('f')
     expect(reorderOperation('n', ['b', 'a'])).toEqual({ op: 'reorder_refs', node: 'n', sources: ['b', 'a'] })
+  })
+})
+
+describe('external changes', () => {
+  it('names added nodes and only reports a forward revision', () => {
+    expect(newNodeIds(undefined, document([node('n1', 'text')]))).toEqual([])
+    const before = document([node('n1', 'text')])
+    const after = document([node('n1', 'text'), node('n2', 'image')])
+    expect(newNodeIds(before, after)).toEqual(['n2'])
+    expect(movedForward(undefined, 3)).toBe(false)
+    expect(movedForward(2, 2)).toBe(false)
+    expect(movedForward(2, 3)).toBe(true)
   })
 })
