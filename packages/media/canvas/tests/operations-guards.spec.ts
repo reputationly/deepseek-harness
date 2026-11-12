@@ -207,3 +207,120 @@ describe('operation guards', () => {
     expect(document.edges).toEqual([])
   })
 })
+
+describe('remaining operation paths', () => {
+  const base = (...ops: CanvasOperation[]) => run(EMPTY_CANVAS, ops).document
+
+  it('walks a diamond in the cycle check', () => {
+    const document = base(
+      { op: 'add', type: 'text', text: 'a' },
+      { op: 'add', type: 'text', text: 'b' },
+      { op: 'add', type: 'text', text: 'c' },
+      { op: 'add', type: 'text', text: 'd' },
+      { op: 'connect', from: 'n1', to: 'n2' },
+      { op: 'connect', from: 'n1', to: 'n3' },
+      { op: 'connect', from: 'n2', to: 'n4' },
+      { op: 'connect', from: 'n3', to: 'n4' },
+    )
+    expect(run(document, [{ op: 'connect', from: 'n4', to: 'n1' }]).result.skipped)
+      .toEqual([{ index: 0, op: 'connect', reason: 'connecting n4 to n1 would create a cycle' }])
+  })
+
+  it('keeps unrelated edges when removing a node', () => {
+    const document = base(
+      { op: 'add', type: 'text', text: 'a' },
+      { op: 'add', type: 'text', text: 'b' },
+      { op: 'add', type: 'text', text: 'c' },
+      { op: 'connect', from: 'n1', to: 'n2' },
+      { op: 'connect', from: 'n3', to: 'n2' },
+    )
+    const removed = run(document, [{ op: 'remove', node: 'n1' }]).document
+    expect(removed.edges.map(edge => edge.id)).toEqual(['n3->n2'])
+  })
+
+  it('reads an empty shot list from a storyboard without a version', () => {
+    const document = documentOf([node('n1', 'storyboard')])
+    expect(run(document, [{ op: 'update_shot', node: 'n1', shot: 's1', patch: {} }]).result.skipped)
+      .toEqual([{ index: 0, op: 'update_shot', reason: 'shot s1 does not exist' }])
+  })
+
+  it('orders a new reference after an edge that carries no order', () => {
+    const document = documentOf(
+      [node('n1', 'image'), node('n2', 'image'), node('n3', 'video')],
+      [{ id: 'n1->n3:ref', source: 'n1' as never, target: 'n3' as never, kind: 'reference', role: 'ref' }],
+    )
+    const next = run(document, [{ op: 'connect', from: 'n2', to: 'n3', role: 'ref' }]).document
+    expect(next.edges.map(edge => [edge.id, edge.order])).toEqual([['n1->n3:ref', undefined], ['n2->n3:ref', 1]])
+  })
+
+  it('names a missing video file and a missing text body', () => {
+    expect(run(EMPTY_CANVAS, [{ op: 'add', type: 'video', path: '' }]).result.skipped)
+      .toEqual([{ index: 0, op: 'add', reason: 'a video node needs path' }])
+    expect(run(EMPTY_CANVAS, [{ op: 'add', type: 'script' }]).result.skipped)
+      .toEqual([{ index: 0, op: 'add', reason: 'a script node needs text' }])
+  })
+
+  it('rejects text edits on plain media and text on a non-text node', () => {
+    const document = base({ op: 'add', type: 'image', path: '/a.png' })
+    expect(run(document, [{ op: 'update', node: 'n1', text: 'x' }]).result.skipped)
+      .toEqual([{ index: 0, op: 'update', reason: 'node n1 is not a text node' }])
+    expect(run(document, [{ op: 'set_text', node: 'n1', text: 'x' }]).result.skipped)
+      .toEqual([{ index: 0, op: 'set_text', reason: 'node n1 is not a text node' }])
+  })
+
+  it('rejects a generation prompt above the bound and defaults the kind of media nodes', () => {
+    const document = base({ op: 'add', type: 'video', path: '/v.mp4' })
+    expect(run(document, [{ op: 'set_gen', node: 'n1', gen: { prompt: 'long prompt' } }], resolveConfig({ maxPromptLength: 3 })).result.skipped)
+      .toEqual([{ index: 0, op: 'set_gen', reason: 'prompt exceeds 3 characters' }])
+    expect(run(document, [{ op: 'set_gen', node: 'n1', gen: {} }]).document.nodes[0]?.gen)
+      .toEqual({ kind: 'video', prompt: '', params: {} })
+  })
+
+  it('skips a version switch on a node with no versions', () => {
+    expect(run(documentOf([node('n1', 'text')]), [{ op: 'set_version', node: 'n1', version: 'v1' }]).result.skipped)
+      .toEqual([{ index: 0, op: 'set_version', reason: 'node n1 has no version v1' }])
+  })
+
+  it('rejects a disconnect of a role no edge supplies', () => {
+    const document = base({ op: 'add', type: 'image', path: '/a.png' }, { op: 'add', type: 'video', path: '/v.mp4' })
+    expect(run(document, [{ op: 'disconnect', from: 'n1', to: 'n2', role: 'ref' }]).result.skipped)
+      .toEqual([{ index: 0, op: 'disconnect', reason: 'n1 does not supply ref to n2' }])
+  })
+
+  it('rejects nested groups and empty resize sizes', () => {
+    const document = base({ op: 'add', type: 'text', text: 'a' }, { op: 'group', nodes: ['n1'] })
+    expect(run(document, [{ op: 'group', nodes: ['g2'] }]).result.skipped)
+      .toEqual([{ index: 0, op: 'group', reason: 'node g2 is a group; groups do not nest' }])
+    expect(run(document, [{ op: 'resize', node: 'n1', width: 0, height: 10 }]).result.skipped)
+      .toEqual([{ index: 0, op: 'resize', reason: 'width and height must be positive' }])
+  })
+
+  it('numbers an inserted shot past a non-numeric id', () => {
+    const document = base({ op: 'add', type: 'storyboard', shots: [{ ...shot('draft'), id: 'draft' as never }] })
+    const next = run(document, [{ op: 'insert_shot', node: 'n1', shot: shot('next') }]).document
+    expect(next.nodes[0]?.versions?.[1]?.shots?.map(entry => entry.id)).toEqual(['draft', 's1'])
+  })
+})
+
+describe('search and lookup paths', () => {
+  it('walks a node twice before concluding there is no cycle', () => {
+    const document = run(EMPTY_CANVAS, [
+      { op: 'add', type: 'text', text: 'a' },
+      { op: 'add', type: 'text', text: 'b' },
+      { op: 'add', type: 'text', text: 'c' },
+      { op: 'add', type: 'text', text: 'd' },
+      { op: 'connect', from: 'n1', to: 'n2' },
+      { op: 'connect', from: 'n1', to: 'n3' },
+      { op: 'connect', from: 'n2', to: 'n3' },
+    ]).document
+    const { document: next, result } = run(document, [{ op: 'connect', from: 'n4', to: 'n1' }])
+    expect(result.skipped).toEqual([])
+    expect(next.edges.map(edge => edge.id)).toContain('n4->n1')
+  })
+
+  it('rejects moving an unknown shot', () => {
+    const document = run(EMPTY_CANVAS, [{ op: 'add', type: 'storyboard', shots: [shot('s1')] }]).document
+    expect(run(document, [{ op: 'move_shot', node: 'n1', shot: 's9' }]).result.skipped)
+      .toEqual([{ index: 0, op: 'move_shot', reason: 'shot s9 does not exist' }])
+  })
+})

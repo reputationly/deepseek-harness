@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -241,6 +241,8 @@ describe('studio tools', () => {
       upsert: [{ id: 'p2', kind: 'prop', name: 'Mug', description: 'a mug', voice: { voice: 'v9' } }],
     })
     expect(partial.text).toContain('p2 Mug')
+    const removed = await call('studio_bible_update', { remove: ['p1'] })
+    expect(removed.text).toContain('Bible saved')
     const stale = await call('studio_bible_update', { logline: 'x', baseRevision: 1 })
     expect(stale.isError).toBe(true)
     expect(stale.text).toContain('canvas revision is')
@@ -255,5 +257,88 @@ describe('studio tools', () => {
     const missing = await call('studio_expand_script', { script: 'n9', baseRevision: await revision() })
     expect(missing.isError).toBe(true)
     expect(missing.text).toContain('does not exist')
+  })
+})
+
+describe('renderer and mapper branches', () => {
+  it('renders a document holding a versionless storyboard and a derivation edge', async () => {
+    await ctx.canvas.edit(session, [{ op: 'add', type: 'text', text: 'a' }, { op: 'add', type: 'text', text: 'b' }], { baseRevision: 0 })
+    const document = await ctx.canvas.read(session)
+    const crafted = {
+      ...document,
+      nextId: 4,
+      nodes: [
+        ...document.nodes,
+        { id: 'n3', type: 'storyboard', title: 'board', x: 0, y: 400, width: 10, height: 10 },
+      ],
+      edges: [{ id: 'n1->n2', source: 'n1', target: 'n2', kind: 'derivation' }],
+    }
+    await writeFile(join(directory, '.canvas', 'canvas.json'), JSON.stringify(crafted))
+    const summary = await call('canvas_get', {})
+    expect(summary.text).toContain('n1->n2')
+    const full = await call('canvas_get', { detail: 'full' })
+    expect(full.text).toContain('Shots of n3: ')
+  })
+
+  it('fills every default of a shot the caller leaves empty', async () => {
+    expect(await edit([{ op: 'add', type: 'storyboard' }])).toContain('Created n1')
+    expect(await edit([{ op: 'insert_shot', node: 'n1', shots: [{}] }])).toContain('Revision')
+    expect(await edit([{ op: 'insert_shot', node: 'n1', shots: [] }])).toContain('Revision')
+    const shots = (await ctx.canvas.read(session)).nodes[0]?.versions?.at(-1)?.shots
+    expect(shots?.[0]).toMatchObject({ id: 's1', title: '', shotSize: 'medium', durationSec: 3, characters: [], props: [], dialogue: [] })
+  })
+
+  it('groups with and without a title', async () => {
+    await edit([{ op: 'add', type: 'text', text: 'a' }, { op: 'add', type: 'text', text: 'b' }])
+    expect(await edit([{ op: 'group', nodes: ['n1'] }])).toContain('Created g3')
+    expect(await edit([{ op: 'group', title: 'Named', nodes: ['n2'] }])).toContain('Created g4')
+  })
+
+  it('writes a bible entry that carries no voice and one that carries only a sample', async () => {
+    const noVoice = await call('studio_bible_update', {
+      upsert: [{ id: 'p1', kind: 'prop', name: 'Cup', description: 'a cup' }],
+    })
+    expect(noVoice.text).toContain('p1 Cup')
+    const sampleOnly = await call('studio_bible_update', {
+      upsert: [{ id: 'p2', kind: 'prop', name: 'Mug', description: 'a mug', voice: { sampleNode: 'n1' } }],
+    })
+    expect(sampleOnly.text).toContain('p2 Mug')
+  })
+
+  it('expands a script node without a version and untitled scenes', async () => {
+    await ctx.canvas.edit(session, [{ op: 'add', type: 'script', title: '剧本', text: '【场1】' }], { baseRevision: 0 })
+    const document = await ctx.canvas.read(session)
+    const crafted = { ...document, nodes: document.nodes.map(node => ({ ...node, versions: [], activeVersion: undefined })) }
+    await mkdir(join(directory, '.canvas'), { recursive: true })
+    await writeFile(join(directory, '.canvas', 'canvas.json'), JSON.stringify(crafted))
+    const expanded = await call('studio_expand_script', { script: 'n1', baseRevision: document.revision })
+    // A script whose active version is gone holds no scene to lay out.
+    expect(expanded.text).toBe(`Revision ${String(document.revision)}.`)
+    const groups = (await ctx.canvas.read(session)).nodes.filter(node => node.type === 'group')
+    expect(groups).toEqual([])
+  })
+})
+
+describe('last tool branches', () => {
+  it('adds a generated node without naming a model', async () => {
+    expect(await edit([{ op: 'add', type: 'image', path: 'a.png', prompt: 'a cat', genKind: 'image' }])).toContain('Created n1')
+    expect((await ctx.canvas.read(session)).nodes[0]?.gen).toMatchObject({ prompt: 'a cat' })
+  })
+
+  it('expands a scene that has a body but no title', async () => {
+    expect(await edit([{ op: 'add', type: 'script', text: '第2场\n正文' }])).toContain('Created n1')
+    expect(await call('studio_expand_script', { script: 'n1', baseRevision: await revision() })).toMatchObject({ isError: false })
+    const groups = (await ctx.canvas.read(session)).nodes.filter(node => node.type === 'group')
+    expect(groups.map(group => group.title)).toEqual(['场2'])
+  })
+
+  it('refuses canvas tools outside a Session', async () => {
+    const result = await executeToolFixture(ctx, {
+      signal: new AbortController().signal,
+      callId: ToolCallId('call-no-agent'),
+      name: 'canvas_get',
+      arguments: {},
+    } as never)
+    expect(JSON.stringify(result)).toContain('runs only inside a Session')
   })
 })

@@ -13,6 +13,7 @@ import { resolveConfig } from '../src/config.ts'
 import { parseBible } from '../src/bible.ts'
 import { bibleEntriesOf, parseScenes, validateShots } from '../src/storyboard.ts'
 import { inferRole } from '../src/roles.ts'
+import { parseProject, FREE_PROJECT } from '../src/project.ts'
 import { CanvasStore } from '../src/store.ts'
 import type { Shot } from '../src/types.ts'
 
@@ -164,9 +165,20 @@ describe('storyboard duplicates', () => {
       dialogue: [
         { id: 'd1' as never, speaker: { kind: 'character' as const, entry: 'c1' as never }, line: 'x' },
         { id: 'd2' as never, speaker: { kind: 'character' as const, entry: 'c1' as never }, line: 'y' },
+        { id: 'd3' as never, speaker: { kind: 'character' as const, entry: 'c2' as never }, line: 'z' },
       ],
       sfx: '', negative: '',
     }
-    expect(bibleEntriesOf([shot])).toEqual(['c1'])
+    expect(bibleEntriesOf([shot])).toEqual(['c1', 'c2'])
+  })
+})
+
+describe('document writes', () => {
+  it('leaves the file untouched when the change returns no document', async () => {
+    const store = new CanvasStore(resolveConfig({}))
+    const result = await store.updateDocument(directory, 'project.json', parseProject, () => FREE_PROJECT, current => ({
+      value: current.revision,
+    }))
+    expect(result).toEqual({ value: 0, revision: 0 })
   })
 })

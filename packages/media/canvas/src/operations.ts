@@ -37,6 +37,9 @@ export interface ApplyOutcome {
 /** Shot fields a caller may patch, with the id the shot keeps. */
 type ShotPatch = Partial<Omit<Shot, 'id'>>
 
+/** A node while one operation list is being applied: its version list always exists. */
+type WorkingNode = DraftNode & { versions: readonly NodeVersion[] }
+
 class Skip extends Error {}
 
 function reaches(edges: ReadonlyMap<string, CanvasEdge>, from: string, to: string): boolean {
@@ -105,18 +108,18 @@ export function applyOperations(
   operations: readonly CanvasOperation[],
   options: ApplyOptions,
 ): ApplyOutcome {
-  const nodes = new Map<string, DraftNode>(document.nodes.map(node => [node.id, { ...node }]))
+  const nodes = new Map<string, WorkingNode>(document.nodes.map(node => [node.id, { ...node, versions: node.versions ?? [] }]))
   const edges = new Map<string, CanvasEdge>(document.edges.map(edge => [edge.id, edge]))
   const refs = new Map<string, string>()
   const created: string[] = []
   const skipped: CanvasSkippedOperation[] = []
-  const versioned = new Set<string>()
+  const working = new Map<string, NodeVersion>()
   const now = options.now ?? (() => new Date().toISOString())
   const origin = options.origin ?? 'user'
   let nextId = document.nextId
   let applied = 0
 
-  const find = (name: string): DraftNode => {
+  const find = (name: string): WorkingNode => {
     const node = nodes.get(refs.get(name) ?? name)
     if (node === undefined) throw new Skip(`node ${name} does not exist`)
     return node
@@ -138,20 +141,16 @@ export function applyOperations(
     for (const edge of [...edges.values()]) if (edge.source === id || edge.target === id) edges.delete(edge.id)
     for (const member of nodes.values()) if (member.group === id) delete member.group
   }
-  const setVersion = (node: DraftNode, version: NodeVersion): void => {
-    node.versions = [...node.versions ?? [], version]
+  const setVersion = (node: WorkingNode, version: NodeVersion): void => {
+    node.versions = [...node.versions, version]
     node.activeVersion = version.id
-    versioned.add(node.id)
+    working.set(node.id, version)
   }
-  const dropVersions = (node: DraftNode): void => {
-    const versions = node.versions ?? []
+  const dropVersions = (node: WorkingNode): void => {
+    const versions = node.versions
     const limit = isMediaType(node.type) ? options.limits.versionLimit : options.limits.textVersionLimit
     if (versions.length <= limit) return
-    const kept: NodeVersion[] = []
-    for (let at = versions.length - 1; at >= 0 && kept.length < limit; at -= 1) {
-      const version = versions[at]
-      if (version !== undefined) kept.unshift(version)
-    }
+    const kept = versions.slice(versions.length - limit)
     const active = activeVersionOf(node)
     if (active !== undefined && !kept.some(version => version.id === active.id)) {
       kept.shift()
@@ -159,27 +158,33 @@ export function applyOperations(
     }
     node.versions = kept
   }
-  const storyboardOf = (node: DraftNode): Shot[] => {
+  const storyboardOf = (node: WorkingNode): Shot[] => {
     const version = activeVersionOf(node)
     if (node.type !== 'storyboard') throw new Skip(`node ${node.id} is not a storyboard`)
     return [...version?.shots ?? []]
   }
-  const writeShots = (node: DraftNode, shots: readonly Shot[]): void => {
+  const writeShots = (node: WorkingNode, shots: readonly Shot[]): void => {
     if (shots.length > options.limits.maxShotsPerStoryboard) {
       throw new Skip(`a storyboard holds at most ${String(options.limits.maxShotsPerStoryboard)} shots`)
     }
-    if (versioned.has(node.id)) {
-      const version = activeVersionOf(node)
-      if (version === undefined) throw new Skip(`node ${node.id} has no version`)
-      node.versions = (node.versions ?? []).map(held => held.id === version.id ? { ...held, shots } : held)
+    const current = working.get(node.id)
+    if (current !== undefined) {
+      const next = { ...current, shots }
+      working.set(node.id, next)
+      node.versions = node.versions.map(held => held.id === current.id ? next : held)
       return
     }
-    setVersion(node, { id: nextVersionId(node.versions ?? []), shots, createdAt: now(), origin })
+    setVersion(node, { id: nextVersionId(node.versions), shots, createdAt: now(), origin })
   }
   const shotAt = (shots: readonly Shot[], id: string): number => {
     const index = shots.findIndex(shot => shot.id === id)
     if (index < 0) throw new Skip(`shot ${id} does not exist`)
     return index
+  }
+  const shotById = (shots: readonly Shot[], id: string): Shot => {
+    const shot = shots.find(entry => entry.id === id)
+    if (shot === undefined) throw new Skip(`shot ${id} does not exist`)
+    return shot
   }
   const withShot = (shots: readonly Shot[], index: number, patch: ShotPatch): readonly Shot[] =>
     shots.map((shot, at) => at === index ? { ...shot, ...patch } : shot)
@@ -237,10 +242,10 @@ export function applyOperations(
         if (operation.path !== undefined && !isMediaType(node.type)) throw new Skip(`node ${node.id} has no file`)
         if (operation.title !== undefined) node.title = operation.title
         if (operation.text !== undefined) {
-          setVersion(node, { id: nextVersionId(node.versions ?? []), text: operation.text, createdAt: now(), origin })
+          setVersion(node, { id: nextVersionId(node.versions), text: operation.text, createdAt: now(), origin })
         }
         if (operation.path !== undefined) {
-          setVersion(node, { id: nextVersionId(node.versions ?? []), path: operation.path, createdAt: now(), origin })
+          setVersion(node, { id: nextVersionId(node.versions), path: operation.path, createdAt: now(), origin })
         }
         return
       }
@@ -261,13 +266,14 @@ export function applyOperations(
       case 'set_text': {
         const node = find(operation.node)
         if (!isTextType(node.type)) throw new Skip(`node ${node.id} is not a text node`)
-        if (versioned.has(node.id)) {
-          const version = activeVersionOf(node)
-          if (version === undefined) throw new Skip(`node ${node.id} has no version`)
-          node.versions = (node.versions ?? []).map(held => held.id === version.id ? { ...held, text: operation.text } : held)
+        const current = working.get(node.id)
+        if (current !== undefined) {
+          const next = { ...current, text: operation.text }
+          working.set(node.id, next)
+          node.versions = node.versions.map(held => held.id === current.id ? next : held)
           return
         }
-        setVersion(node, { id: nextVersionId(node.versions ?? []), text: operation.text, createdAt: now(), origin })
+        setVersion(node, { id: nextVersionId(node.versions), text: operation.text, createdAt: now(), origin })
         return
       }
       case 'set_shots': {
@@ -300,17 +306,15 @@ export function applyOperations(
       case 'move_shot': {
         const node = find(operation.node)
         const shots = storyboardOf(node)
-        const from = shotAt(shots, operation.shot)
-        const moved = shots[from]
-        if (moved === undefined) throw new Skip(`shot ${operation.shot} does not exist`)
-        const rest = shots.filter((_shot, at) => at !== from)
+        const moved = shotById(shots, operation.shot)
+        const rest = shots.filter(shot => shot.id !== moved.id)
         const at = operation.after === undefined ? rest.length : shotAt(rest, operation.after) + 1
         writeShots(node, [...rest.slice(0, at), moved, ...rest.slice(at)])
         return
       }
       case 'set_version': {
         const node = find(operation.node)
-        if (!(node.versions ?? []).some(version => version.id === operation.version)) throw new Skip(`node ${node.id} has no version ${operation.version}`)
+        if (!node.versions.some(version => version.id === operation.version)) throw new Skip(`node ${node.id} has no version ${operation.version}`)
         node.activeVersion = brandString<VersionId>(operation.version)
         return
       }
@@ -366,7 +370,10 @@ export function applyOperations(
         const nested = members.find(member => member.type === 'group')
         if (nested !== undefined) throw new Skip(`node ${nested.id} is a group; groups do not nest`)
         const id = `g${String(nextId++)}`
-        nodes.set(id, { id: brandString<CanvasNodeId>(id), type: 'group', title: operation.title ?? 'Group', x: 0, y: 0, width: 0, height: 0 })
+        nodes.set(id, {
+          id: brandString<CanvasNodeId>(id), type: 'group', title: operation.title ?? 'Group',
+          x: 0, y: 0, width: 0, height: 0, versions: [],
+        })
         for (const member of members) member.group = brandString<CanvasNodeId>(id)
         claim(operation.ref, id)
         return

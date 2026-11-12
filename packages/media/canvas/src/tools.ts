@@ -767,6 +767,7 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
       const groups = new Set(document.nodes.filter(node => node.type === 'group').map(node => node.title))
       const operations: CanvasOperation[] = []
       for (const scene of parseScenes(body)) {
+        if (scene.title === '' && scene.body === '') continue
         if (wanted !== undefined && !wanted.has(scene.number)) continue
         const title = `场${String(scene.number)}${scene.title === '' ? '' : ` ${scene.title}`}`
         if (groups.has(title)) continue
