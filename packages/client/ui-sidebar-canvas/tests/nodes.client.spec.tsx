@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 /** Every node card renders its own content, version bar, and status layer. */
+import type { ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -21,9 +22,15 @@ const node = (type: CanvasNode['type'], extra: Partial<CanvasNode> = {}): Canvas
 
 const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${JSON.stringify(params)}`
 
-function mount(Card: unknown, data: Record<string, unknown>): { edit: ReturnType<typeof vi.fn> } {
+/** Renders one card component with the props a node would give it. */
+function CardHost({ Card, props }: { readonly Card: (props: never) => ReactNode; readonly props: Record<string, unknown> }): ReactNode {
+  return <>{Card(props as never)}</>
+}
+
+function mount(Card: (props: never) => ReactNode, data: Record<string, unknown>): { edit: ReturnType<typeof vi.fn> } {
   const edit = vi.fn(async () => {})
-  render(<ReactFlowProvider><Card {...{ data: { node: node('text'), readFile: async () => ({ ok: false, message: 'no' }), t, edit, ...data }, selected: false } as never} /></ReactFlowProvider>)
+  const props = { data: { node: node('text'), readFile: async () => ({ ok: false, message: 'no' }), t, edit, ...data }, selected: false }
+  render(<ReactFlowProvider><CardHost Card={Card} props={props} /></ReactFlowProvider>)
   return { edit }
 }
 

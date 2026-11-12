@@ -37,6 +37,9 @@
     },
     {
       "path": "../../jobs/jobs"
+    },
+    {
+      "path": "../../typert/protocol"
     }
   ]
 }

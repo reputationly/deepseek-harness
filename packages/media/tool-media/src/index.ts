@@ -25,11 +25,14 @@ import { FfmpegRunner } from './ffmpeg.ts'
 import type { JobHandle } from '@deepseek-ai/dsh-jobs'
 import { createGenerator } from './generators.ts'
 import { registerNodeTools } from './node-tools.ts'
+import { MediaService } from './remote.ts'
 import { awaitTask, downloadMedia, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
 import { placeMediaArtifact, registerVisualTools } from './visual-tools.ts'
 
 export { MediaGatewayError } from './gateway.ts'
 export type { MediaArtifact } from './gateway.ts'
+export type { MediaCapabilityView } from './types.ts'
+export { MediaService } from './remote.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-media'
@@ -260,6 +263,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     },
     canvas: () => ctx.get('canvas'),
   })
+  const catalogOf = async (): Promise<import('./catalog.ts').MediaCatalog | undefined> => {
+    if (!resolved.catalog) return undefined
+    const gateway = await request(AbortSignal.timeout(resolved.taskTimeoutMs))
+    return new CatalogSource({ baseURL: resolved.baseURL, cacheFile }).load(gateway.apiKey, gateway.signal)
+  }
+  void new MediaService(ctx, catalogOf)
   const generator = createGenerator({
     request,
     ...resolved.catalog ? {

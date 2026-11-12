@@ -3,7 +3,7 @@ import { expect, it } from 'vitest'
 import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
 import { deleteOperations, flowEdges, flowNodes, groupable, keepSelection, moveOperations } from '../src/client/flow.ts'
 
-const face = { readFile: async () => ({ ok: false as const, message: 'unused' }), t: (key: string) => key }
+const face = { readFile: async () => ({ ok: false as const, message: 'unused' }), t: (key: string) => key, edit: async () => {} }
 
 const version = { id: 'v1' as never, createdAt: 'now', origin: 'user' as const }
 
