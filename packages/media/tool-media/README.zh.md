@@ -31,6 +31,10 @@ Agent 可通过 OpenAI 兼容网关生成图片、语音、音乐和视频，也
 
 当 Agent 需要通过网关生成图片、语音、音乐或视频，或剪辑本地音视频时，选择此包。若会话只需直接操作项目画布，请使用 [canvas 包](../canvas/README.zh.md)。
 
+### 技能
+
+`skillsRoot` 指向「装着若干技能子目录」的目录，每个子目录里有一个 `SKILL.md`，其 frontmatter 的 `name` 与目录名一致；默认值是本包的 `assets/`。内置 `media-editing`（本地 FFmpeg 配方）、`studio-pipeline`（制作流程）、`studio-craft`（剧本、分镜与提示词写法）和 `studio-layout`（画布布局约定）。frontmatter 名字与目录名不一致的目录会在加载时报错。
+
 ### 最小配置
 
 ```yaml
@@ -82,7 +86,8 @@ FFmpeg 和 FFprobe 默认从 `PATH` 查找。macOS arm64 和 Windows x64 的 Des
 
 | 源文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 注册生成工具和可选剪辑 skill provider。 |
+| [`src/index.ts`](src/index.ts) | 注册生成工具和可选的 skill provider。 |
+| [`src/skills.ts`](src/skills.ts) | 枚举 `skillsRoot` 下的技能目录并注册一个 provider。 |
 | [`src/visual-tools.ts`](src/visual-tools.ts) | 通过网关生成媒体并将产物放到画布。 |
 | [`src/edit-tools.ts`](src/edit-tools.ts) | 注册并执行 FFmpeg、拼接和探测工具。 |
 | [`src/ffmpeg-guards.ts`](src/ffmpeg-guards.ts) | 限制 FFmpeg 参数并配置 drawtext 字体。 |
@@ -99,6 +104,7 @@ FFmpeg 和 FFprobe 默认从 `PATH` 查找。macOS arm64 和 Windows x64 的 Des
 
 - [Canvas 包](../canvas/README.zh.md) — 项目媒体节点和派生边。
 - [音视频剪辑配方](assets/media-editing/SKILL.md) — 探测和常见 FFmpeg 操作。
+- [Studio pipeline](assets/studio-pipeline/SKILL.md)、[craft](assets/studio-craft/SKILL.md) 与 [layout](assets/studio-layout/SKILL.md) — 制作流程、分镜写法与画布布局约定。
 - [工具编写指南](../../../docs/cookbook/adding-a-tool.zh.md) — schema、执行结果和 Web 呈现。
 
 -----

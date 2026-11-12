@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/canvas-document-v2/guide.md
+/:
+  en: 8e952cc4497d08a1
+  zh: e422fee7cf250f08
+/canvas-files-move-to-format-version-2:
+  en: c77bb43566b35809
+  zh: cb302a14c70d6817
+/canvas-files-move-to-format-version-2/change:
+  en: c264005fe35f4c93
+  zh: 0fc6b380631cc95c
+/canvas-files-move-to-format-version-2/migration:
+  en: 86f63b288385db20
+  zh: 904e7ae27c462c7c

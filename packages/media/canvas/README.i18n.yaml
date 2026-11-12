@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/media/canvas/README.md
 /:
-  en: 3db6100cc0d580f5
-  zh: bc26317171f1deb7
+  en: 374ba1acd9827069
+  zh: d0402fc9ea22a9c3
 /deepseek-ai-dsh-canvas:
   en: b819e2b1f5a08723
   zh: 9f584e959f90faca
 /deepseek-ai-dsh-canvas/summary:
-  en: 3bb6823164f5ff21
-  zh: 25a7abe7494190d5
+  en: b5b0caf704e0933a
+  zh: aac8c7983cd5e918
 /deepseek-ai-dsh-canvas/table-of-contents:
   en: 76368b6b1da79c80
-  zh: 52384aee991ac542
+  zh: c84d057a0499a032
 /deepseek-ai-dsh-canvas/use-this-package:
-  en: 912e2953da1e7f11
-  zh: 1c3e791eed6bd293
+  en: 7db810a96f432846
+  zh: d06106f06633a28f
 /deepseek-ai-dsh-canvas/understand-the-implementation:
-  en: 048807e3bfe7e3a3
-  zh: b85b656bae062560
+  en: c79b1f8fc356c858
+  zh: af35459c9eb676d3
 /deepseek-ai-dsh-canvas/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -27,29 +27,29 @@
   en: 3039bc5e7a796b21
   zh: 6b7a9eaf69c9ea53
 /deepseek-ai-dsh-canvas/model-experience/tool-schemas/what-the-model-sees:
-  en: bcd7bc1ee8774db9
-  zh: 9d53a701c6e87650
+  en: 3d5db805995942bf
+  zh: 7192f7985e242e36
 /deepseek-ai-dsh-canvas/model-experience/tool-schemas/token-effect:
-  en: 1c3a747a4fed071d
-  zh: 48a953be4ac08927
+  en: e4b0b98b73088e03
+  zh: e4fec2f3e31a5c7e
 /deepseek-ai-dsh-canvas/model-experience/tool-schemas/kv-cache-effect:
   en: babaa297f7288ac1
-  zh: 38d9deefe1700730
+  zh: 7b252a20da6d5f67
 /deepseek-ai-dsh-canvas/model-experience/tool-call-history-and-results:
   en: a8503137ad03720c
   zh: 611a2dadf7c0c706
 /deepseek-ai-dsh-canvas/model-experience/tool-call-history-and-results/what-the-model-sees:
-  en: 8ae7facf2b1f7714
-  zh: 5671af309c199add
+  en: 051359332c792bf6
+  zh: 643d695eb0150743
 /deepseek-ai-dsh-canvas/model-experience/tool-call-history-and-results/token-effect:
-  en: 1c133b2148078be2
-  zh: a9362f9bd224bc76
+  en: 6751f69e6f96b3a4
+  zh: d9b413c1f42de22d
 /deepseek-ai-dsh-canvas/model-experience/tool-call-history-and-results/kv-cache-effect:
   en: 884a79b4404602be
-  zh: acae01118c28e4a1
+  zh: 03d083972ee6f189
 /deepseek-ai-dsh-canvas/known-limitations-and-deferred-work:
-  en: eebfb3a8fd2ab722
-  zh: f38a3f3b28baa2fc
+  en: a769e84bf6b60fb2
+  zh: 0c4034f027153949
 /deepseek-ai-dsh-canvas/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
-  zh: 7aeea62eda52b83b
+  zh: ac12f60ab76f0814
