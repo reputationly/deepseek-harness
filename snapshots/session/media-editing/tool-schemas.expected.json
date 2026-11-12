@@ -147,8 +147,98 @@
                   "description": "Shots of a storyboard, or the shot insert_shot adds.",
                   "items": {
                     "type": "object",
-                    "additionalProperties": true,
-                    "properties": {}
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Shot id such as s1; omit to number the shots of the table."
+                      },
+                      "title": {
+                        "type": "string",
+                        "description": "Short title of the shot, at most 24 characters."
+                      },
+                      "shotSize": {
+                        "type": "string",
+                        "description": "Camera framing; gate G2 needs it before a video is generated.",
+                        "enum": [
+                          "extreme_wide",
+                          "wide",
+                          "full",
+                          "medium",
+                          "medium_close",
+                          "close",
+                          "extreme_close",
+                          "insert"
+                        ]
+                      },
+                      "visual": {
+                        "type": "string",
+                        "description": "What the frame shows."
+                      },
+                      "motion": {
+                        "type": "string",
+                        "description": "What the characters do in the shot."
+                      },
+                      "camera": {
+                        "type": "string",
+                        "description": "Camera movement, or 固定 when the camera holds."
+                      },
+                      "durationSec": {
+                        "type": "number",
+                        "description": "Shot length in seconds."
+                      },
+                      "characters": {
+                        "type": "array",
+                        "description": "Bible entry ids of the characters on screen.",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "scene": {
+                        "type": "string",
+                        "description": "Bible entry id of the location."
+                      },
+                      "props": {
+                        "type": "array",
+                        "description": "Bible entry ids of the props on screen.",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "dialogue": {
+                        "type": "array",
+                        "description": "Spoken lines of the shot, in order.",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "description": "Line id such as d1; omit to number the lines of the shot."
+                            },
+                            "speaker": {
+                              "type": "string",
+                              "description": "Bible entry id of the speaker; omit the field for narration."
+                            },
+                            "line": {
+                              "type": "string",
+                              "description": "What the speaker says, as written."
+                            }
+                          },
+                          "required": [
+                            "line"
+                          ]
+                        }
+                      },
+                      "sfx": {
+                        "type": "string",
+                        "description": "Sound effects of the shot."
+                      },
+                      "negative": {
+                        "type": "string",
+                        "description": "What this shot must not show."
+                      }
+                    }
                   }
                 },
                 "shot": {

@@ -205,3 +205,23 @@ describe('snapshot manifest', () => {
     expect(() => parseSnapshotManifest(source, 'case/snapshot.yml')).toThrow(message)
   })
 })
+
+describe('process timeout', () => {
+  it('accepts a positive integer and rejects anything else', () => {
+    expect(parseSnapshotManifest(`
+version: 1
+profile: headless
+timeoutMs: 600000
+`).timeoutMs).toBe(600000)
+    expect(() => parseSnapshotManifest(`
+version: 1
+profile: headless
+timeoutMs: 0
+`)).toThrow('manifest.timeoutMs must be a positive integer')
+    expect(() => parseSnapshotManifest(`
+version: 1
+profile: headless
+timeoutMs: 1.5
+`)).toThrow('manifest.timeoutMs must be a positive integer')
+  })
+})

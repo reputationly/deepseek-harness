@@ -74,3 +74,20 @@ describe('workspace snapshots', () => {
     ])
   })
 })
+
+describe('wall-clock values', () => {
+  it('tokenizes ISO timestamps in text files so a replayed run matches', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'dsh-workspace-timestamp-'))
+    try {
+      await writeFile(join(directory, 'canvas.json'), '{"createdAt":"2026-11-12T09:40:15.464Z","other":"2026-11-12T09:40:15Z"}')
+      const captured = await captureWorkspaceSnapshot(directory)
+      expect(captured).toEqual([{
+        path: 'canvas.json',
+        kind: 'text',
+        content: '{"createdAt":"{{timestamp}}","other":"{{timestamp}}"}',
+      }])
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+})

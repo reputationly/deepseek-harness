@@ -114,6 +114,8 @@ export interface SnapshotManifest {
   permission?: SnapshotPermission
   /** Test-only string environment additions needed by the declared composition. */
   environment?: Record<string, string>
+  /** Process timeout in milliseconds for a scenario whose live recording outlasts the default. */
+  timeoutMs?: number
   /** Workspace setup and external final-state ownership. */
   workspace?: SnapshotWorkspaceManifest
   /** Exceptional controller input absent for ordinary log-driven scenarios. */
@@ -219,6 +221,7 @@ export function parseSnapshotManifest(source: string, path = 'snapshot.yml'): Sn
       'platform',
       'permission',
       'environment',
+      'timeoutMs',
       'workspace',
       'input',
       'session',
@@ -313,6 +316,14 @@ export function parseSnapshotManifest(source: string, path = 'snapshot.yml'): Sn
         throw new Error('manifest.environment must map uppercase environment names to strings')
       }
       environment = value as Record<string, string>
+    }
+
+    let timeoutMs: number | undefined
+    if (root.timeoutMs !== undefined) {
+      if (typeof root.timeoutMs !== 'number' || !Number.isInteger(root.timeoutMs) || root.timeoutMs < 1) {
+        throw new Error('manifest.timeoutMs must be a positive integer')
+      }
+      timeoutMs = root.timeoutMs
     }
 
     let workspace: SnapshotWorkspaceManifest | undefined
@@ -420,6 +431,7 @@ export function parseSnapshotManifest(source: string, path = 'snapshot.yml'): Sn
       ...(platform === undefined ? {} : { platform }),
       ...(permission === undefined ? {} : { permission }),
       ...(environment === undefined ? {} : { environment }),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
       ...(workspace === undefined ? {} : { workspace }),
       ...(input === undefined ? {} : { input }),
       ...(session === undefined ? {} : { session }),
