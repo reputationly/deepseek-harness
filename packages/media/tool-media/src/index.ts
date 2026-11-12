@@ -9,7 +9,8 @@
  * @module @deepseek-ai/dsh-tool-media
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -200,7 +201,9 @@ async function voiceReference(voice: string): Promise<string> {
 async function writeArtifact(root: string, prefix: string, contentType: string, bytes: Uint8Array): Promise<string> {
   const directory = isAbsolute(root) ? root : join(process.cwd(), root)
   await mkdir(directory, { recursive: true })
-  const path = join(directory, `${prefix}-${String(Date.now())}${extensionFor(contentType)}`)
+  // Content-addressed names keep two runs that produce the same bytes in the same place.
+  const digest = createHash('sha256').update(bytes).digest('hex').slice(0, 8)
+  const path = join(directory, `${prefix}-${digest}${extensionFor(contentType)}`)
   await writeFile(path, bytes)
   return path
 }
@@ -332,8 +335,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     tailFrame: async (path) => {
       const directory = isAbsolute(resolved.outputDir) ? resolved.outputDir : join(process.cwd(), resolved.outputDir)
       await mkdir(directory, { recursive: true })
-      const target = join(directory, `tail-${String(Date.now())}.png`)
-      await ffmpeg.exec(['-sseof', '-0.05', '-i', path, '-frames:v', '1', '-y', target])
+      const scratch = join(directory, 'tail-scratch.png')
+      await ffmpeg.exec(['-sseof', '-0.05', '-i', path, '-frames:v', '1', '-y', scratch])
+      const bytes = await readFile(scratch)
+      const target = join(directory, `tail-${createHash('sha256').update(bytes).digest('hex').slice(0, 8)}.png`)
+      await rename(scratch, target)
       return target
     },
   })

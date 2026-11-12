@@ -1,0 +1,1445 @@
+{
+  "initial": [
+    {
+      "name": "apply_patch",
+      "description": "Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "Patch text: start with *** Begin Patch and end with *** End Patch. Use *** Add File: path with + lines; *** Update File: path, optionally followed by *** Move to: path, with @@ or @@ context and space-prefixed context, + added, or - removed lines; *** End of File anchors the last hunk to the file end. Use *** Delete File: path to delete. Paths are relative to the Session working directory."
+          },
+          "sandbox_permissions": {
+            "type": "string",
+            "description": "The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.",
+            "enum": [
+              "workspace-write",
+              "danger-full-access"
+            ]
+          },
+          "justification": {
+            "type": "string",
+            "description": "Required with sandbox_permissions: one sentence for the user explaining why this exact file operation needs the wider access. Use the language of the user’s current request."
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    {
+      "name": "canvas_edit",
+      "description": "Edit the project canvas with an ordered list of operations applied together. Nodes are positioned automatically. baseRevision is the revision canvas_get returned; a stale revision is refused instead of overwriting newer work. An operation that cannot apply is skipped and reported while the others still apply.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operations": {
+            "type": "array",
+            "description": "Operations in the order they apply.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "description": "add creates a node from type plus text, path, shots, or prompt. update changes title, text, or path. set_gen changes how a media node generates and takes params where null deletes a parameter. set_text and set_shots store a new version; update_shot, insert_shot, remove_shot, and move_shot edit one shot. set_version switches the active version. connect and disconnect take from and to, with an optional role. reorder_refs rewrites the reference order. group frames nodes under title; ungroup dissolves the group.",
+                  "enum": [
+                    "add",
+                    "update",
+                    "remove",
+                    "set_gen",
+                    "set_text",
+                    "set_shots",
+                    "update_shot",
+                    "insert_shot",
+                    "remove_shot",
+                    "move_shot",
+                    "set_version",
+                    "connect",
+                    "disconnect",
+                    "reorder_refs",
+                    "group",
+                    "ungroup"
+                  ]
+                },
+                "ref": {
+                  "type": "string",
+                  "description": "Name for the node that add or group creates, usable wherever a node id is expected later in this call."
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "image",
+                    "video",
+                    "audio",
+                    "text",
+                    "script",
+                    "storyboard",
+                    "timeline"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Short label shown on the node or group."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Content of a text or script node."
+                },
+                "path": {
+                  "type": "string",
+                  "description": "File of an image, video, or audio node."
+                },
+                "group": {
+                  "type": "string",
+                  "description": "Existing group the added node joins."
+                },
+                "node": {
+                  "type": "string",
+                  "description": "Node that the operation acts on."
+                },
+                "from": {
+                  "type": "string",
+                  "description": "Node the edge starts at: the input or source material."
+                },
+                "to": {
+                  "type": "string",
+                  "description": "Node the edge points to: what was made from, or depends on."
+                },
+                "nodes": {
+                  "type": "array",
+                  "description": "Nodes that the new group frames.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "bible": {
+                  "type": "string",
+                  "description": "Bible entry this image belongs to."
+                },
+                "prompt": {
+                  "type": "string",
+                  "description": "Prompt of a generated node; may mention bible entries as @name."
+                },
+                "model": {
+                  "type": "string",
+                  "description": "Model id for generation."
+                },
+                "genKind": {
+                  "type": "string",
+                  "description": "What the node generates.",
+                  "enum": [
+                    "image",
+                    "video",
+                    "speech",
+                    "music"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "description": "Generation parameters; null deletes one.",
+                  "additionalProperties": true,
+                  "properties": {}
+                },
+                "shots": {
+                  "type": "array",
+                  "description": "Shots of a storyboard, or the shot insert_shot adds.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Shot id such as s1; omit to number the shots of the table."
+                      },
+                      "title": {
+                        "type": "string",
+                        "description": "Short title of the shot, at most 24 characters."
+                      },
+                      "shotSize": {
+                        "type": "string",
+                        "description": "Camera framing; gate G2 needs it before a video is generated.",
+                        "enum": [
+                          "extreme_wide",
+                          "wide",
+                          "full",
+                          "medium",
+                          "medium_close",
+                          "close",
+                          "extreme_close",
+                          "insert"
+                        ]
+                      },
+                      "visual": {
+                        "type": "string",
+                        "description": "What the frame shows."
+                      },
+                      "motion": {
+                        "type": "string",
+                        "description": "What the characters do in the shot."
+                      },
+                      "camera": {
+                        "type": "string",
+                        "description": "Camera movement, or 固定 when the camera holds."
+                      },
+                      "durationSec": {
+                        "type": "number",
+                        "description": "Shot length in seconds."
+                      },
+                      "characters": {
+                        "type": "array",
+                        "description": "Bible entry ids of the characters on screen.",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "scene": {
+                        "type": "string",
+                        "description": "Bible entry id of the location."
+                      },
+                      "props": {
+                        "type": "array",
+                        "description": "Bible entry ids of the props on screen.",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "dialogue": {
+                        "type": "array",
+                        "description": "Spoken lines of the shot, in order.",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "description": "Line id such as d1; omit to number the lines of the shot."
+                            },
+                            "speaker": {
+                              "type": "string",
+                              "description": "Bible entry id of the speaker; omit the field for narration."
+                            },
+                            "line": {
+                              "type": "string",
+                              "description": "What the speaker says, as written."
+                            }
+                          },
+                          "required": [
+                            "line"
+                          ]
+                        }
+                      },
+                      "sfx": {
+                        "type": "string",
+                        "description": "Sound effects of the shot."
+                      },
+                      "negative": {
+                        "type": "string",
+                        "description": "What this shot must not show."
+                      }
+                    }
+                  }
+                },
+                "shot": {
+                  "type": "string",
+                  "description": "Shot id that the operation acts on."
+                },
+                "patch": {
+                  "type": "object",
+                  "description": "Shot fields update_shot replaces.",
+                  "additionalProperties": true,
+                  "properties": {}
+                },
+                "after": {
+                  "type": "string",
+                  "description": "Shot id the moved or inserted shot follows; omit to append."
+                },
+                "version": {
+                  "type": "string",
+                  "description": "Version id set_version activates."
+                },
+                "role": {
+                  "type": "string",
+                  "description": "What the edge supplies. Inferred from node types when omitted.",
+                  "enum": [
+                    "prompt",
+                    "ref",
+                    "first_frame",
+                    "last_frame",
+                    "audio",
+                    "source"
+                  ]
+                },
+                "order": {
+                  "type": "integer",
+                  "description": "Position among the reference inputs."
+                },
+                "sources": {
+                  "type": "array",
+                  "description": "Reference sources in the order reorder_refs applies.",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "op"
+              ]
+            }
+          },
+          "baseRevision": {
+            "type": "integer",
+            "description": "Revision canvas_get returned for the canvas this call edits."
+          }
+        },
+        "required": [
+          "operations",
+          "baseRevision"
+        ]
+      }
+    },
+    {
+      "name": "canvas_generate",
+      "description": "Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one video node per segment. A large plan returns needs_confirmation with a token; show the totals to the user and call again with that token once they agree.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "nodeIds": {
+            "type": "array",
+            "description": "Image, video, audio, or storyboard node ids.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confirmToken": {
+            "type": "string",
+            "description": "Token from a previous needs_confirmation result, after the user agreed."
+          }
+        },
+        "required": [
+          "nodeIds"
+        ]
+      }
+    },
+    {
+      "name": "canvas_get",
+      "description": "Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges. Nodes report their active version, generation inputs, and whether their storyboard or inputs changed since they were made.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "description": "Node or group ids to read in full. Omit to list the whole canvas with long text shortened.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "detail": {
+            "type": "string",
+            "description": "summary shortens long text; full keeps it and returns the shots of each storyboard.",
+            "enum": [
+              "summary",
+              "full"
+            ]
+          },
+          "include": {
+            "type": "array",
+            "description": "bible adds the shared style and entries; project adds the production format and episodes; production adds the stage reached.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "bible",
+                "project",
+                "production"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "create_goal",
+      "description": "Create a persisted goal that keeps this session working across automatic continuation rounds. Use it when the direct human request is a long-running objective, even if the user did not say \"goal\"; not for single-turn work.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "objective": {
+            "type": "string",
+            "description": "The concrete completion objective inferred from the direct human request."
+          },
+          "max_goal_rounds": {
+            "type": "number",
+            "description": "Optional positive safe-integer limit on automatic continuation rounds."
+          }
+        },
+        "required": [
+          "objective"
+        ]
+      }
+    },
+    {
+      "name": "edit",
+      "description": "Edit an existing UTF-8 text file by replacing literal text.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to edit, resolved by the filesystem backend. Provide `file_path` before `old_string` and `new_string` in the arguments."
+          },
+          "old_string": {
+            "type": "string",
+            "description": "Literal text to replace."
+          },
+          "new_string": {
+            "type": "string",
+            "description": "Literal replacement text. Use an empty string to delete the match."
+          },
+          "replace_all": {
+            "type": "boolean",
+            "description": "Replace all matches. Defaults to false; when false, old_string must appear exactly once."
+          },
+          "sandbox_permissions": {
+            "type": "string",
+            "description": "The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.",
+            "enum": [
+              "workspace-write",
+              "danger-full-access"
+            ]
+          },
+          "justification": {
+            "type": "string",
+            "description": "Required with sandbox_permissions: one sentence for the user explaining why this exact file operation needs the wider access. Use the language of the user’s current request."
+          }
+        },
+        "required": [
+          "file_path",
+          "old_string",
+          "new_string"
+        ]
+      }
+    },
+    {
+      "name": "ffmpeg",
+      "description": "Edit local media files with FFmpeg. Pass arguments as an array without an output path; -i paths are absolute or relative to the project directory. The tool chooses the output file and adds it to the project canvas when available. Extracted audio, frames, and clips become new nodes; do not call canvas_edit to add them again. Use merge_videos for video concatenation. For complex edits, load the media-editing skill first. Use -f null for a dry run; it creates no file and no canvas node.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "description": "FFmpeg arguments without an output path; include local inputs with -i.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "input_node_ids": {
+            "type": "array",
+            "description": "Canvas node ids aligned with -i order; use an empty string for an unknown source.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "output_type": {
+            "type": "string",
+            "default": "video",
+            "enum": [
+              "video",
+              "audio",
+              "image"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Optional title for the result canvas node."
+          }
+        },
+        "required": [
+          "args"
+        ]
+      }
+    },
+    {
+      "name": "generate_image",
+      "description": "Generate an image from a text prompt, or edit and combine local reference images. When the result has status needs_choice nothing was generated: ask the user the listed questions, then call again.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "What the image should show, or how to change the references."
+          },
+          "referenceImages": {
+            "type": "array",
+            "description": "Local image files to edit or combine. Omit to generate from the prompt alone.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "referenceNodes": {
+            "type": "array",
+            "description": "Canvas image nodes or groups to edit or combine; a group stands for all of its images.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "aspectRatio": {
+            "type": "string",
+            "description": "Aspect ratio such as 16:9, 9:16, 1:1, or adaptive. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+          },
+          "resolution": {
+            "type": "string",
+            "description": "Resolution tier such as 1K or 2K. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "generate_music",
+      "description": "Generate a music track. The prompt must describe genre, instrumentation, tempo, and mood.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "What to produce, including style, instruments, tempo, and mood for music."
+          },
+          "lyrics": {
+            "type": "string",
+            "description": "Optional lyrics for a music request."
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "generate_speech",
+      "description": "Synthesize speech from text with a reference voice sample.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Text to speak."
+          },
+          "voice": {
+            "type": "string",
+            "description": "Reference voice: an audio file path, HTTP(S) URL, or data URI. The clip must be 30 seconds or shorter."
+          }
+        },
+        "required": [
+          "text",
+          "voice"
+        ]
+      }
+    },
+    {
+      "name": "generate_video",
+      "description": "Generate a short video from a text prompt, from a first frame (and optional last frame), or from reference images. When the result has status needs_choice nothing was generated: ask the user the listed questions, then call again.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "What happens in the video: subject, motion, camera, and style."
+          },
+          "aspectRatio": {
+            "type": "string",
+            "description": "Aspect ratio such as 16:9, 9:16, 1:1, or adaptive. Ignored with frames. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+          },
+          "resolution": {
+            "type": "string",
+            "description": "Resolution tier such as 768P or 2K. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+          },
+          "duration": {
+            "type": "string",
+            "description": "Length in seconds, such as 5. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+          },
+          "audio": {
+            "type": "boolean",
+            "description": "Whether the video has sound. Pass a value only when the user stated it in this conversation; never fill one in yourself."
+          },
+          "firstFrame": {
+            "type": "string",
+            "description": "Local image file used as the first frame."
+          },
+          "lastFrame": {
+            "type": "string",
+            "description": "Local image file used as the last frame; needs firstFrame."
+          },
+          "referenceImages": {
+            "type": "array",
+            "description": "Local image files whose subject or product the video keeps consistent; not combined with frames.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "firstFrameNode": {
+            "type": "string",
+            "description": "Canvas image node used as the first frame, instead of firstFrame."
+          },
+          "lastFrameNode": {
+            "type": "string",
+            "description": "Canvas image node used as the last frame, instead of lastFrame."
+          },
+          "referenceNodes": {
+            "type": "array",
+            "description": "Canvas image nodes or groups used like referenceImages; a group stands for all of its images.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "get_goal",
+      "description": "Read the current session goal, including the id and revision that update_goal requires.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "interrupt_agent",
+      "description": "Ask a subagent to stop its current work. This call returns without waiting for it to stop. You can continue a local subagent's conversation later with send_message. External executions stop permanently and cannot receive follow-ups. Subagents it started will keep running.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "The name of an agent created under you: your direct child or a deeper descendant."
+          }
+        },
+        "required": [
+          "agent"
+        ]
+      }
+    },
+    {
+      "name": "job_kill",
+      "description": "Request cancellation of a running background job.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Job id returned by the tool that started the background work."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional short reason, recorded in the log and forwarded to the job."
+          }
+        },
+        "required": [
+          "job_id"
+        ]
+      }
+    },
+    {
+      "name": "job_list",
+      "description": "List your background jobs (running and finished) with their ids, kinds, and statuses.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "job_output",
+      "description": "Read a background job: output since the previous read for stream jobs, or the result of a finished final-output job.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Job id returned by the tool that started the background work."
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "Block until the job finishes or the timeout expires; a timed-out wait leaves the job running. Defaults to false."
+          },
+          "timeout_ms": {
+            "type": "number",
+            "description": "Max wait in milliseconds with wait: true. Defaults to and is capped by configuration."
+          }
+        },
+        "required": [
+          "job_id"
+        ]
+      }
+    },
+    {
+      "name": "list_agents",
+      "description": "List your entire subagent tree: the root agent and all reachable continuable descendants, including yourself. Rows carry names, descriptions, and status. A descendant's name is its path from the root, such as reviewer/checker. You can message any other agent in the subagent tree. running means it is working; inactive means no turn is executing; it does not indicate task completion, success, or failure. corrupt, unsupported, or unavailable means this row's own descendants could not be read; the row itself is still a member you can message. While you remain active, you will be notified when a direct child finishes; there is no need to keep checking its status. Use send_message to continue the conversation.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "media_probe",
+      "description": "Probe a local media file or canvas media node before editing. Returns duration, container, and stream codecs and dimensions/audio properties.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute path or path relative to the project directory."
+          },
+          "node_id": {
+            "type": "string",
+            "description": "Canvas image, video, or audio node id."
+          }
+        }
+      }
+    },
+    {
+      "name": "merge_videos",
+      "description": "Join two or more local video files in order. Streams are probed, normalized to a shared resolution and frame rate, and missing or short audio is padded with silence. Complex edits should load the media-editing skill.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "video_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "input_node_ids": {
+            "type": "array",
+            "description": "Canvas node ids aligned with video_paths; use an empty string for an unknown source.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scale_mode": {
+            "type": "string",
+            "default": "first",
+            "enum": [
+              "first",
+              "max",
+              "min",
+              "custom"
+            ]
+          },
+          "target_width": {
+            "type": "integer"
+          },
+          "target_height": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "video_paths"
+        ]
+      }
+    },
+    {
+      "name": "read",
+      "description": "Read a UTF-8 text file and return line-numbered content.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to read, resolved by the filesystem backend."
+          },
+          "offset": {
+            "type": "number",
+            "description": "1-based first line to return. Defaults to 1."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of lines to return. Defaults to 2000."
+          }
+        },
+        "required": [
+          "file_path"
+        ]
+      }
+    },
+    {
+      "name": "read_image",
+      "description": "Read a PNG/JPEG/WebP/GIF file and return the image itself. Large images are downscaled automatically; do not install image libraries or create thumbnails to inspect an image.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to the image file, resolved by the filesystem backend."
+          }
+        },
+        "required": [
+          "file_path"
+        ]
+      }
+    },
+    {
+      "name": "send_message",
+      "description": "Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Returns delivery confirmation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "The name of another agent in your subagent tree, as shown by list_agents."
+          },
+          "message": {
+            "type": "string",
+            "description": "The message to deliver to the agent."
+          }
+        },
+        "required": [
+          "agent",
+          "message"
+        ]
+      }
+    },
+    {
+      "name": "skill",
+      "description": "Load the full instructions for a skill. Call it before acting on a task that names or clearly matches a skill in the session skill catalog.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The exact skill name from the available skills list."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "storyboard_voice",
+      "description": "Create one audio node per spoken line of the given storyboards and synthesize them, reusing nodes that already voice a line. Returns needs_confirmation with a token when the line count crosses the deployment limit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "storyboards": {
+            "type": "array",
+            "description": "Storyboard node ids.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confirmToken": {
+            "type": "string",
+            "description": "Token from a previous needs_confirmation result, after the user agreed."
+          }
+        },
+        "required": [
+          "storyboards"
+        ]
+      }
+    },
+    {
+      "name": "studio_bible_update",
+      "description": "Update the shared bible: the logline, the visual style, and the characters, locations, and props every episode draws on. Entries are matched by id; removing an entry a storyboard still uses is refused.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "logline": {
+            "type": "string",
+            "description": "One-sentence premise of the production."
+          },
+          "style": {
+            "type": "object",
+            "description": "Style fields to replace.",
+            "additionalProperties": false,
+            "properties": {
+              "visual": {
+                "type": "string"
+              },
+              "palette": {
+                "type": "string"
+              },
+              "aspect": {
+                "type": "string",
+                "enum": [
+                  "16:9",
+                  "9:16",
+                  "1:1",
+                  "4:3",
+                  "3:4"
+                ]
+              },
+              "director": {
+                "type": "string"
+              },
+              "genre": {
+                "type": "string"
+              },
+              "tone": {
+                "type": "string"
+              }
+            }
+          },
+          "upsert": {
+            "type": "array",
+            "description": "Full entries to add or replace. An entry with an existing id replaces it.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "character",
+                    "location",
+                    "prop"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "description": {
+                  "type": "string"
+                },
+                "imageNodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "voice": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "type": "string"
+                    },
+                    "voice": {
+                      "type": "string"
+                    },
+                    "sampleNode": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "name",
+                "description"
+              ]
+            }
+          },
+          "remove": {
+            "type": "array",
+            "description": "Entry ids to delete.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "baseRevision": {
+            "type": "integer",
+            "description": "Bible revision the caller read; a stale one is refused."
+          }
+        }
+      }
+    },
+    {
+      "name": "studio_episode_create",
+      "description": "Add an episode to the project and write it to its own canvas file.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Episode title."
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "studio_episode_use",
+      "description": "Switch which episode this conversation edits. Later canvas calls act on that episode.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "episode": {
+            "type": "string",
+            "description": "Episode id from canvas_get or studio_episode_create."
+          }
+        },
+        "required": [
+          "episode"
+        ]
+      }
+    },
+    {
+      "name": "studio_expand_script",
+      "description": "Lay a script out on the canvas: one group per scene, holding a text node with the scene body and an empty storyboard that reads it as its prompt. Scenes already laid out are skipped.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "script": {
+            "type": "string",
+            "description": "Script node id whose active version holds the scenes."
+          },
+          "scenes": {
+            "type": "array",
+            "description": "Scene numbers to lay out; omit for every scene.",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "baseRevision": {
+            "type": "integer",
+            "description": "Canvas revision the caller read."
+          }
+        },
+        "required": [
+          "script",
+          "baseRevision"
+        ]
+      }
+    },
+    {
+      "name": "studio_project_create",
+      "description": "Create the project metadata for a production: its format, title, and output specification. The canvas that already exists becomes episode 1 without moving the file.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "description": "Kind of production.",
+            "enum": [
+              "drama",
+              "comic",
+              "mv",
+              "free"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Project title shown in the studio header."
+          },
+          "aspect": {
+            "type": "string",
+            "description": "Frame aspect of every episode.",
+            "enum": [
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:3",
+              "3:4"
+            ]
+          },
+          "resolution": {
+            "type": "string",
+            "description": "Output resolution, such as 1080p."
+          },
+          "fps": {
+            "type": "number",
+            "description": "Frames per second of the final cut.",
+            "enum": [
+              24,
+              25,
+              30
+            ]
+          }
+        },
+        "required": [
+          "format",
+          "title",
+          "aspect",
+          "resolution",
+          "fps"
+        ]
+      }
+    },
+    {
+      "name": "studio_stage",
+      "description": "Read or advance the production stage of the episode this conversation edits. Stages run brief, bible, assets, script, storyboard, generating, post, delivered. Moving back or skipping a stage needs an override reason.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "status reports the stage; advance moves it.",
+            "enum": [
+              "status",
+              "advance"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "description": "Stage to advance to.",
+            "enum": [
+              "brief",
+              "bible",
+              "assets",
+              "script",
+              "storyboard",
+              "generating",
+              "post",
+              "delivered"
+            ]
+          },
+          "gate": {
+            "type": "string",
+            "description": "Gate to record as overridden when the stage move needs one.",
+            "enum": [
+              "G1_bible_first",
+              "G2_storyboard_quality",
+              "G3_one_video_per_shots",
+              "G4_stage_order",
+              "G5_destructive",
+              "tail_chain"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the override is acceptable; recorded with the gate."
+          },
+          "baseRevision": {
+            "type": "integer",
+            "description": "Production revision the caller read; a stale one is refused."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "subagent",
+      "description": "Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. This tool starts an independently managed subagent and immediately returns its name. If you are still online when it finishes, the runtime automatically delivers its completion notice. The notice includes the final answer unless the child sent you a message just before finishing. Use `send_message` to steer it while running or continue its conversation after it finishes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Initial child working directory. Relative paths use your current directory; omitted inherits it. Later directory changes in either agent are independent."
+          },
+          "description": {
+            "type": "string",
+            "description": "A short (3-5 word) description of the delegated task, for display. Use the language of the user's current request."
+          },
+          "name": {
+            "type": "string",
+            "description": "Optional short name for the subagent, unique among the subagents you create: lower-case letters, digits, and hyphens, starting with a letter, at most 32 characters; lead is reserved for the root agent. Omitted names default to agent-1, agent-2, and so on."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "The complete, self-contained task for the subagent. It does not share this conversation's context, so include everything it needs."
+          }
+        },
+        "required": [
+          "description",
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "subagent_fork",
+      "description": "Delegate a task to a subagent that inherits this conversation: a child agent seeded with all completed turns so far (it does not see the current in-flight turn). Use this when the subtask builds on this conversation's context — a follow-up analysis, a review, a continuation — without consuming this conversation's context for the work itself. You receive its result, not its intermediate steps. This tool starts an independently managed subagent and immediately returns its name. If you are still online when it finishes, the runtime automatically delivers its completion notice. The notice includes the final answer unless the child sent you a message just before finishing. Use `send_message` to steer it while running or continue its conversation after it finishes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Initial child working directory. Relative paths use your current directory; omitted inherits it. Later directory changes in either agent are independent."
+          },
+          "description": {
+            "type": "string",
+            "description": "A short (3-5 word) description of the delegated task, for display. Use the language of the user's current request."
+          },
+          "name": {
+            "type": "string",
+            "description": "Optional short name for the subagent, unique among the subagents you create: lower-case letters, digits, and hyphens, starting with a letter, at most 32 characters; lead is reserved for the root agent. Omitted names default to agent-1, agent-2, and so on."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "The task for the subagent. It already sees this conversation's completed turns, so build on them freely and state only what is new."
+          }
+        },
+        "required": [
+          "description",
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "todo_write",
+      "description": "Record and update a task list to plan multi-step work and show progress; skip it for trivial single-step tasks. Add one todo per concrete step before you start. While work remains, keep the todos being worked on `in_progress`, several only when work runs in parallel. Mark each todo `completed` as soon as it is done.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "todos": {
+            "type": "array",
+            "description": "The COMPLETE task list, replacing any previous list.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "type": "string",
+                  "description": "What the task is — a short imperative line."
+                },
+                "status": {
+                  "type": "string",
+                  "description": "pending (not started) | in_progress (now) | completed (done).",
+                  "enum": [
+                    "pending",
+                    "in_progress",
+                    "completed"
+                  ]
+                }
+              },
+              "required": [
+                "content",
+                "status"
+              ]
+            }
+          }
+        },
+        "required": [
+          "todos"
+        ]
+      }
+    },
+    {
+      "name": "update_goal",
+      "description": "Update the current goal.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "goal_id": {
+            "type": "string",
+            "description": "Exact id returned by get_goal."
+          },
+          "revision": {
+            "type": "number",
+            "description": "Exact positive revision returned by get_goal."
+          },
+          "action": {
+            "type": "string",
+            "description": "edit, pause, and resume require a direct top-level human request. complete and blocked are also allowed during an automatic continuation of this goal; blocked is rejected before the configured minimum round count.",
+            "enum": [
+              "edit",
+              "pause",
+              "resume",
+              "complete",
+              "blocked"
+            ]
+          },
+          "objective": {
+            "type": "string",
+            "description": "Replacement objective; valid only with action edit."
+          },
+          "max_goal_rounds": {
+            "type": "number",
+            "description": "Replacement cap; valid only with action edit."
+          },
+          "blocked_reason": {
+            "type": "string",
+            "description": "Required only with action blocked: the concrete condition that persisted across rounds and blocks progress."
+          }
+        },
+        "required": [
+          "goal_id",
+          "revision",
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "wait_agent",
+      "description": "Wait for input at your next step, including agent messages, completion notifications, and user steering. Returns immediately if new input is pending. `timedOut: false` means new input is pending. Pending input is delivered to the model after code execution finishes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Wait duration in milliseconds, from 10000 through 3600000. Defaults to 30000."
+          }
+        }
+      }
+    },
+    {
+      "name": "web_fetch",
+      "description": "Fetch the content of a specific HTTP(S) URL and return it decoded to text.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The HTTP(S) URL to fetch."
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "web_search",
+      "description": "Search the web for current information. Returns an optional summary answer and a list of source URLs.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "queries": {
+            "type": "array",
+            "description": "1–10 search queries; their results are merged.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "queries"
+        ]
+      }
+    },
+    {
+      "name": "workflow",
+      "description": "Run a JavaScript workflow script that orchestrates subagents at scale. Use this for work that fans out across many independent pieces — an audit over many files, a migration, multi-angle research, adversarial verification of findings — where you write the orchestration as a script instead of delegating turn by turn.\n\nScript-body hooks:\n- `agent(prompt, opts?): Promise<any>` — run one subagent to completion. Without `opts.schema` it resolves to the child's final text; with `opts.schema` (an object-rooted JSON Schema using ONLY type/properties/required/additionalProperties/items/enum/const/oneOf) it resolves to the validated object. Resolves `null` when the child fails (filter with `.filter(Boolean)`). Other opts: `label` (display), `phase` (progress group), and independent `provider`/`model` LLM target overrides.\n- `pipeline(items, ...stages): Promise<any[]>` — run each item through the stages independently with NO barrier between stages (prefer this for multi-stage work). Each stage receives `(prev, item, index)`. A stage throw drops that ITEM to `null` and skips its remaining stages.\n- `parallel(thunks): Promise<any[]>` — run zero-argument functions concurrently and await ALL of them (a barrier; use only when a stage genuinely needs every prior result together). A throwing thunk resolves to `null`.\n- `phase(title)` — start a progress phase; `log(message)` — narrate progress; `args` — the tool call's `args` input, verbatim.\n\nMisused hooks (bad arguments, unknown options, unsupported schemas, tripped caps) end the whole script instead of producing `null`. The script has no filesystem, network, timer, or Node.js APIs; the agents do the work.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "script": {
+            "type": "string",
+            "description": "The plain JavaScript body, not TypeScript and without an `export const meta` statement; top-level await is allowed. End with `return <value>`; the JSON-serializable value is this tool's result."
+          },
+          "meta": {
+            "type": "object",
+            "description": "The workflow identity as plain JSON, not code.",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Short kebab-case workflow name."
+              },
+              "description": {
+                "type": "string",
+                "description": "One-line description of what the workflow does."
+              },
+              "whenToUse": {
+                "type": "string",
+                "description": "Optional guidance on when this workflow applies."
+              },
+              "phases": {
+                "type": "array",
+                "description": "Optional phase declarations matched by phase() calls.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "The phase title phase() calls match by exact string."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Optional one-line description of the phase."
+                    },
+                    "provider": {
+                      "type": "string",
+                      "description": "Optional provider override this phase is expected to use."
+                    },
+                    "model": {
+                      "type": "string",
+                      "description": "Optional model override this phase is expected to use."
+                    }
+                  },
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "description"
+            ]
+          },
+          "args": {
+            "type": "object",
+            "description": "Optional JSON input exposed to the script as the `args` global (wrap a bare list as a field, e.g. {\"files\": [...]}).",
+            "additionalProperties": true
+          },
+          "run_in_background": {
+            "type": "boolean",
+            "description": "Run as a background job: return a job id immediately instead of waiting; the return value arrives with the completion notice."
+          }
+        },
+        "required": [
+          "script",
+          "meta"
+        ]
+      }
+    },
+    {
+      "name": "working_directory",
+      "description": "Read the current working directory, or change it with cd. Relative paths use the current directory. Existing shells and running processes keep their own directories.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cd": {
+            "type": "string",
+            "description": "Existing directory to enter. Omit to read the current directory."
+          }
+        }
+      }
+    },
+    {
+      "name": "write",
+      "description": "Create or fully replace a UTF-8 text file.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to write, resolved by the filesystem backend. Provide `file_path` before `content` in the arguments."
+          },
+          "content": {
+            "type": "string",
+            "description": "Full UTF-8 text content to write."
+          },
+          "sandbox_permissions": {
+            "type": "string",
+            "description": "The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.",
+            "enum": [
+              "workspace-write",
+              "danger-full-access"
+            ]
+          },
+          "justification": {
+            "type": "string",
+            "description": "Required with sandbox_permissions: one sentence for the user explaining why this exact file operation needs the wider access. Use the language of the user’s current request."
+          }
+        },
+        "required": [
+          "file_path",
+          "content"
+        ]
+      }
+    }
+  ],
+  "changes": []
+}

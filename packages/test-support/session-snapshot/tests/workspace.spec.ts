@@ -91,3 +91,16 @@ describe('wall-clock values', () => {
     }
   })
 })
+
+describe('workspace paths', () => {
+  it('tokenizes the workspace root so a replayed run matches', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'dsh-workspace-root-'))
+    try {
+      await writeFile(join(directory, 'canvas.json'), JSON.stringify({ path: join(directory, 'media', 'a.mp4') }))
+      const captured = await captureWorkspaceSnapshot(directory)
+      expect(captured).toEqual([{ path: 'canvas.json', kind: 'text', content: '{"path":"{{cwd}}/media/a.mp4"}' }])
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+})

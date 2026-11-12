@@ -17,6 +17,7 @@
  * @module @deepseek-ai/dsh-session-snapshot
  */
 
+export { startFakeGateway, type FakeGateway } from './fake-gateway.ts'
 export {
   redactSessionSnapshotIds,
 } from './identity.ts'

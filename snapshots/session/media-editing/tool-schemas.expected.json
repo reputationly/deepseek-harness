@@ -300,6 +300,29 @@
       }
     },
     {
+      "name": "canvas_generate",
+      "description": "Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one video node per segment. A large plan returns needs_confirmation with a token; show the totals to the user and call again with that token once they agree.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "nodeIds": {
+            "type": "array",
+            "description": "Image, video, audio, or storyboard node ids.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confirmToken": {
+            "type": "string",
+            "description": "Token from a previous needs_confirmation result, after the user agreed."
+          }
+        },
+        "required": [
+          "nodeIds"
+        ]
+      }
+    },
+    {
       "name": "canvas_get",
       "description": "Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges. Nodes report their active version, generation inputs, and whether their storyboard or inputs changed since they were made.",
       "parameters": {
@@ -322,12 +345,13 @@
           },
           "include": {
             "type": "array",
-            "description": "bible adds the shared style and entries; project adds the production format and episodes.",
+            "description": "bible adds the shared style and entries; project adds the production format and episodes; production adds the stage reached.",
             "items": {
               "type": "string",
               "enum": [
                 "bible",
-                "project"
+                "project",
+                "production"
               ]
             }
           }
@@ -840,6 +864,29 @@
       }
     },
     {
+      "name": "storyboard_voice",
+      "description": "Create one audio node per spoken line of the given storyboards and synthesize them, reusing nodes that already voice a line. Returns needs_confirmation with a token when the line count crosses the deployment limit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "storyboards": {
+            "type": "array",
+            "description": "Storyboard node ids.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confirmToken": {
+            "type": "string",
+            "description": "Token from a previous needs_confirmation result, after the user agreed."
+          }
+        },
+        "required": [
+          "storyboards"
+        ]
+      }
+    },
+    {
       "name": "studio_bible_update",
       "description": "Update the shared bible: the logline, the visual style, and the characters, locations, and props every episode draws on. Entries are matched by id; removing an entry a storyboard still uses is refused.",
       "parameters": {
@@ -1066,6 +1113,60 @@
           "aspect",
           "resolution",
           "fps"
+        ]
+      }
+    },
+    {
+      "name": "studio_stage",
+      "description": "Read or advance the production stage of the episode this conversation edits. Stages run brief, bible, assets, script, storyboard, generating, post, delivered. Moving back or skipping a stage needs an override reason.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "status reports the stage; advance moves it.",
+            "enum": [
+              "status",
+              "advance"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "description": "Stage to advance to.",
+            "enum": [
+              "brief",
+              "bible",
+              "assets",
+              "script",
+              "storyboard",
+              "generating",
+              "post",
+              "delivered"
+            ]
+          },
+          "gate": {
+            "type": "string",
+            "description": "Gate to record as overridden when the stage move needs one.",
+            "enum": [
+              "G1_bible_first",
+              "G2_storyboard_quality",
+              "G3_one_video_per_shots",
+              "G4_stage_order",
+              "G5_destructive",
+              "tail_chain"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the override is acceptable; recorded with the gate."
+          },
+          "baseRevision": {
+            "type": "integer",
+            "description": "Production revision the caller read; a stale one is refused."
+          }
+        },
+        "required": [
+          "action"
         ]
       }
     },

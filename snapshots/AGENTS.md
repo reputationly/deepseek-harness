@@ -14,6 +14,6 @@ An adapter-local symlink may expose a cross-profile prompt or schema sidecar onl
 
 Workspace seeds stay scenario-local. A scenario that mutates the workspace sets `workspace.final: true` and commits the complete result under `workspace.expected/`; use only the ignored `.empty` marker for an empty result. Record and refresh do not rewrite this independent oracle. Model prose and tool-result text do not prove the external effect. Captured text files replace ISO-8601 wall-clock values with `{{timestamp}}`, because a replayed run cannot reproduce the clock.
 
-A live recording that runs longer than the loader-smoke default sets `timeoutMs` in `snapshot.yml`; the harness uses it for both the child process and its own test deadline.
+A live recording that runs longer than the loader-smoke default sets `timeoutMs` in `snapshot.yml`; the harness uses it for both the child process and its own test deadline. A scenario that generates media sets `gateway: true` (canned gateway exported as `DSH_SNAPSHOT_GATEWAY`) and `ffmpeg: true` (stub executables exported as `DSH_SNAPSHOT_FFMPEG`/`DSH_SNAPSHOT_FFPROBE`), and lists the directories whose file names a replay cannot reproduce under `workspace.ignoredRootEntries`. Captured text also replaces the workspace root with `{{cwd}}` and epoch-millisecond file names with `{{epochMs}}`.
 
 `pnpm run test:snapshot` replays without writes. Recording and refresh use the explicit snapshot scripts, and every resulting JSONL, prompt, schema, protocol, UI, and workspace diff is reviewed before commit.
