@@ -309,9 +309,9 @@ export interface CanvasEditResult {
   /** Document revision after this call. */
   readonly revision: number
   /** Ids assigned to the `ref` names of this call. */
-  readonly refs: Readonly<Record<string, string>>
+  readonly refs: Readonly<Record<string, CanvasNodeId>>
   /** Ids of the nodes and groups this call created, in creation order. */
-  readonly created: readonly string[]
+  readonly created: readonly CanvasNodeId[]
   readonly skipped: readonly CanvasSkippedOperation[]
 }
 

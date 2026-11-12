@@ -71,7 +71,7 @@ export interface Config {
   skillsRoot?: string
 }
 
-export const Config: z<Config> = z.object({
+const CONFIG_FIELDS = {
   baseURL: z.string(),
   apiKeyEnv: z.string().role('credential-ref').default('DSH_MAAS_API_KEY'),
   imageModel: z.string().default('qwen-image-pro'),
@@ -89,7 +89,23 @@ export const Config: z<Config> = z.object({
   editTimeoutMs: z.number().default(600_000),
   fontFile: z.string().min(1),
   skillsRoot: z.string().min(1).default('../assets/'),
-})
+} satisfies Record<keyof Config, unknown>
+
+export const Config: z<Config> = z.object(CONFIG_FIELDS)
+
+/** Declared config keys; a deployment that carries a retired key must fail at load instead of silently falling back. */
+const CONFIG_KEYS: readonly string[] = Object.keys(CONFIG_FIELDS)
+
+/**
+ * Reject a config key this build does not declare.
+ * @param config - deployment config as the Loader passed it.
+ * @throws Error naming the unknown key.
+ */
+function rejectUnknownKeys(config: Config): void {
+  for (const key of Object.keys(config)) {
+    if (!CONFIG_KEYS.includes(key)) throw new Error(`tool-media: unknown config key ${key}`)
+  }
+}
 
 /** Complete config after schemastery applies every field default. */
 type ResolvedConfig = Required<Omit<Config, 'fontFile'>> & Pick<Config, 'fontFile'>
@@ -163,6 +179,7 @@ async function writeArtifact(root: string, prefix: string, contentType: string, 
  * @param config - deployment configuration with every default applied.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
+  rejectUnknownKeys(config)
   const resolved = config as ResolvedConfig
   if (resolved.fontFile !== undefined && !isAbsolute(resolved.fontFile)) {
     throw new Error('tool-media fontFile must be an absolute path')

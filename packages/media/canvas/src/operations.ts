@@ -110,8 +110,8 @@ export function applyOperations(
 ): ApplyOutcome {
   const nodes = new Map<string, WorkingNode>(document.nodes.map(node => [node.id, { ...node, versions: node.versions ?? [] }]))
   const edges = new Map<string, CanvasEdge>(document.edges.map(edge => [edge.id, edge]))
-  const refs = new Map<string, string>()
-  const created: string[] = []
+  const refs = new Map<string, CanvasNodeId>()
+  const created: CanvasNodeId[] = []
   const skipped: CanvasSkippedOperation[] = []
   const working = new Map<string, NodeVersion>()
   const now = options.now ?? (() => new Date().toISOString())
@@ -124,7 +124,7 @@ export function applyOperations(
     if (node === undefined) throw new Skip(`node ${name} does not exist`)
     return node
   }
-  const claim = (ref: string | undefined, id: string): void => {
+  const claim = (ref: string | undefined, id: CanvasNodeId): void => {
     if (ref !== undefined) refs.set(ref, id)
     created.push(id)
   }
@@ -136,7 +136,7 @@ export function applyOperations(
     if (group.type !== 'group') throw new Skip(`node ${name} is not a group`)
     return group.id
   }
-  const dropNode = (id: string): void => {
+  const dropNode = (id: CanvasNodeId): void => {
     nodes.delete(id)
     for (const edge of [...edges.values()]) if (edge.source === id || edge.target === id) edges.delete(edge.id)
     for (const member of nodes.values()) if (member.group === id) delete member.group
@@ -369,7 +369,7 @@ export function applyOperations(
         if (members.length === 0) throw new Skip('a group needs at least one node')
         const nested = members.find(member => member.type === 'group')
         if (nested !== undefined) throw new Skip(`node ${nested.id} is a group; groups do not nest`)
-        const id = `g${String(nextId++)}`
+        const id = brandString<CanvasNodeId>(`g${String(nextId++)}`)
         nodes.set(id, {
           id: brandString<CanvasNodeId>(id), type: 'group', title: operation.title ?? 'Group',
           x: 0, y: 0, width: 0, height: 0, versions: [],

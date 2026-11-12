@@ -6,13 +6,13 @@
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolExecution, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 import type { BibleStyle } from './bible.ts'
 import { activeVersionOf } from './document.ts'
 import type { CanvasService } from './index.ts'
 import { parseScenes } from './storyboard.ts'
 import type {
-  BibleEntryId, CanvasDocument, CanvasNode, CanvasNodeId, CanvasOperation, DialogueId, EpisodeId, Shot, ShotId,
+  BibleEntryId, CanvasDocument, CanvasNode, CanvasNodeId, CanvasOperation, DialogueId, DialogueLine, EpisodeId, Shot, ShotId,
 } from './types.ts'
 
 const TEXT_PREVIEW = 160
@@ -88,6 +88,14 @@ interface OperationInput {
   sources?: string[]
 }
 
+/** One spoken line as the model writes it. */
+interface DialogueInput {
+  id?: string
+  /** Bible entry id of the speaker; omit the field for narration. */
+  speaker?: string
+  line: string
+}
+
 /** One shot as the model writes it. */
 interface ShotInput {
   id?: string
@@ -100,12 +108,48 @@ interface ShotInput {
   characters?: string[]
   scene?: string
   props?: string[]
-  dialogue?: { id?: string; speaker?: string; line: string }[]
+  dialogue?: DialogueInput[]
   sfx?: string
   negative?: string
 }
 
 const text = { type: 'string' as const }
+
+/** One spoken line of a shot, as the schema shows it to the model. */
+const dialogueSchema: ValueSchemaSpec = {
+  type: 'object' as const,
+  additionalProperties: false as const,
+  properties: {
+    id: { type: 'string' as const, description: 'Line id such as d1; omit to number the lines of the shot.' },
+    speaker: { type: 'string' as const, description: 'Bible entry id of the speaker; omit the field for narration.' },
+    line: { type: 'string' as const, required: true as const, description: 'What the speaker says, as written.' },
+  },
+}
+
+/** One shot of a storyboard, as the schema shows it to the model. */
+const shotSchema: ValueSchemaSpec = {
+  type: 'object' as const,
+  additionalProperties: false as const,
+  properties: {
+    id: { type: 'string' as const, description: 'Shot id such as s1; omit to number the shots of the table.' },
+    title: { type: 'string' as const, description: 'Short title of the shot, at most 24 characters.' },
+    shotSize: {
+      type: 'string' as const,
+      enum: ['extreme_wide', 'wide', 'full', 'medium', 'medium_close', 'close', 'extreme_close', 'insert'],
+      description: 'Camera framing; gate G2 needs it before a video is generated.',
+    },
+    visual: { type: 'string' as const, description: 'What the frame shows.' },
+    motion: { type: 'string' as const, description: 'What the characters do in the shot.' },
+    camera: { type: 'string' as const, description: 'Camera movement, or 固定 when the camera holds.' },
+    durationSec: { type: 'number' as const, description: 'Shot length in seconds.' },
+    characters: { type: 'array' as const, items: { type: 'string' as const }, description: 'Bible entry ids of the characters on screen.' },
+    scene: { type: 'string' as const, description: 'Bible entry id of the location.' },
+    props: { type: 'array' as const, items: { type: 'string' as const }, description: 'Bible entry ids of the props on screen.' },
+    dialogue: { type: 'array' as const, items: dialogueSchema, description: 'Spoken lines of the shot, in order.' },
+    sfx: { type: 'string' as const, description: 'Sound effects of the shot.' },
+    negative: { type: 'string' as const, description: 'What this shot must not show.' },
+  },
+}
 const requiredText = { type: 'string' as const, required: true as const }
 
 const nodeRowSchema = {
@@ -308,6 +352,17 @@ function need<T>(value: T | undefined, index: number, input: OperationInput, fie
   return value
 }
 
+/**
+ * Speaker of one line: a bible entry id, the structured character form, or narration.
+ * @param speaker - what the caller wrote for the line.
+ * @returns the dialogue speaker.
+ */
+function speakerOf(speaker: DialogueInput['speaker']): DialogueLine['speaker'] {
+  return speaker === undefined
+    ? { kind: 'narrator' }
+    : { kind: 'character', entry: brandString<BibleEntryId>(speaker) }
+}
+
 function shotOf(input: ShotInput, fallback: number): Shot {
   return {
     id: brandString<ShotId>(input.id ?? `s${String(fallback)}`),
@@ -322,9 +377,7 @@ function shotOf(input: ShotInput, fallback: number): Shot {
     props: (input.props ?? []).map(entry => brandString<BibleEntryId>(entry)),
     dialogue: (input.dialogue ?? []).map((line, at) => ({
       id: brandString<DialogueId>(line.id ?? `d${String(at + 1)}`),
-      speaker: line.speaker === undefined
-        ? { kind: 'narrator' as const }
-        : { kind: 'character' as const, entry: brandString<BibleEntryId>(line.speaker) },
+      speaker: speakerOf(line.speaker),
       line: line.line,
     })),
     sfx: input.sfx ?? '',
@@ -553,7 +606,7 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
             model: { type: 'string', description: 'Model id for generation.' },
             genKind: { type: 'string', enum: ['image', 'video', 'speech', 'music'], description: 'What the node generates.' },
             params: { type: 'object', description: 'Generation parameters; null deletes one.', additionalProperties: true, properties: {} },
-            shots: { type: 'array', description: 'Shots of a storyboard, or the shot insert_shot adds.', items: { type: 'object', additionalProperties: true, properties: {} } },
+            shots: { type: 'array', description: 'Shots of a storyboard, or the shot insert_shot adds.', items: shotSchema },
             shot: { type: 'string', description: 'Shot id that the operation acts on.' },
             patch: { type: 'object', description: 'Shot fields update_shot replaces.', additionalProperties: true, properties: {} },
             after: { type: 'string', description: 'Shot id the moved or inserted shot follows; omit to append.' },
@@ -764,13 +817,18 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
       if (script.type !== 'script' && script.type !== 'text') throw new Error(`canvas: node ${args.script} holds no script text`)
       const body = activeVersionOf(script)?.text ?? ''
       const wanted = args.scenes === undefined ? undefined : new Set(args.scenes)
-      const groups = new Set(document.nodes.filter(node => node.type === 'group').map(node => node.title))
+      // A scene stays laid out whatever its heading says later: the group title records the scene number.
+      const laidOut = new Set(document.nodes
+        .filter(node => node.type === 'group')
+        .map(node => /^场\s*([0-9０-９]+)/u.exec(node.title)?.[1])
+        .filter((digits): digits is string => digits !== undefined)
+        .map(digits => Number(digits.replace(/[０-９]/gu, digit => String.fromCharCode(digit.charCodeAt(0) - 0xfee0)))))
       const operations: CanvasOperation[] = []
       for (const scene of parseScenes(body)) {
         if (scene.title === '' && scene.body === '') continue
         if (wanted !== undefined && !wanted.has(scene.number)) continue
+        if (laidOut.has(scene.number)) continue
         const title = `场${String(scene.number)}${scene.title === '' ? '' : ` ${scene.title}`}`
-        if (groups.has(title)) continue
         operations.push(
           { op: 'add', ref: `text${String(scene.number)}`, type: 'text', title, text: scene.body },
           { op: 'add', ref: `board${String(scene.number)}`, type: 'storyboard', title: `${title} 分镜`, shots: [] },

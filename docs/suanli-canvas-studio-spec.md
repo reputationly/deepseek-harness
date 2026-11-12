@@ -319,7 +319,7 @@ export interface StudioProject {
 - 调 `studio_project_create` 时创建 `project.json`。已有的 `canvas.json` 就作为第 1 集（`file: 'canvas.json'`），文件不移动，之后新增的集写成 `episodes/e2.json` 这样的文件。
 - `CanvasService.directoryOf(session)` 不变，再加一个 `episodeOf(session)`：没有绑定的会话默认用第 1 集。所有 `canvas_*` 工具都只作用于当前会话绑定的那一集，`studio_episode_use` 用来切换绑定。
 - 分集要贯穿存储、Remote 和事件，现在这些都只按目录：
-  - `store.ts`：`canvasFile(directory)` 改成 `canvasFile(directory, episode?)`，按 `project.json` 里该集的 `file` 解析；串行锁从按文件改成按项目目录，`project.json`、`bible.json`、`production.json` 和各集文件共用一把锁；
+  - `store.ts`：`canvasFile(directory)` 改成 `canvasFile(directory, file = 'canvas.json')`，`file` 是该集在 `project.json` 里登记的相对路径，由服务用 `episodeOf` 解析后传入；串行锁从按文件改成按项目目录，`project.json`、`bible.json`、`production.json` 和各集文件共用一把锁；
   - Remote `canvas/get(sessionId)`、`canvas/apply(sessionId, operations)` 现在不传目录，目录由 session 推导，这一点不变；新增可选参数 `episode?: EpisodeId`，不带时用该会话绑定的那一集；
   - `CanvasChange` 增加 `episode?: EpisodeId` 和 `revisions: { readonly canvas?: number; readonly project?: number; readonly bible?: number; readonly production?: number }`，只列这次改动写过的文件及其新 revision；界面只在变的是当前显示的那一集、或是项目级文件时重载。
   - `canvas.json`、`project.json`、`bible.json`、`production.json` 的 `revision` 都由 `store.ts` 在锁内每写一次加 1，调用方不手动设置；`canvas_get` 的 `include` 带回哪个文件，就同时带回它的 `revision`。
@@ -376,7 +376,7 @@ Host 侧代码用 `ctx.jobs.start()` 注册任务、`ctx.jobs.kill()` 取消；�
 | `bible.ts` | 新 | `bible.json` 读写，`expandMentions(prompt, bible)` 返回 `{prompt, imageNodes}` |
 | `journal.ts` | 新（P3） | 撤销、重做 |
 | `timeline.ts` | 新（P4） | 第 8.2 节的 `TimelineOp` 纯函数和诊断 |
-| `store.ts` | 改 | 多文件原子写：沿用 tmp+rename；按项目目录一把串行锁；`canvasFile(directory, episode?)`（第 3.6 节） |
+| `store.ts` | 改 | 多文件原子写：沿用 tmp+rename；按项目目录一把串行锁；`canvasFile(directory, file)`（第 3.6 节） |
 | `tools.ts` | 改 | `canvas_get`、`canvas_edit` 扩展；新增 `studio_*` 工具 |
 | `index.ts` | 改 | Remote `get`/`apply` 新增可选参数 `episode`；新增 `project`、`bible`、`episodes`、`undo`、`redo`；`canvas/change` 带 `episode`、`revisions` |
 
@@ -775,7 +775,7 @@ export interface Clip {
 | # | 问题 | 决定 | 位置 |
 |:--|:--|:--|:--|
 | 1 | 同一对节点只能一条边，表达不了「既是参考图又是首帧」 | 参考边 id 带 role，同对节点同 role 唯一；`disconnect` 可带 role；迁移时补 role | 3.1、3.2、4.3、7.5 |
-| 2 | 分集没贯穿存储、Remote、事件 | `canvasFile(directory, episode?)`；按项目目录加锁；Remote 新增可选 `episode` 参数；`canvas/change` 带 episode 和按文件的 revisions | 3.6、4.2 |
+| 2 | 分集没贯穿存储、Remote、事件 | `canvasFile(directory, file)`（服务把分集解析成文件）；按项目目录加锁；Remote 新增可选 `episode` 参数；`canvas/change` 带 episode 和按文件的 revisions | 3.6、4.2 |
 | 3 | Skill 注册只认一个目录 | `skillAssetRoot` 改名 `skillsRoot`（父目录），枚举子目录；改 desktop 和 prepare.ts；写升级指南 | 6.1、4.4 |
 | 4 | canvas 包没有 Config | 新增 `config.ts` 和 schemastery 依赖 | 4.2 |
 | 5 | `needs_choice` 形状另起一套 | 沿用 `ParamChoice` | 4.5、5.3 |

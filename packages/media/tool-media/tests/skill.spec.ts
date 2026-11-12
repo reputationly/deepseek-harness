@@ -217,3 +217,15 @@ describe('skill provider guards', () => {
       .rejects.toThrow('unknown skill ghost')
   })
 })
+
+describe('retired configuration keys', () => {
+  it('rejects the retired skillAssetRoot key instead of falling back to the default root', async () => {
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    const retired = { baseURL: 'https://gateway.example/v1', catalog: false, skillAssetRoot: '/tmp/skills' }
+    // The old key is not in Config by design; a deployment that still carries it must fail at load.
+    await expect(ctx.plugin(ToolMedia, retired as never)).rejects.toThrow(/skillAssetRoot|unknown/i)
+  })
+})

@@ -94,3 +94,29 @@ describe('layout', () => {
     expect(nodes.size).toBe(0)
   })
 })
+
+describe('storyboard layout', () => {
+  it('lays out six scenes without overlapping', async () => {
+    const { resolveConfig } = await import('../src/config.ts')
+    const { EMPTY_CANVAS } = await import('../src/document.ts')
+    const { applyOperations } = await import('../src/operations.ts')
+    const operations = Array.from({ length: 6 }, (_unused, index) => {
+      const scene = index + 1
+      return [
+        { op: 'add' as const, ref: `text${String(scene)}`, type: 'text' as const, title: `场${String(scene)}`, text: `body ${String(scene)}` },
+        { op: 'add' as const, ref: `board${String(scene)}`, type: 'storyboard' as const, title: `场${String(scene)} 分镜`, shots: [] },
+        { op: 'group' as const, ref: `group${String(scene)}`, title: `场${String(scene)}`, nodes: [`text${String(scene)}`, `board${String(scene)}`] },
+        { op: 'connect' as const, from: `text${String(scene)}`, to: `board${String(scene)}`, role: 'prompt' as const },
+      ]
+    }).flat()
+    const { document } = applyOperations(EMPTY_CANVAS, operations, { limits: resolveConfig({}) })
+    const content = document.nodes.filter(node => node.type !== 'group')
+    for (const [index, left] of content.entries()) {
+      for (const right of content.slice(index + 1)) {
+        const overlaps = left.x < right.x + right.width && right.x < left.x + left.width
+          && left.y < right.y + right.height && right.y < left.y + left.height
+        expect(overlaps, `${left.id} overlaps ${right.id}`).toBe(false)
+      }
+    }
+  })
+})

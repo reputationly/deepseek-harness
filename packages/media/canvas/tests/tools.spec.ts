@@ -342,3 +342,11 @@ describe('last tool branches', () => {
     expect(JSON.stringify(result)).toContain('runs only inside a Session')
   })
 })
+
+describe('schema guards', () => {
+  it('rejects canvas_edit without baseRevision', async () => {
+    const result = await call('canvas_edit', { operations: [{ op: 'add', type: 'text', text: 'x' }] })
+    expect(result.isError).toBe(true)
+    expect(result.text).toMatch(/baseRevision/)
+  })
+})

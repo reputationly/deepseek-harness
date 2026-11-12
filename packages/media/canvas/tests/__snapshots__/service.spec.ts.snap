@@ -170,8 +170,98 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
               "shots": {
                 "description": "Shots of a storyboard, or the shot insert_shot adds.",
                 "items": {
-                  "additionalProperties": true,
-                  "properties": {},
+                  "additionalProperties": false,
+                  "properties": {
+                    "camera": {
+                      "description": "Camera movement, or 固定 when the camera holds.",
+                      "type": "string",
+                    },
+                    "characters": {
+                      "description": "Bible entry ids of the characters on screen.",
+                      "items": {
+                        "type": "string",
+                      },
+                      "type": "array",
+                    },
+                    "dialogue": {
+                      "description": "Spoken lines of the shot, in order.",
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "description": "Line id such as d1; omit to number the lines of the shot.",
+                            "type": "string",
+                          },
+                          "line": {
+                            "description": "What the speaker says, as written.",
+                            "type": "string",
+                          },
+                          "speaker": {
+                            "description": "Bible entry id of the speaker; omit the field for narration.",
+                            "type": "string",
+                          },
+                        },
+                        "required": [
+                          "line",
+                        ],
+                        "type": "object",
+                      },
+                      "type": "array",
+                    },
+                    "durationSec": {
+                      "description": "Shot length in seconds.",
+                      "type": "number",
+                    },
+                    "id": {
+                      "description": "Shot id such as s1; omit to number the shots of the table.",
+                      "type": "string",
+                    },
+                    "motion": {
+                      "description": "What the characters do in the shot.",
+                      "type": "string",
+                    },
+                    "negative": {
+                      "description": "What this shot must not show.",
+                      "type": "string",
+                    },
+                    "props": {
+                      "description": "Bible entry ids of the props on screen.",
+                      "items": {
+                        "type": "string",
+                      },
+                      "type": "array",
+                    },
+                    "scene": {
+                      "description": "Bible entry id of the location.",
+                      "type": "string",
+                    },
+                    "sfx": {
+                      "description": "Sound effects of the shot.",
+                      "type": "string",
+                    },
+                    "shotSize": {
+                      "description": "Camera framing; gate G2 needs it before a video is generated.",
+                      "enum": [
+                        "extreme_wide",
+                        "wide",
+                        "full",
+                        "medium",
+                        "medium_close",
+                        "close",
+                        "extreme_close",
+                        "insert",
+                      ],
+                      "type": "string",
+                    },
+                    "title": {
+                      "description": "Short title of the shot, at most 24 characters.",
+                      "type": "string",
+                    },
+                    "visual": {
+                      "description": "What the frame shows.",
+                      "type": "string",
+                    },
+                  },
                   "type": "object",
                 },
                 "type": "array",

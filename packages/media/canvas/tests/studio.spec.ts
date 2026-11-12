@@ -265,3 +265,39 @@ describe('studio tools', () => {
     await expect(ctx.canvas.edit(session, many)).rejects.toThrow('exceed the 64')
   })
 })
+
+describe('episode isolation', () => {
+  it('keeps concurrent writes to two episodes from overwriting each other', async () => {
+    await ctx.canvas.createProject(session, {
+      format: 'drama', title: 'Rain', spec: { aspect: '9:16', resolution: '1080p', fps: 30 },
+    })
+    const second = await ctx.canvas.createEpisode(session, '第二集')
+    const first = 'e1' as never
+    await Promise.all([
+      ctx.canvas.edit(session, [{ op: 'add', type: 'text', text: '第一集' }], { baseRevision: 0, episode: first }),
+      ctx.canvas.edit(session, [{ op: 'add', type: 'text', text: '第二集' }], { baseRevision: 0, episode: second.episode.id }),
+    ])
+    const firstNodes = (await ctx.canvas.read(session, first)).nodes
+    const secondNodes = (await ctx.canvas.read(session, second.episode.id)).nodes
+    expect(firstNodes).toHaveLength(1)
+    expect(secondNodes).toHaveLength(1)
+    expect(firstNodes[0]?.versions?.[0]?.text).toBe('第一集')
+    expect(secondNodes[0]?.versions?.[0]?.text).toBe('第二集')
+  })
+})
+
+describe('script expansion idempotency', () => {
+  it('skips a scene whose group title carries the same number with another title', async () => {
+    await ctx.canvas.edit(session, [
+      { op: 'add', type: 'script', text: '【场1】雨夜\nbody one\n【场2】便利店\nbody two' },
+      { op: 'add', type: 'text', title: '场1 旧标题', text: 'body one' },
+      { op: 'add', type: 'text', title: '场2 便利店 收银台', text: 'body two' },
+      { op: 'group', title: '场1 旧标题', nodes: ['n2'] },
+      { op: 'group', title: '场2 便利店 收银台', nodes: ['n3'] },
+    ], { baseRevision: 0 })
+    const before = (await ctx.canvas.read(session)).nodes.length
+    const expanded = await call('studio_expand_script', { script: 'n1', baseRevision: (await ctx.canvas.read(session)).revision })
+    expect(expanded.isError).toBe(false)
+    expect((await ctx.canvas.read(session)).nodes).toHaveLength(before)
+  })
+})
