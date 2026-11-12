@@ -120,6 +120,20 @@ describe('brand gateway configuration', () => {
 describe('brand default selection', () => {
   const BRANDED = { ...GATEWAY, defaultReasoningEffort: 'high' }
 
+  it('adds packaged media executables, skill assets, and an available font to the tool config', () => {
+    const patch = gatewayProfilePatch(BRANDED, undefined, undefined, {
+      ffmpegPath: '/Resources/runtime/primary-runtime/ffmpeg/ffmpeg',
+      ffprobePath: '/Resources/runtime/primary-runtime/ffmpeg/ffprobe',
+      fontFile: '/System/Library/Fonts/Hiragino Sans GB.ttc',
+      skillAssetRoot: '/Resources/runtime/media-editing',
+    })
+    expect(patch).toContain('    ffmpegPath: "/Resources/runtime/primary-runtime/ffmpeg/ffmpeg"')
+    expect(patch).toContain('    ffprobePath: "/Resources/runtime/primary-runtime/ffmpeg/ffprobe"')
+    expect(patch).toContain('    fontFile: "/System/Library/Fonts/Hiragino Sans GB.ttc"')
+    expect(patch).toContain('    skillAssetRoot: "/Resources/runtime/media-editing"')
+    expect(gatewayProfilePatch(BRANDED)).not.toContain('    ffmpegPath:')
+  })
+
   it('writes the brand effort and links the console token page', () => {
     const patch = gatewayProfilePatch(BRANDED)
     expect(patch).toContain('    model: "model-a"\n    reasoningEffort: "high"\n')

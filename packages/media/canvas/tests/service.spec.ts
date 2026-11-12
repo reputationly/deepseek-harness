@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -32,7 +32,7 @@ beforeEach(async () => {
   session = Session.create(SessionId('canvas-session'))
   changes = []
   ctx.on('canvas/change', (change) => { changes.push(change) })
-  for (const name of ['a.png', 'b.png', 'clip.mp4']) await writeFile(join(directory, name), name)
+  for (const name of ['a.png', 'b.png', 'clip.mp4', 'track.mp3']) await writeFile(join(directory, name), name)
 })
 
 afterEach(async () => {
@@ -87,6 +87,16 @@ describe('CanvasService', () => {
     expect(failure).toMatchObject({ code: 'canvas/corrupt', details: { file: canvasFile(directory) } })
   })
 
+  it('propagates unexpected file errors from media validation and remote reads', async () => {
+    await symlink('loop', join(directory, 'loop'))
+    await expect(ctx.canvas.edit(session, [{ op: 'add', type: 'image', path: 'loop' }]))
+      .rejects.toMatchObject({ code: 'ELOOP' })
+
+    await mkdir(join(directory, '.canvas'))
+    await symlink('canvas.json', canvasFile(directory))
+    await expect(ctx.canvas.get(session)).rejects.toMatchObject({ code: 'ELOOP' })
+  })
+
   it('resolves image nodes and groups to image files for generation inputs', async () => {
     await ctx.canvas.edit(session, [
       { op: 'add', ref: 'a', type: 'image', path: 'a.png' },
@@ -106,6 +116,31 @@ describe('CanvasService', () => {
     await expect(ctx.canvas.resolveImages(session, ['n3'])).rejects.toThrow(new CanvasInputError('canvas node n3 is a video node, not an image or a group'))
     await expect(ctx.canvas.resolveImages(session, ['g6'])).rejects.toThrow('canvas group g6 contains no image')
     await expect(ctx.canvas.resolveImages(session, ['n42'])).rejects.toThrow('canvas node n42 does not exist')
+  })
+
+  it('resolves media nodes to paths and rejects group, text, and pathless inputs', async () => {
+    const grouped = await ctx.canvas.edit(session, [
+      { op: 'add', type: 'image', path: 'a.png' },
+      { op: 'add', type: 'video', path: 'clip.mp4' },
+      { op: 'add', type: 'audio', path: 'track.mp3' },
+      { op: 'add', type: 'text', text: 'brief' },
+      { op: 'add', type: 'audio' },
+      { op: 'group', ref: 'media', nodes: ['n1', 'n2'] },
+    ])
+    expect(await ctx.canvas.resolveMedia(session, ['n1', 'n2', 'n3'])).toEqual([
+      join(directory, 'a.png'), join(directory, 'clip.mp4'), join(directory, 'track.mp3'),
+    ])
+    const groupId = grouped.refs.media
+    if (groupId === undefined) throw new Error('media group fixture did not create a group id')
+    await expect(ctx.canvas.resolveMedia(session, [groupId])).rejects.toThrow(`canvas node ${groupId} is a group node, not a media node`)
+    await expect(ctx.canvas.resolveMedia(session, ['n4'])).rejects.toThrow('canvas node n4 is a text node, not a media node')
+    const document = await ctx.canvas.read(session)
+    await writeFile(canvasFile(directory), JSON.stringify({
+      ...document,
+      nodes: [...document.nodes, { id: 'n5', type: 'audio', title: 'Pathless', x: 0, y: 0, width: 320, height: 180 }],
+    }))
+    await expect(ctx.canvas.resolveMedia(session, ['n5'])).rejects.toThrow('canvas media node n5 has no path')
+    await expect(ctx.canvas.resolveMedia(session, ['n42'])).rejects.toThrow('canvas node n42 does not exist')
   })
 
   it('serves the Remote view and applies user operations', async () => {

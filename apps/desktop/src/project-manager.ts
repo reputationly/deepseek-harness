@@ -23,7 +23,7 @@ import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
-import { writeGatewayProfile } from './brand-gateway.ts'
+import { writeGatewayProfile, type BrandGatewayMediaRuntime } from './brand-gateway.ts'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
@@ -65,7 +65,7 @@ export class DesktopProjectManager {
    */
   constructor(
     readonly paths: DesktopPaths,
-    readonly runtime: { readonly dsh: string },
+    readonly runtime: { readonly dsh: string; readonly mediaRuntime?: BrandGatewayMediaRuntime },
   ) {}
 
   /**
@@ -86,7 +86,7 @@ export class DesktopProjectManager {
       readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
       createPluginProfile(this.paths.profile)
-      writeGatewayProfile(this.paths.profile)
+      writeGatewayProfile(this.paths.profile, this.runtime.mediaRuntime)
       removeLinkProjections(this.paths.profile)
     })
   }

@@ -11,6 +11,7 @@
     { "path": "../../core/session" },
     { "path": "../../core/tools" },
     { "path": "../canvas" },
+    { "path": "../../skill/skill" },
     { "path": "../../util/launch-environment" },
     { "path": "../../credentials/credentials" },
     { "path": "../../util/values" }

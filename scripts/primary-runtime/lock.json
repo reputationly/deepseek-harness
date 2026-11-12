@@ -8,6 +8,16 @@
       "nodeSha256": "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541",
       "pythonTarget": "x86_64-pc-windows-msvc",
       "pythonSha256": "7c45c9622400d578709a9b2cddbe8124cc21d382409d9f13406d706d28e31b14",
+      "ffmpeg": {
+        "ffmpeg": {
+          "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-win32-x64.gz",
+          "sha256": "450d66226c79405c724e821f291cab0911e934bfa9fa2231adcab587f3e07b50"
+        },
+        "ffprobe": {
+          "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffprobe-win32-x64.gz",
+          "sha256": "3f33adbad509f324e6f72449a5e8428fd655fb2b2eebf1d782c7ef23c44eed6a"
+        }
+      },
       "wheels": [
         {
           "url": "https://files.pythonhosted.org/packages/2d/57/8aeaf160312f7f489dea47ab61e430b5cb051f59a98ae68b7133ce8fa06a/numpy-2.3.5-cp312-cp312-win_amd64.whl",
@@ -32,6 +42,16 @@
       "nodeSha256": "bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057",
       "pythonTarget": "aarch64-apple-darwin",
       "pythonSha256": "81a359f1cfadd4da11766534c5913791cea55f26e1bb902cacd2a531bb1e4b2b",
+      "ffmpeg": {
+        "ffmpeg": {
+          "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-darwin-arm64.gz",
+          "sha256": "6be74d6f449889c2e87a75873894f8520cad56c08ac76f2a628d85b0519daaca"
+        },
+        "ffprobe": {
+          "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffprobe-darwin-arm64.gz",
+          "sha256": "a4db76bafdb8529312e138fb55aaf143cad21b6d672e2634c9dd07ae83c6a310"
+        }
+      },
       "wheels": [
         {
           "url": "https://files.pythonhosted.org/packages/c5/65/df0db6c097892c9380851ab9e44b52d4f7ba576b833996e0080181c0c439/numpy-2.3.5-cp312-cp312-macosx_11_0_arm64.whl",

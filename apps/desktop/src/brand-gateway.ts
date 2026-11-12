@@ -29,6 +29,14 @@ export interface SavedSelection {
   readonly reasoningEffort?: string
 }
 
+/** Packaged media tools and their external skill resources. */
+export interface BrandGatewayMediaRuntime {
+  readonly ffmpegPath?: string
+  readonly ffprobePath?: string
+  readonly fontFile?: string
+  readonly skillAssetRoot: string
+}
+
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -116,7 +124,9 @@ function scalar(value: string): string {
  * @param saved - default selection the user saved, kept over the brand default.
  * @returns YAML patch entries replacing the provider endpoint, catalog, and default model.
  */
-export function gatewayProfilePatch(gateway: BrandGateway, productName?: string, saved?: SavedSelection): string {
+export function gatewayProfilePatch(
+  gateway: BrandGateway, productName?: string, saved?: SavedSelection, mediaRuntime?: BrandGatewayMediaRuntime,
+): string {
   const model = saved?.model ?? gateway.defaultModel
   const reasoningEffort = saved === undefined ? gateway.defaultReasoningEffort : saved.reasoningEffort
   const models = gateway.models
@@ -139,6 +149,12 @@ export function gatewayProfilePatch(gateway: BrandGateway, productName?: string,
     '  config:',
     `    baseURL: ${scalar(gateway.baseURL)}`,
     `    apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
+    ...mediaRuntime === undefined ? [] : [
+      ...(mediaRuntime.ffmpegPath === undefined ? [] : [`    ffmpegPath: ${scalar(mediaRuntime.ffmpegPath)}`]),
+      ...(mediaRuntime.ffprobePath === undefined ? [] : [`    ffprobePath: ${scalar(mediaRuntime.ffprobePath)}`]),
+      ...(mediaRuntime.fontFile === undefined ? [] : [`    fontFile: ${scalar(mediaRuntime.fontFile)}`]),
+      `    skillAssetRoot: ${scalar(mediaRuntime.skillAssetRoot)}`,
+    ],
     ...productName === undefined || productName === '' ? [] : [`    displayName: ${scalar(productName)}`],
     '    models:',
     models,
@@ -174,13 +190,13 @@ export function gatewayProfilePatch(gateway: BrandGateway, productName?: string,
  * model selection the user saved from settings.
  * @param profileDir - Desktop profile directory created before the Host starts.
  */
-export function writeGatewayProfile(profileDir: string): void {
+export function writeGatewayProfile(profileDir: string, mediaRuntime?: BrandGatewayMediaRuntime): void {
   const gateway = brandGateway()
   if (gateway === undefined) return
   const path = join(profileDir, 'cordis.patch.yml')
   let previous = ''
   try { previous = readFileSync(path, 'utf8') } catch { /* first start */ }
-  const patch = gatewayProfilePatch(gateway, process.env.DSH_DESKTOP_PRODUCT_NAME, savedSelection(gateway, previous))
+  const patch = gatewayProfilePatch(gateway, process.env.DSH_DESKTOP_PRODUCT_NAME, savedSelection(gateway, previous), mediaRuntime)
   writeFileSync(path, patch, { encoding: 'utf8', mode: 0o600 })
 }
 

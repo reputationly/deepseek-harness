@@ -9,17 +9,22 @@
  * @module @deepseek-ai/dsh-tool-media
  */
 
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { extname, isAbsolute, join, relative, sep } from 'node:path'
+import { isAbsolute, join, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
+import type { SkillCandidate, SkillProvider } from '@deepseek-ai/dsh-skill'
 import { CatalogSource } from './catalog.ts'
+import { registerEditTools } from './edit-tools.ts'
+import { FfmpegRunner } from './ffmpeg.ts'
 import { awaitTask, downloadMedia, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
-import { registerVisualTools } from './visual-tools.ts'
+import { placeMediaArtifact, registerVisualTools } from './visual-tools.ts'
 
 export { MediaGatewayError } from './gateway.ts'
 export type { MediaArtifact } from './gateway.ts'
@@ -27,7 +32,7 @@ export type { MediaArtifact } from './gateway.ts'
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-media'
 
-/** Services required by the media tools. */
+/** Required tool registry; the skill provider is read only when present. */
 export const inject = ['tools']
 
 /** Config for one deployment's media gateway. */
@@ -56,6 +61,16 @@ export interface Config {
   catalogCacheFile?: string
   /** Video length recommended when the user names none, in seconds. */
   videoDefaultDuration?: number
+  /** FFmpeg executable, or an absolute path to its bundled runtime copy. */
+  ffmpegPath?: string
+  /** FFprobe executable, or an absolute path to its bundled runtime copy. */
+  ffprobePath?: string
+  /** Timeout for one local editing operation. */
+  editTimeoutMs?: number
+  /** Absolute font path injected into non-ASCII drawtext filters. */
+  fontFile?: string
+  /** Absolute directory containing the bundled media-editing SKILL.md. */
+  skillAssetRoot?: string
 }
 
 export const Config: z<Config> = z.object({
@@ -71,10 +86,23 @@ export const Config: z<Config> = z.object({
   catalog: z.boolean().default(true),
   catalogCacheFile: z.string().default(''),
   videoDefaultDuration: z.number().default(5),
+  ffmpegPath: z.string().default('ffmpeg'),
+  ffprobePath: z.string().default('ffprobe'),
+  editTimeoutMs: z.number().default(600_000),
+  fontFile: z.string().min(1),
+  skillAssetRoot: z.string().min(1),
 })
 
 /** Complete config after schemastery applies every field default. */
-type ResolvedConfig = Required<Config>
+type ResolvedConfig = Required<Omit<Config, 'fontFile' | 'skillAssetRoot'>> & Pick<Config, 'fontFile' | 'skillAssetRoot'>
+
+function parseMediaEditingSkill(raw: string, path: string): { readonly description: string; readonly content: string } {
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(raw)
+  if (frontmatter?.[1] === undefined) throw new Error(`tool-media: ${path} has no YAML frontmatter`)
+  const description = /^description:\s*(.+)$/mu.exec(frontmatter[1])?.[1]?.trim().replace(/^["']|["']$/gu, '')
+  if (description === undefined || description === '') throw new Error(`tool-media: ${path} has no description`)
+  return { description, content: raw.slice(frontmatter[0].length).trim() }
+}
 
 /** Map a media content type to a file extension. */
 function extensionFor(contentType: string): string {
@@ -144,8 +172,14 @@ async function writeArtifact(root: string, prefix: string, contentType: string, 
  * @param ctx - context whose tools registry receives the registrations.
  * @param config - deployment configuration with every default applied.
  */
-export function apply(ctx: Context, config: Config): void {
+export async function apply(ctx: Context, config: Config): Promise<void> {
   const resolved = config as ResolvedConfig
+  if (resolved.fontFile !== undefined && !isAbsolute(resolved.fontFile)) {
+    throw new Error('tool-media fontFile must be an absolute path')
+  }
+  if (resolved.skillAssetRoot !== undefined && !isAbsolute(resolved.skillAssetRoot)) {
+    throw new Error('tool-media skillAssetRoot must be an absolute directory')
+  }
   const ref = credentialRef(resolved.apiKeyEnv)
   const request = async (signal: AbortSignal): Promise<GatewayRequest> => ({
     baseURL: resolved.baseURL,
@@ -167,6 +201,49 @@ export function apply(ctx: Context, config: Config): void {
     write: (prefix, contentType, bytes) => writeArtifact(resolved.outputDir, prefix, contentType, bytes),
     canvas: () => ctx.get('canvas'),
   })
+  let outputSequence = 0
+  const ffmpeg = new FfmpegRunner(resolved.ffmpegPath, resolved.ffprobePath, resolved.editTimeoutMs)
+  ctx.effect(() => () =>{  ffmpeg.dispose() }, 'tool-media: ffmpeg processes')
+  registerEditTools(ctx, {
+    runner: ffmpeg,
+    editTimeoutMs: resolved.editTimeoutMs,
+    ...(resolved.fontFile === undefined ? {} : { fontFile: resolved.fontFile }),
+    writePath: async (extension) => {
+      const directory = isAbsolute(resolved.outputDir) ? resolved.outputDir : join(process.cwd(), resolved.outputDir)
+      await mkdir(directory, { recursive: true })
+      outputSequence++
+      return join(directory, `edit-${String(Date.now())}-${String(outputSequence)}${extension}`)
+    },
+    canvas: () => ctx.get('canvas'),
+  })
+  const skills = ctx.get('skills')
+  if (skills !== undefined) {
+    const assetRoot = resolved.skillAssetRoot ?? fileURLToPath(new URL('../assets/media-editing/', import.meta.url))
+    const path = join(assetRoot, 'SKILL.md')
+    const { description } = parseMediaEditingSkill(readFileSync(path, 'utf8'), path)
+    const { BUNDLED_SKILL_RANK } = await import('@deepseek-ai/dsh-skill')
+    const candidate: SkillCandidate = {
+      name: 'media-editing',
+      description,
+      invocation: { modelInvocable: true, userInvocable: true },
+      provider: 'dsh-tool-media',
+      source: 'bundled',
+      rank: BUNDLED_SKILL_RANK,
+      resourceBase: { kind: 'directory', path: assetRoot.split(sep).join('/') },
+      locator: path,
+    }
+    const provider: SkillProvider = {
+      name: 'dsh-tool-media',
+      list: () => Promise.resolve([candidate]),
+      async get(skill, options) {
+        const { rank: _rank, locator, ...summary } = skill
+        if (typeof locator !== 'string') throw new Error('tool-media: invalid media-editing skill locator')
+        const raw = await readFile(locator, { encoding: 'utf8', signal: options.signal })
+        return { ...summary, content: parseMediaEditingSkill(raw, locator).content }
+      },
+    }
+    ctx.effect(() => skills.registerProvider(() => provider), 'tool-media: media-editing skill')
+  }
 
   ctx.tools.register(defineTool({
     name: 'generate_speech',
@@ -182,9 +259,14 @@ export function apply(ctx: Context, config: Config): void {
         properties: {
           path: { type: 'string', required: true },
           model: { type: 'string', required: true },
+          nodeId: { type: 'string' },
+          canvasError: { type: 'string' },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: `Wrote ${value.path} with ${value.model}.` }],
+      render: (_args, value) => [{
+        type: 'text', text: `Wrote ${value.path} with ${value.model}.${value.nodeId === undefined ? '' : ` Canvas node ${value.nodeId}.`}`
+          + (value.canvasError === undefined ? '' : ` Canvas placement failed: ${value.canvasError}.`),
+      }],
       presentationMeta: (_args, value) => value,
     },
     async execute(args, exec) {
@@ -195,12 +277,16 @@ export function apply(ctx: Context, config: Config): void {
         text: input.text,
         voice: await voiceReference(input.voice),
       })
-      return { path: await writeArtifact(resolved.outputDir, 'speech', audio.contentType, audio.bytes), model: resolved.speechModel }
+      const path = await writeArtifact(resolved.outputDir, 'speech', audio.contentType, audio.bytes)
+      const placement = await placeMediaArtifact(ctx.get('canvas'), exec.agent?.session, {
+        type: 'audio', path, title: 'Speech', prompt: input.text, model: resolved.speechModel,
+      })
+      return { path, model: resolved.speechModel, ...placement }
     },
   }))
 
-  const taskTool = (toolName: string, model: string, description: string) => ({
-    name: toolName,
+  const taskTool = (model: string, description: string) => ({
+    name: 'generate_music',
     description,
     parameters: {
       prompt: { type: 'string' as const, required: true as const, description: 'What to produce, including style, instruments, tempo, and mood for music.' },
@@ -213,57 +299,40 @@ export function apply(ctx: Context, config: Config): void {
         properties: {
           path: { type: 'string' as const, required: true as const },
           model: { type: 'string' as const, required: true as const },
+          nodeId: { type: 'string' as const },
+          canvasError: { type: 'string' as const },
         },
       },
-      render: (_args: unknown, value: { path: string; model: string }) => [{ type: 'text' as const, text: `Wrote ${value.path} with ${value.model}.` }],
-      presentationMeta: (_args: unknown, value: { path: string; model: string }) => value,
+      render: (_args: unknown, value: { path: string; model: string; nodeId?: string; canvasError?: string }) => [{
+        type: 'text' as const, text: `Wrote ${value.path} with ${value.model}.${value.nodeId === undefined ? '' : ` Canvas node ${value.nodeId}.`}`
+          + (value.canvasError === undefined ? '' : ` Canvas placement failed: ${value.canvasError}.`),
+      }],
+      presentationMeta: (_args: unknown, value: { path: string; model: string; nodeId?: string; canvasError?: string }) => value,
     },
-    async execute(args: unknown, exec: { signal: AbortSignal }) {
+    async execute(args: unknown, exec: ToolExecution) {
       const input = args as { prompt: string; lyrics?: string }
       const gateway = await request(exec.signal)
       // Music3 reads the arrangement description from request metadata and the lyrics from the prompt.
-      const body: Record<string, unknown> = toolName === 'generate_music'
-        ? {
-          prompt: input.prompt,
-          metadata: {
-            instructions: input.prompt,
-            ...(input.lyrics === undefined ? {} : { lyrics: input.lyrics }),
-          },
-        }
-        : { prompt: input.prompt }
+      const body: Record<string, unknown> = {
+        prompt: input.prompt,
+        metadata: {
+          instructions: input.prompt,
+          ...(input.lyrics === undefined ? {} : { lyrics: input.lyrics }),
+        },
+      }
       const id = await submitTask(gateway, model, body)
       const url = await awaitTask(gateway, id, { timeoutMs: resolved.taskTimeoutMs, intervalMs: resolved.pollIntervalMs })
       const media = await downloadMedia(gateway, url)
-      return { path: await writeArtifact(resolved.outputDir, toolName.replace('generate_', ''), media.contentType, media.bytes), model }
+      const path = await writeArtifact(resolved.outputDir, 'music', media.contentType, media.bytes)
+      const placement = await placeMediaArtifact(ctx.get('canvas'), exec.agent?.session, {
+        type: 'audio', path, title: 'Music', prompt: input.prompt, model,
+      })
+      return { path, model, ...placement }
     },
   })
 
   ctx.tools.register(defineTool(taskTool(
-    'generate_music',
     resolved.musicModel,
     'Generate a music track. The prompt must describe genre, instrumentation, tempo, and mood.',
   )))
-}
-
-/** Supported artifact file extensions, exported for tests. */
-export const MEDIA_EXTENSIONS = ['.png', '.jpg', '.webp', '.wav', '.mp3', '.mp4', '.bin'] as const
-
-/**
- * Whether a path stays inside one directory tree, exported for tests.
- * @param root - the directory that must contain the path.
- * @param candidate - the path to check.
- * @returns true when the path is strictly below the directory.
- */
-export function staysInside(root: string, candidate: string): boolean {
-  const path = relative(root, candidate)
-  return path !== '' && path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path)
-}
-
-/**
- * File extension of one artifact path, exported for tests.
- * @param path - the artifact path.
- * @returns the extension with its leading dot, or an empty string.
- */
-export function artifactExtension(path: string): string {
-  return extname(path)
 }

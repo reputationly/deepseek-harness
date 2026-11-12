@@ -3,23 +3,32 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/media/tool-media/README.md
 /:
-  en: a023358a95d5b080
-  zh: e17b039ec3ea2f5f
+  en: b3f30cda50a14cd9
+  zh: f1480816c004cadd
 /deepseek-ai-dsh-tool-media:
   en: d42f61f7db50165d
   zh: 77fac9f8d46ac325
 /deepseek-ai-dsh-tool-media/summary:
-  en: 4608cb464be80615
-  zh: f83fc1302ec37748
+  en: 6480b12ee1abb173
+  zh: 0a9438ce7794a66d
 /deepseek-ai-dsh-tool-media/table-of-contents:
-  en: 122f0d41696980b1
-  zh: 62a84415d9316418
+  en: d152484eb41ac6b4
+  zh: 5f159937b427dace
 /deepseek-ai-dsh-tool-media/use-this-package:
-  en: ce29771459f32819
-  zh: bcd1867f242e0e39
+  en: 97ce940cb61a45d0
+  zh: e9bf3d519f31f5ce
+/deepseek-ai-dsh-tool-media/use-this-package/when-to-choose-it:
+  en: b25bcb00b1f35d7b
+  zh: 6a576064516da483
+/deepseek-ai-dsh-tool-media/use-this-package/minimal-configuration:
+  en: 5d2c672b9af178c5
+  zh: 34e0077dd021e6d2
 /deepseek-ai-dsh-tool-media/understand-the-implementation:
-  en: 790c50b775916e89
-  zh: 063923f90b9c5db1
+  en: 0930151e3006b781
+  zh: dd9d9e4565cb7126
+/deepseek-ai-dsh-tool-media/further-exploration:
+  en: 3ec8497ff67d784f
+  zh: d850260752c84b0e
 /deepseek-ai-dsh-tool-media/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -27,8 +36,8 @@
   en: 3039bc5e7a796b21
   zh: 6b7a9eaf69c9ea53
 /deepseek-ai-dsh-tool-media/model-experience/tool-schemas/what-the-model-sees:
-  en: dbf8e2601e170da6
-  zh: 1b6b8a613b41ed75
+  en: 465a3afde85690dd
+  zh: a5d985688a44508b
 /deepseek-ai-dsh-tool-media/model-experience/tool-schemas/token-effect:
   en: 712acc96a217972d
   zh: 7c809ccf3cf9a583
@@ -39,8 +48,8 @@
   en: a8503137ad03720c
   zh: 611a2dadf7c0c706
 /deepseek-ai-dsh-tool-media/model-experience/tool-call-history-and-results/what-the-model-sees:
-  en: 6b7421e1febe8a68
-  zh: ad6bab7ec3db9fb4
+  en: ef2b5037c9e50442
+  zh: 3a24b6c4a3edcafc
 /deepseek-ai-dsh-tool-media/model-experience/tool-call-history-and-results/token-effect:
   en: eba8d3eb8e845d7d
   zh: 39d8294d77137ab8
@@ -48,8 +57,8 @@
   en: 884a79b4404602be
   zh: af51212263030b1f
 /deepseek-ai-dsh-tool-media/known-limitations-and-deferred-work:
-  en: bec551e2b5a3862a
-  zh: 683887d23acd5dce
+  en: f8687701269b5dea
+  zh: e0ea2b3f40b36927
 /deepseek-ai-dsh-tool-media/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

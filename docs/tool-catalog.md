@@ -51,7 +51,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
 | `@deepseek-ai/dsh-canvas` | `canvas_edit`, `canvas_get` | `ctx.workingDirectory`, `ctx.tools`, `an owning Agent session` | `tool/call`, `tool/result`, `the project canvas file` | - | The canvas belongs to the project directory of the calling Session; Web ui-sidebar-canvas shows it. |
-| `@deepseek-ai/dsh-tool-media` | `generate_image`, `generate_music`, `generate_speech`, `generate_video` | `ctx.tools`, `ctx.credentials`, `ctx.canvas for node inputs and result nodes` | `tool/call`, `tool/result`, `generated media files`, `the project canvas file` | - | Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema. |
+| `@deepseek-ai/dsh-tool-media` | `ffmpeg`, `generate_image`, `generate_music`, `generate_speech`, `generate_video`, `media_probe`, `merge_videos` | `ctx.tools`, `ctx.credentials`, `ctx.canvas for node inputs and result nodes` | `tool/call`, `tool/result`, `generated media files`, `the project canvas file` | - | Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema. |
 
 <a id="deepseek-aidsh-plugin-manager"></a>
 
@@ -2822,6 +2822,50 @@ The canvas belongs to the project directory of the calling Session; Web ui-sideb
 
 ## `@deepseek-ai/dsh-tool-media`
 
+### `ffmpeg`
+
+Edit local media files with FFmpeg. Pass arguments as an array without an output path; -i paths are absolute or relative to the project directory. The tool chooses the output file and adds it to the project canvas when available. Extracted audio, frames, and clips become new nodes; do not call canvas_edit to add them again. Use merge_videos for video concatenation. For complex edits, load the media-editing skill first. Use -f null for a dry run; it creates no file and no canvas node.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "args": {
+      "type": "array",
+      "description": "FFmpeg arguments without an output path; include local inputs with -i.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "input_node_ids": {
+      "type": "array",
+      "description": "Canvas node ids aligned with -i order; use an empty string for an unknown source.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "output_type": {
+      "type": "string",
+      "default": "video",
+      "enum": [
+        "video",
+        "audio",
+        "image"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Optional title for the result canvas node."
+    }
+  },
+  "required": [
+    "args"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/edit-tools.ts`](../packages/media/tool-media/src/edit-tools.ts)
+
 ### `generate_image`
 
 Generate an image from a text prompt, or edit and combine local reference images. When the result has status needs_choice nothing was generated: ask the user the listed questions, then call again.
@@ -2982,5 +3026,73 @@ Generate a short video from a text prompt, from a first frame (and optional last
 ```
 
 Source: [`packages/media/tool-media/src/visual-tools.ts`](../packages/media/tool-media/src/visual-tools.ts)
+
+### `media_probe`
+
+Probe a local media file or canvas media node before editing. Returns duration, container, and stream codecs and dimensions/audio properties.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Absolute path or path relative to the project directory."
+    },
+    "node_id": {
+      "type": "string",
+      "description": "Canvas image, video, or audio node id."
+    }
+  }
+}
+```
+
+Source: [`packages/media/tool-media/src/edit-tools.ts`](../packages/media/tool-media/src/edit-tools.ts)
+
+### `merge_videos`
+
+Join two or more local video files in order. Streams are probed, normalized to a shared resolution and frame rate, and missing or short audio is padded with silence. Complex edits should load the media-editing skill.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "video_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "input_node_ids": {
+      "type": "array",
+      "description": "Canvas node ids aligned with video_paths; use an empty string for an unknown source.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scale_mode": {
+      "type": "string",
+      "default": "first",
+      "enum": [
+        "first",
+        "max",
+        "min",
+        "custom"
+      ]
+    },
+    "target_width": {
+      "type": "integer"
+    },
+    "target_height": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "video_paths"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/edit-tools.ts`](../packages/media/tool-media/src/edit-tools.ts)
 
 Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema.
