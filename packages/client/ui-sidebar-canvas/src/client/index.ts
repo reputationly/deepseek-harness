@@ -18,7 +18,7 @@ export type { CanvasState } from './canvas-source.ts'
 export type { CanvasFile, CanvasInjected, ReadCanvasFile } from './face.ts'
 
 /** Services needed by the canvas tab's seats. */
-export const inject = ['slots', 'locale', 'sidebarRightTabs', 'remote', 'remote.canvas', 'remote.workspaceFiles']
+export const inject = ['slots', 'locale', 'sidebarRightTabs', 'remote', 'remote.canvas', 'remote.media', 'remote.workspaceFiles']
 
 /** The tab kind this package owns, and the key its body and title register under. */
 const KIND = 'canvas'
@@ -46,6 +46,11 @@ export function apply(ctx: Context): void {
         load: source.load,
         edit: source.edit,
         dismiss: source.dismiss,
+        capabilities: async (operation) => {
+          const result = await ctx.remote.media.capabilities(sessionId, operation)
+          if (!result.ok) throw new Error(result.error.message)
+          return result.value
+        },
         readFile: async (path, signal) => {
           const result = await ctx.remote.workspaceFiles.readBytes(sessionId, path, {}, signal)
           return result.ok ? { ok: true, data: result.value.data } : { ok: false, message: result.error.message }

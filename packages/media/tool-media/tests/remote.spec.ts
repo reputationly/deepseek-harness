@@ -16,7 +16,13 @@ describe('media Remote namespace', () => {
   it('lists the models one operation offers with their parameter names', async () => {
     const service = new MediaService(new Context(), () => Promise.resolve(catalog))
     await expect(service.capabilities({} as never, 'generate_video')).resolves.toEqual([
-      { id: 'v', model: 'video-model', operation: 'generate_video', params: ['duration', 'resolution'] },
+      {
+        id: 'v', model: 'video-model', operation: 'generate_video',
+        params: [
+          { id: 'duration', options: ['5'] },
+          { id: 'resolution', options: ['2K'] },
+        ],
+      },
     ])
   })
 

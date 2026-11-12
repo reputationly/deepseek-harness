@@ -43,8 +43,9 @@ async function mountPlugin() {
     apply: vi.fn(async () => ({ ok: true as const, value: { refs: {}, created: [], skipped: [] } })),
   }
   const workspaceFiles = { readBytes: vi.fn() }
+  const media = { capabilities: vi.fn(async () => ({ ok: true as const, value: [] })) }
   ctx.provide('remote', {
-    canvas, workspaceFiles,
+    canvas, workspaceFiles, media,
     $on: (event: string, listener: (change: { directory: string }) => void) => {
       expect(event).toBe('canvas/change')
       listeners.add(listener)
@@ -52,6 +53,7 @@ async function mountPlugin() {
     },
   } as never)
   ctx.provide('remote.canvas', canvas as never)
+  ctx.provide('remote.media', media as never)
   ctx.provide('remote.workspaceFiles', workspaceFiles as never)
   const fiber = await ctx.plugin({ inject, apply })
   return {

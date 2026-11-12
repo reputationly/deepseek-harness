@@ -29,9 +29,11 @@ const emptyView = { ...view, document: empty }
 function mount(initial: Partial<CanvasState>) {
   const state = createSnapshotStore<CanvasState>({ status: 'loading', view: undefined, error: undefined, notice: undefined, ...initial })
   const load = vi.fn(async () => {}), edit = vi.fn(async () => {}), dismiss = vi.fn(), readFile = vi.fn()
+  const capabilities = vi.fn(async () => [])
   const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${String(params.message)}`
   const props = {
-    useCanvas: (select: (value: CanvasState) => unknown) => select(state.getSnapshot()), load, edit, dismiss, readFile, t,
+    useCanvas: (select: (value: CanvasState) => unknown) => select(state.getSnapshot()), load, edit, dismiss, readFile,
+    capabilities, t,
   } as never as CanvasBodyProps
   const view = render(<CanvasBody {...props} />)
   return { state, load, edit, dismiss, readFile, t, rerender: () => { view.rerender(<CanvasBody {...props} />) } }

@@ -22,6 +22,8 @@ export type CanvasFlowProps = CanvasNodeFace & {
   readonly document: CanvasDocument
   readonly edit: (operations: readonly CanvasOperation[]) => Promise<void>
   readonly reload: () => Promise<void>
+  /** Reports the selected node, or undefined when the user clicks the pane. */
+  readonly onSelect?: (nodeId: string | undefined) => void
 }
 
 /** One icon-only toolbar action with its tooltip and accessible name. */
@@ -57,7 +59,9 @@ function Toolbar({ document, nodes, edges, edit, reload, t }: Pick<CanvasFlowPro
       </svg>
     </Tool>
     <Tool label={t('zoomIn')} onClick={() => { void flow.zoomIn() }}><IconPlusOutlineRegular /></Tool>
-    <Tool label={t('fit')} onClick={() => { void flow.fitView({ duration: 200, padding: 0.15 }) }}><IconFullscreenOutlineRegular /></Tool>
+    <Tool label={t('fit')} onClick={() => { void flow.fitView({ duration: 200, padding: 0.15 }) }}>
+      <IconFullscreenOutlineRegular />
+    </Tool>
     <span className={css.toolSeparator} aria-hidden="true" />
     <Tool label={t('group')} disabled={members.length < 2} onClick={() => { void edit([{ op: 'group', title: t('group.new'), nodes: members }]) }}>
       <IconLayersOutlineRegular />
@@ -73,7 +77,7 @@ function Toolbar({ document, nodes, edges, edit, reload, t }: Pick<CanvasFlowPro
  * @param props - document, media reads, copy, and the edit and reload calls.
  * @returns the flow with its toolbar and overview.
  */
-export function CanvasFlow({ document, readFile, t, edit, reload }: CanvasFlowProps): ReactNode {
+export function CanvasFlow({ document, readFile, t, edit, reload, onSelect }: CanvasFlowProps): ReactNode {
   const face = { readFile, t, edit }
   const [drawn, setDrawn] = useState({ document, readFile, t, edit })
   const [nodes, setNodes] = useState(() => flowNodes(document, face))
@@ -104,7 +108,9 @@ export function CanvasFlow({ document, readFile, t, edit, reload }: CanvasFlowPr
     className={css.flow} nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} fitView minZoom={0.1} maxZoom={2}
     deleteKeyCode={['Backspace', 'Delete']} proOptions={{ hideAttribution: true }}
     onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeDragStop={onNodeDragStop}
-    onConnect={onConnect} onBeforeDelete={onBeforeDelete}>
+    onConnect={onConnect} onBeforeDelete={onBeforeDelete}
+    onNodeClick={(_event, node) => { onSelect?.(node.id) }}
+    onPaneClick={() => { onSelect?.(undefined) }}>
     <Background gap={24} />
     <MiniMap className={css.minimap} ariaLabel={t('minimap')} pannable zoomable />
     <Toolbar document={document} nodes={nodes} edges={edges} edit={edit} reload={reload} t={t} />

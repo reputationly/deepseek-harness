@@ -1,5 +1,6 @@
 /** Injected canvas state, edits, and media reads. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { MediaCapabilityView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { CanvasSource, CanvasState } from './canvas-source.ts'
 
 /** Bytes of one media file, or why the Host could not serve them. */
@@ -22,4 +23,6 @@ export interface CanvasInjected {
   readonly edit: CanvasSource['edit']
   readonly dismiss: CanvasSource['dismiss']
   readonly readFile: ReadCanvasFile
+  /** Models and parameters the deployment's gateway catalog offers for one operation. */
+  readonly capabilities: (operation: string) => Promise<readonly MediaCapabilityView[]>
 }

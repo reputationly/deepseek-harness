@@ -30,7 +30,13 @@ export class MediaService extends TypertRemoteService {
       id: capability.id,
       model: capability.model,
       operation: capability.operation,
-      params: Object.keys(capability.paramSchema?.properties ?? {}),
+      params: Object.entries(capability.paramSchema?.properties ?? {}).map(([id, param]) => ({
+        id,
+        ...param.title === undefined ? {} : { title: param.title },
+        ...param.enum === undefined ? {} : { options: [...param.enum] },
+        ...param.default === undefined ? {} : { default: param.default },
+        ...param.type === undefined ? {} : { type: param.type },
+      })),
     }))
   }
 }

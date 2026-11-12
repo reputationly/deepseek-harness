@@ -4,6 +4,7 @@ import { EditHistory, invertOperations } from '../src/client/model/history.ts'
 import { automaticRole, edgeLabel, edgeStyle, roleMenu } from '../src/client/model/edges.ts'
 import { inspectorPlacement } from '../src/client/model/inspector.ts'
 import { cardState, currentVersion, durationLabel, groupScene, scriptPreview, scriptScenes, shotBadge, storyboardCardView, versionChoices } from '../src/client/model/cards.ts'
+import { frameOf, genOperation, modelChoices, operationFor, orderedRefs, paramControls, reorderOperation } from '../src/client/model/inspector.ts'
 import { appendShotOperation, cellOperation, moveShotOperation, removeShotOperation, rowsOf, segmentOfShot, summaryOf } from '../src/client/model/table.ts'
 
 const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
@@ -222,5 +223,64 @@ describe('card view models', () => {
     expect(storyboardCardView(board).rows).toHaveLength(2)
     expect(storyboardCardView(board).summary).toContain('2 镜')
     expect(groupScene(node('g', 'group', { sceneOrigin: { script: 'n1' as never, scene: 3 } }))).toBe(3)
+  })
+})
+
+
+describe('inspector model', () => {
+  it('maps a node kind to its gateway operation', () => {
+    expect(operationFor('image')).toBe('generate_image')
+    expect(operationFor('video')).toBe('generate_video')
+    expect(operationFor('speech')).toBe('generate_speech')
+    expect(operationFor('music')).toBe('generate_music')
+  })
+
+  it('disables a model that cannot take the inputs a node has', () => {
+    const capabilities = [
+      { id: 'a', model: 't2v', params: [{ id: 'duration' }] },
+      { id: 'b', model: 'ref', params: [{ id: 'src_ref_images' }] },
+    ]
+    expect(modelChoices(capabilities, false, true).map(choice => [choice.model, choice.disabled])).toEqual([['t2v', false], ['ref', false]])
+    expect(modelChoices(capabilities, true, true).map(choice => [choice.model, choice.disabled])).toEqual([['t2v', true], ['ref', false]])
+  })
+
+  it('builds one control per catalog parameter, seeded from the node or the default', () => {
+    const controls = paramControls({
+      params: [
+        { id: 'duration', options: ['5', '10'], default: '5' },
+        { id: 'resolution', options: ['2K'], default: '1K' },
+        { id: 'seed', type: 'number', default: '1' },
+        { id: 'note' },
+      ],
+    }, { duration: 8, seed: 7 })
+    expect(controls).toEqual([
+      { id: 'duration', title: 'duration', kind: 'select', value: '8', options: ['8', '5', '10'] },
+      { id: 'resolution', title: 'resolution', kind: 'select', value: '1K', options: ['1K', '2K'] },
+      { id: 'seed', title: 'seed', kind: 'number', value: '7' },
+      { id: 'note', title: 'note', kind: 'text', value: '' },
+    ])
+    expect(paramControls(undefined, {})).toEqual([])
+  })
+
+  it('builds the generation update from the fields the user edited', () => {
+    expect(genOperation({ id: 'n1', gen: { kind: 'video', prompt: 'p', params: {} } }, { model: 'm', prompt: 'new', params: { duration: 5 } }))
+      .toEqual({ op: 'set_gen', node: 'n1', gen: { model: 'm', prompt: 'new', params: { duration: 5 } } })
+    expect(genOperation({ id: 'n1' }, { prompt: 'only' })).toEqual({ op: 'set_gen', node: 'n1', gen: { prompt: 'only' } })
+  })
+
+  it('orders references and reads the frame slots', () => {
+    const doc = {
+      edges: [
+        { id: 'b->n:ref', source: 'b', target: 'n', role: 'ref', order: 1 },
+        { id: 'a->n:ref', source: 'a', target: 'n', role: 'ref', order: 0 },
+        { id: 'f->n:first', source: 'f', target: 'n', role: 'first_frame' },
+        { id: 'l->n:last', source: 'l', target: 'n', role: 'last_frame' },
+      ],
+    }
+    expect(orderedRefs(doc, 'n')).toEqual([{ source: 'a', order: 0 }, { source: 'b', order: 1 }])
+    expect(frameOf(doc, 'n', 'first_frame')).toBe('f')
+    expect(frameOf(doc, 'n', 'last_frame')).toBe('l')
+    expect(frameOf(doc, 'n', 'first_frame')).toBe('f')
+    expect(reorderOperation('n', ['b', 'a'])).toEqual({ op: 'reorder_refs', node: 'n', sources: ['b', 'a'] })
   })
 })
