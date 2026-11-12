@@ -18,11 +18,13 @@ import { planDialogue } from './voice.ts'
 
 /** Everything the node tools call. */
 export interface NodeToolDeps {
-  /** Canvas service the Session's project lives in. */
-  readonly canvas: CanvasService
+  /** Canvas service the Session's project lives in, resolved when a tool runs. */
+  readonly canvas: () => CanvasService | undefined
   readonly limits: PlanLimits
   readonly confirmLimits: ConfirmLimits
   readonly concurrency: number
+  /** Project spec every generation follows, when known. */
+  readonly spec?: { readonly aspect?: string; readonly resolution?: string }
   readonly generate: MediaGenerator
   /** Register one media job for a Session. */
   readonly jobs: (session: Session) => {
@@ -130,7 +132,7 @@ function renderRun(value: {
   status: string
   gate?: string
   missing?: readonly string[]
-  budget?: { totals: Record<string, number>; lines: BudgetLine[] }
+  budget?: { token: string; totals: Record<string, number>; lines: BudgetLine[] }
   results?: readonly RunViewResult[]
 }): string {
   if (value.status === 'blocked') return `Generation blocked (${value.gate ?? 'unknown'}): ${(value.missing ?? []).join('; ')}`
@@ -139,7 +141,7 @@ function renderRun(value: {
     const lines = (value.budget?.lines ?? []).map(line => `${line.node} ${line.kind} ${line.model} ×${String(line.calls)}`).join(', ')
     return `This run needs confirmation: ${String(totals.videoCalls ?? 0)} video calls (${String(totals.videoSeconds ?? 0)}s), `
       + `${String(totals.imageCalls ?? 0)} image calls, ${String(totals.speechLines ?? 0)} spoken lines, ${String(totals.musicCalls ?? 0)} music calls. `
-      + `Lines: ${lines}. Ask the user; call again with the token to start.`
+      + `Lines: ${lines}. Ask the user; call again with confirmToken ${value.budget?.token ?? ''} once they agree.`
   }
   const done = (value.results ?? []).filter(result => result.ok).length
   const failed = (value.results ?? []).filter(result => !result.ok)
@@ -153,24 +155,36 @@ function renderRun(value: {
  * @param deps - canvas, generators, jobs, and deployment bounds.
  */
 export function registerNodeTools(ctx: import('@deepseek-ai/cordis').Context, deps: NodeToolDeps): void {
-  const servicesOf = (session: Parameters<CanvasService['read']>[0]): RunnerServices => ({
-    canvas: {
-      read: async () => {
-        const document = await deps.canvas.read(session)
-        return { document, revision: document.revision }
+  const canvasOf = (): CanvasService => {
+    const canvas = deps.canvas()
+    if (canvas === undefined) throw new Error('tool-media: the canvas service is not available')
+    return canvas
+  }
+  const servicesOf = async (session: Parameters<CanvasService['read']>[0]): Promise<RunnerServices> => {
+    const project = await canvasOf().projectOf(session)
+    const spec = deps.spec ?? (project.project === undefined
+      ? undefined
+      : { aspect: project.project.spec.aspect, resolution: project.project.spec.resolution })
+    return {
+      ...spec === undefined ? {} : { spec },
+      canvas: {
+        read: async () => {
+          const document = await canvasOf().read(session)
+          return { document, revision: document.revision }
+        },
+        bible: async () => (await canvasOf().bibleOf(session)).bible,
+        edit: (operations, baseRevision) => canvasOf().edit(session, operations, { baseRevision }),
       },
-      bible: async () => (await deps.canvas.bibleOf(session)).bible,
-      edit: (operations, baseRevision) => deps.canvas.edit(session, operations, { baseRevision }),
-    },
-    limits: deps.limits,
-    confirmLimits: deps.confirmLimits,
-    concurrency: deps.concurrency,
-    generate: deps.generate,
-    jobs: deps.jobs(session),
-    probe: deps.probe,
-    tailFrame: deps.tailFrame,
-    now: () => new Date().toISOString(),
-  })
+      limits: deps.limits,
+      confirmLimits: deps.confirmLimits,
+      concurrency: deps.concurrency,
+      generate: deps.generate,
+      jobs: deps.jobs(session),
+      probe: deps.probe,
+      tailFrame: deps.tailFrame,
+      now: () => new Date().toISOString(),
+    }
+  }
   void ctx
 
   ctx.tools.register(defineTool({
@@ -186,7 +200,7 @@ export function registerNodeTools(ctx: import('@deepseek-ai/cordis').Context, de
     async execute(args, exec): Promise<GenerationToolResult> {
       const session = exec.agent?.session
       if (session === undefined) throw new Error('canvas_generate: a Session is required')
-      const outcome = await runPlan(servicesOf(session), args.nodeIds, args.confirmToken)
+      const outcome = await runPlan(await servicesOf(session), args.nodeIds, args.confirmToken)
       if (outcome.status === 'blocked') {
         return {
           status: 'blocked',
@@ -213,8 +227,9 @@ export function registerNodeTools(ctx: import('@deepseek-ai/cordis').Context, de
     async execute(args, exec): Promise<GenerationToolResult> {
       const session = exec.agent?.session
       if (session === undefined) throw new Error('storyboard_voice: a Session is required')
-      const read = await deps.canvas.read(session)
-      const bible: Bible | undefined = (await deps.canvas.bibleOf(session)).bible
+      const canvas = canvasOf()
+      const read = await canvas.read(session)
+      const bible: Bible | undefined = (await canvas.bibleOf(session)).bible
       const create: CanvasOperation[] = []
       const planned: { node: CanvasNodeId; kind: 'speech'; model: string; calls: number; lines: number }[] = []
       for (const id of args.storyboards) {
@@ -230,9 +245,9 @@ export function registerNodeTools(ctx: import('@deepseek-ai/cordis').Context, de
       if (budget.needsConfirmation && budget.token !== args.confirmToken) {
         return { status: 'needs_confirmation', budget: budgetView(budget) }
       }
-      const edit = create.length === 0 ? undefined : await deps.canvas.edit(session, create, { baseRevision: read.revision })
+      const edit = create.length === 0 ? undefined : await canvas.edit(session, create, { baseRevision: read.revision })
       const ids = edit === undefined ? planned.map(entry => entry.node) : Object.values(edit.refs)
-      const outcome = await runPlan(servicesOf(session), ids, undefined, { skipConfirmation: true })
+      const outcome = await runPlan(await servicesOf(session), ids, undefined, { skipConfirmation: true })
       if (outcome.status !== 'done') return { status: 'blocked', gate: 'G4_stage_order', missing: [] }
       return { status: 'done', results: outcome.results.map(result => ({ ...result, node: String(result.node) })) }
     },

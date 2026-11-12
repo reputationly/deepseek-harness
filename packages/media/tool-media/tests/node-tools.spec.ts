@@ -57,7 +57,7 @@ describe('generation tools', () => {
       music: async () => ({ path: join(directory, 'music.mp3'), model: 'music-model' }),
     }
     registerNodeTools(ctx, {
-      canvas: ctx.get('canvas') as CanvasService,
+      canvas: () => ctx.get('canvas') as CanvasService | undefined,
       limits,
       confirmLimits,
       concurrency: 1,

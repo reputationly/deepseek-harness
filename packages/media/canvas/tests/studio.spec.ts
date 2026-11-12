@@ -286,6 +286,20 @@ describe('episode isolation', () => {
   })
 })
 
+describe('bible entry upserts', () => {
+  it('replaces the entry with the same id instead of appending a duplicate', async () => {
+    const first = await ctx.canvas.updateBible(session, {
+      upsert: [{ id: 'c1' as never, kind: 'character', name: 'Lin', aliases: [], description: 'first', imageNodes: [] }],
+    })
+    expect(first.bible.entries).toHaveLength(1)
+    const again = await ctx.canvas.updateBible(session, {
+      upsert: [{ id: 'c1' as never, kind: 'character', name: 'Lin', aliases: [], description: 'second', imageNodes: [] }],
+    })
+    expect(again.bible.entries).toHaveLength(1)
+    expect(again.bible.entries[0]?.description).toBe('second')
+  })
+})
+
 describe('script expansion idempotency', () => {
   it('reuses the group that records the same script and scene, whatever its title says now', async () => {
     await ctx.canvas.edit(session, [

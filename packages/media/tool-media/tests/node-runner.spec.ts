@@ -312,3 +312,28 @@ describe('planNodes', () => {
     expect(planNodes(documentOf([text]), bible, ['n1'], limits).blocked?.missing).toEqual(['node n1 does not generate media'])
   })
 })
+
+describe('mentions and reference images', () => {
+  it('expands a mention into its description and adds the entry image as a reference', () => {
+    const character = node('n1', 'image', {
+      versions: [{ id: 'v1' as never, path: '/lin.png', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+    })
+    const video = node('n2', 'video', { gen: { kind: 'video', prompt: '中景 @林夏 站在雨里', params: {} } })
+    const inputs = collectInputs(documentOf([character, video]), video, bible)
+    expect(inputs.prompt).toBe('中景 林夏（店员） 站在雨里')
+    expect(inputs.refs.map(ref => ref.path)).toEqual(['/lin.png'])
+  })
+
+  it('does not duplicate an image that an edge already provides', () => {
+    const character = node('n1', 'image', {
+      versions: [{ id: 'v1' as never, path: '/lin.png', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+    })
+    const video = node('n2', 'video', { gen: { kind: 'video', prompt: '@林夏', params: {} } })
+    const document = documentOf([character, video], [
+      { id: 'n1->n2:ref', source: 'n1' as never, target: 'n2' as never, kind: 'reference', role: 'ref' },
+    ])
+    expect(collectInputs(document, document.nodes[1] as CanvasNode, bible).refs.map(ref => ref.node)).toEqual(['n1'])
+  })
+})

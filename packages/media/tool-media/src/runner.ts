@@ -31,6 +31,10 @@ export interface MediaCall {
   /** File a tail chain uses as the first frame, when the plan resolved one. */
   readonly firstFramePath?: string
   readonly lastFramePath?: string
+  /** Project frame ratio, such as `9:16`. */
+  readonly aspectRatio?: string
+  /** Project output resolution tier, such as `1080p`. */
+  readonly resolution?: string
   readonly signal: AbortSignal
 }
 
@@ -58,6 +62,8 @@ export interface RunnerCanvas {
 /** Everything the runner calls outside its own planning. */
 export interface RunnerServices {
   readonly canvas: RunnerCanvas
+  /** Project spec every generation follows. */
+  readonly spec?: { readonly aspect?: string; readonly resolution?: string }
   readonly limits: PlanLimits
   readonly confirmLimits: ConfirmLimits
   /** Media jobs this call may run at once. */
@@ -216,6 +222,14 @@ export async function runPlan(
         document = (await services.canvas.read()).document
         firstFramePath = previousTail.path
       }
+      const missingRefs = inputs.refs.filter(ref => !document.edges.some(edge => edge.source === ref.node
+        && edge.target === node && edge.role === 'ref'))
+      if (missingRefs.length > 0) {
+        revision = (await services.canvas.edit(missingRefs.map((ref, order) => ({
+          op: 'connect' as const, from: ref.node, to: node, kind: 'reference' as const, role: 'ref' as const, order,
+        })), revision)).revision
+        document = (await services.canvas.read()).document
+      }
       const job = services.jobs.start({
         label: `${current.title}`,
         run: signal => generate(services, current, entry, {
@@ -274,7 +288,11 @@ async function generate(
   resolved: Pick<MediaCall, 'prompt' | 'refs' | 'firstFramePath' | 'lastFramePath'>,
   signal: AbortSignal,
 ): Promise<GeneratedMedia> {
-  const call: MediaCall = { node, entry, signal, ...resolved }
+  const call: MediaCall = {
+    node, entry, signal, ...resolved,
+    ...services.spec?.aspect === undefined ? {} : { aspectRatio: services.spec.aspect },
+    ...services.spec?.resolution === undefined ? {} : { resolution: services.spec.resolution },
+  }
   if (entry.kind === 'image') return services.generate.image(call)
   if (entry.kind === 'video') return services.generate.video(call)
   if (entry.kind === 'speech') return services.generate.speech(call)

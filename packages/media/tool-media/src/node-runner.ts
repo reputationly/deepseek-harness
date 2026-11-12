@@ -111,6 +111,23 @@ function resolveInput(document: CanvasDocument, edge: CanvasEdge): ResolvedInput
   return { node: source.id, version: version.id, path: version.path, role: edge.role ?? 'source' }
 }
 
+/** Expand `@name` mentions into the bible entry's description. */
+function expandMentions(prompt: string, bible: Bible | undefined): string {
+  if (bible === undefined) return prompt
+  return prompt.replace(/@([\p{L}\p{N}_-]+)/gu, (match, name: string) => {
+    const entry = bible.entries.find(candidate => candidate.name === name || candidate.aliases.includes(name))
+    return entry === undefined ? match : `${entry.name}（${entry.description}）`
+  })
+}
+
+/** First image node a bible entry points at, resolved to its current file. */
+function entryReference(document: CanvasDocument, entry: { readonly imageNodes: readonly string[] }): ResolvedInput | undefined {
+  const node = document.nodes.find(candidate => candidate.id === entry.imageNodes[0])
+  const version = node === undefined ? undefined : activeVersionOf(node)
+  if (node === undefined || version?.path === undefined) return undefined
+  return { node: node.id, version: version.id, path: version.path, role: 'ref' }
+}
+
 /**
  * Collect the prompt and files one node generates from.
  * @param document - the episode's canvas.
@@ -132,9 +149,20 @@ export function collectInputs(document: CanvasDocument, node: CanvasNode, bible:
       const covered = node.gen?.shot?.shots
       return segmentPrompt(covered === undefined ? shots : shots.filter(shot => covered.includes(shot.id)), bible)
     })
-  const prompt = [...textPrompts, ...storyboardPrompts, node.gen?.prompt ?? ''].filter(part => part !== '').join('\n\n')
+  const joined = [...textPrompts, ...storyboardPrompts, node.gen?.prompt ?? ''].filter(part => part !== '').join('\n\n')
+  const prompt = expandMentions(joined, bible)
   const resolved = edges.map(edge => ({ edge, input: resolveInput(document, edge) }))
-  const refs = resolved.filter(entry => entry.edge.role === 'ref' && entry.input !== undefined).map(entry => entry.input as ResolvedInput)
+  const edgeRefs = resolved.filter(entry => entry.edge.role === 'ref' && entry.input !== undefined).map(entry => entry.input as ResolvedInput)
+  const mentioned = bible === undefined
+    ? []
+    : bible.entries
+      .filter(entry => joined.includes(`@${entry.name}`) || entry.aliases.some(alias => joined.includes(`@${alias}`)))
+      .map(entry => entryReference(document, entry))
+      .filter((input): input is ResolvedInput => input !== undefined)
+  const refs = [...edgeRefs]
+  for (const input of mentioned) {
+    if (!refs.some(ref => ref.node === input.node)) refs.push(input)
+  }
   const firstFrame = resolved.find(entry => entry.edge.role === 'first_frame')?.input
   const lastFrame = resolved.find(entry => entry.edge.role === 'last_frame')?.input
   return {

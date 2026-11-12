@@ -425,7 +425,11 @@ export class CanvasService extends TypertRemoteService {
         ...current,
         ...change.logline === undefined ? {} : { logline: change.logline },
         style: { ...current.style, ...change.style },
-        entries: [...current.entries.filter(entry => !removed.includes(entry.id)), ...upserted],
+        // An upsert replaces the entry with the same id instead of appending a duplicate.
+        entries: [
+          ...current.entries.filter(entry => !removed.includes(entry.id) && !upserted.some(change => change.id === entry.id)),
+          ...upserted,
+        ],
       }
       return { document: next, value: next }
     })

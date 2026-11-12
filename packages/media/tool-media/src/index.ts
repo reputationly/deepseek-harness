@@ -268,7 +268,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   })
   const jobsRegistry = ctx.get('jobs')
   registerNodeTools(ctx, {
-    canvas: ctx.get('canvas') as import('@deepseek-ai/dsh-canvas').CanvasService,
+    canvas: () => ctx.get('canvas') as import('@deepseek-ai/dsh-canvas').CanvasService | undefined,
     limits: {
       maxVideoSeconds: resolved.maxSegmentSeconds,
       videoDefaultDuration: resolved.videoDefaultDuration,
