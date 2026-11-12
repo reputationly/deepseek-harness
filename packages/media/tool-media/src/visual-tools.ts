@@ -57,7 +57,7 @@ function canvasLink(deps: VisualToolDeps, exec: ToolExecution): CanvasLink | und
 export interface MediaPlacementNode {
   readonly type: 'image' | 'video' | 'audio'
   /** What produced the artifact; a canvas node of type audio holds speech or music. */
-  readonly kind?: 'image' | 'video' | 'speech' | 'music'
+  readonly kind: 'image' | 'video' | 'speech' | 'music'
   readonly path: string
   readonly title?: string
   readonly prompt?: string
@@ -86,7 +86,7 @@ export async function placeMediaArtifact(
           ? {}
           : {
             gen: {
-              kind: node.kind ?? (node.type === 'image' ? 'image' : node.type === 'video' ? 'video' : 'speech'),
+              kind: node.kind,
               prompt: node.prompt,
               params: {},
               ...node.model === undefined ? {} : { model: node.model },

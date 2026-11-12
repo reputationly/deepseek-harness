@@ -164,6 +164,15 @@ describe('bundled skill set', () => {
     }
   })
 
+  it('resolves a relative root without a trailing slash', async () => {
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(ToolMedia, { baseURL: 'https://gateway.example/v1', catalog: false, skillsRoot: '../assets' })
+    expect(await ctx.skills.get('media-editing')).toMatchObject({ name: 'media-editing' })
+  })
+
   it('rejects a root that does not exist', async () => {
     ctx = new Context()
     await ctx.plugin(SystemPrompt)

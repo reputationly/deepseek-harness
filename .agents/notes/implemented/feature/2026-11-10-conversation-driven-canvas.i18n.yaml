@@ -9,17 +9,17 @@
   en: 117c2f2d3878bb03
   zh: fed3f0a23c4d83ff
 /agent-note-conversation-driven-canvas/decision:
-  en: 7674799297b76f93
-  zh: ac89de3c568caaaf
-/agent-note-conversation-driven-canvas/decision/document:
-  en: fcaf0b91a9d910f2
-  zh: 03703b091130481e
+  en: 269988179323a1fd
+  zh: 9095b065b4729bdc
+/agent-note-conversation-driven-canvas/decision/documents:
+  en: 0d23393e34b3ec37
+  zh: 10f66f2b531a0200
 /agent-note-conversation-driven-canvas/decision/model-tools:
-  en: cdf4d7205b914247
-  zh: 9c2c06078a3e922b
+  en: 7dbe66310f5444b9
+  zh: ab1cb58e5726c04c
 /agent-note-conversation-driven-canvas/decision/nodes-and-groups-as-generation-inputs:
-  en: 9662027b498fe933
-  zh: 1d9d57092304bf70
+  en: fafa9c7e5afe3cf2
+  zh: e492c9be28ab18a4
 /agent-note-conversation-driven-canvas/decision/remote-api-and-sidebar-tab:
   en: b2159604a32b446e
   zh: 97d872997966e77a
@@ -30,5 +30,5 @@
   en: 38c4e7a5718d49e5
   zh: 5abb68305a3cf119
 /agent-note-conversation-driven-canvas/testing:
-  en: 7032ce3f2e54d0d7
-  zh: 3594c456b5bcf3b5
+  en: 783401f0e7411d7c
+  zh: 2fe56a923db2be3f

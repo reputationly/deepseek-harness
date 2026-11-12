@@ -84,13 +84,13 @@ describe('visual tools on a canvas', () => {
   it('uses explicit, basename, and shortened prompt titles for placed media', async () => {
     await setup(true)
     const explicit = await placeMediaArtifact(ctx.canvas, session, {
-      type: 'image', path: join(directory, 'a.png'), title: 'Chosen title',
+      type: 'image', kind: 'image', path: join(directory, 'a.png'), title: 'Chosen title',
     })
     const basename = await placeMediaArtifact(ctx.canvas, session, {
-      type: 'audio', path: join(directory, 'b.png'),
+      type: 'audio', kind: 'speech', path: join(directory, 'b.png'),
     })
     const prompt = await placeMediaArtifact(ctx.canvas, session, {
-      type: 'video', path: join(directory, 'c.png'), prompt: 'x'.repeat(45),
+      type: 'video', kind: 'video', path: join(directory, 'c.png'), prompt: 'x'.repeat(45),
     })
     expect([explicit, basename, prompt]).toEqual([{ nodeId: 'n1' }, { nodeId: 'n2' }, { nodeId: 'n3' }])
     expect((await ctx.canvas.read(session)).nodes.map(node => node.title)).toEqual([
@@ -103,7 +103,7 @@ describe('visual tools on a canvas', () => {
     const emptyResult = await ctx.canvas.edit(session, [])
     vi.spyOn(ctx.canvas, 'edit').mockResolvedValue(emptyResult)
     expect(await placeMediaArtifact(ctx.canvas, session, {
-      type: 'image', path: join(directory, 'a.png'),
+      type: 'image', kind: 'image', path: join(directory, 'a.png'),
     })).toEqual({ canvasError: 'the node was not created' })
   })
 
