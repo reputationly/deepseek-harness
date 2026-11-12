@@ -417,6 +417,8 @@ export interface CanvasChange {
   readonly revisions: CanvasRevisions
 }
 
+export type { Bible, BibleEntry, BibleStyle } from './bible.ts'
+
 declare module '@deepseek-ai/cordis' {
   interface Events {
     /**

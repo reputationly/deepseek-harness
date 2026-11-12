@@ -46,6 +46,11 @@ export function apply(ctx: Context): void {
         load: source.load,
         edit: source.edit,
         dismiss: source.dismiss,
+        bible: async () => {
+          const result = await ctx.remote.canvas.bible(sessionId)
+          if (!result.ok) throw new Error(result.error.message)
+          return result.value
+        },
         capabilities: async (operation) => {
           const result = await ctx.remote.media.capabilities(sessionId, operation)
           if (!result.ok) throw new Error(result.error.message)

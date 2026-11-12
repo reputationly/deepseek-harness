@@ -1,13 +1,14 @@
 /** The canvas tab: reading, failure, empty, and drawn states of one Session's project canvas. */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button, IconCloseOutlineRegular, IconFullscreenOutlineRegular, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
+import type { Bible, CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { CanvasInjected } from './face.ts'
 import { LazyCanvasFlow } from './LazyCanvasFlow.tsx'
 import { Inspector } from './Inspector.tsx'
 import { StoryboardTable } from './StoryboardTable.tsx'
+import { BibleAssetsPanel } from './BibleAssetsPanel.tsx'
 import { inspectorPlacement } from './model/inspector.ts'
 import { EditHistory } from './model/history.ts'
 import { movedForward, newNodeIds } from './model/changes.ts'
@@ -23,7 +24,7 @@ export type CanvasBodyProps = PropsRuntime<'sidebar.right.pane.tab'> & PropsLoca
  * @param props - canvas state hook, edit and read calls, and copy.
  * @returns a spinner, a retryable failure, the empty hint, or the flow under any notice.
  */
-export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilities, t }: CanvasBodyProps): ReactNode {
+export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilities, bible, t }: CanvasBodyProps): ReactNode {
   const state = useCanvas(value => value)
   useEffect(() => { void load() }, [load])
   const root = useRef<HTMLElement>(null)
@@ -34,6 +35,8 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
   const [fullscreen, setFullscreen] = useState(false)
   const seen = useRef<{ revision: number; document: CanvasDocument }>()
   const [added, setAdded] = useState<readonly string[]>([])
+  const [panel, setPanel] = useState(false)
+  const [shared, setShared] = useState<Bible>()
   useEffect(() => {
     const element = root.current
     if (element === null) return
@@ -78,6 +81,10 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
     data-fullscreen={fullscreen ? 'true' : undefined} ref={root}>
     <div className={css.canvasActions}>
       {added.length === 0 ? undefined : <span className={css.addedBadge} role="status">{t('canvas.added', { count: added.length })}</span>}
+      <Button size="sm" variant="outline" onClick={() => {
+        setPanel(value => !value)
+        if (shared === undefined) void bible().then((result) => { setShared(result.bible) }).catch(() => undefined)
+      }}>{t('bible.tab')}</Button>
       <Button size="sm" variant="outline" onClick={exportJson}>{t('canvas.export')}</Button>
       <Button size="sm" variant="outline" icon={<IconFullscreenOutlineRegular />}
         aria-label={fullscreen ? t('canvas.exitFullscreen') : t('canvas.fullscreen')}
@@ -100,6 +107,8 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
         document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}
         edit={edit} close={() => { setSelectedId(undefined) }} openTable={setTableId} t={t}
       />}
-      {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t} />}</>}
+      {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t} />}
+      {panel ? <BibleAssetsPanel document={document} bible={shared} edit={edit} close={() => { setPanel(false) }}
+        select={(nodeId) => { setSelectedId(nodeId) }} t={t} /> : undefined}</>}
   </section>
 }

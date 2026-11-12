@@ -471,6 +471,18 @@ export class CanvasService extends TypertRemoteService {
     }))
   }
 
+  /**
+   * Read the shared bible the Client panels show.
+   * @param session - Session opened on the project.
+   * @returns the bible and its revision.
+   * @throws RemoteError `canvas/corrupt` when the bible file is not a valid bible.
+   */
+  @Remote('bible')
+  bible(session: Session): Promise<{ readonly bible: Bible; readonly revision: number }> {
+    const directory = this.directoryOf(session)
+    return this.remote(directory, bibleFile(), () => this.bibleOf(session))
+  }
+
   /** Read the project metadata, or undefined when the project has none. */
   private async readProject(session: Session): Promise<StudioProject | undefined> {
     const stored = await this.store.readDocument(this.directoryOf(session), PROJECT_FILE, parseProject)

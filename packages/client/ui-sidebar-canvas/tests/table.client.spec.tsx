@@ -2,7 +2,7 @@
 /** The storyboard table edits cells, rows, and shows the live segmentation. */
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { CanvasNode, Shot } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasNode, CanvasOperation, Shot } from '@deepseek-ai/dsh-canvas/client'
 import { StoryboardTable } from '../src/client/StoryboardTable.tsx'
 
 afterEach(() => { cleanup() })
@@ -24,7 +24,7 @@ const node: CanvasNode = {
 }
 
 function mount() {
-  const edit = vi.fn(async () => {})
+  const edit = vi.fn<(operations: readonly CanvasOperation[]) => Promise<void>>(async () => {})
   const close = vi.fn()
   render(<StoryboardTable node={node} edit={edit} close={close} t={t} />)
   return { edit, close }
@@ -46,7 +46,8 @@ it('sends a shot update for a changed cell and a duration below one second is ra
   expect(h.edit).toHaveBeenCalledWith([{ op: 'update_shot', node: 'b1', shot: 's1', patch: { shotSize: 'wide' } }])
   const duration = within(firstRow).getByRole('spinbutton') as HTMLInputElement
   fireEvent.change(duration, { target: { value: '0.2' } })
-  expect(h.edit.mock.calls.map(call => call[0][0])).toEqual(expect.arrayContaining([
+  const operations = h.edit.mock.calls.flatMap(call => call[0])
+  expect(operations).toEqual(expect.arrayContaining([
     { op: 'update_shot', node: 'b1', shot: 's1', patch: { durationSec: 1 } },
   ]))
 })

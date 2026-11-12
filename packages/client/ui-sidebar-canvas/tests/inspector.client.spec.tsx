@@ -93,7 +93,9 @@ it('clears a frame slot and switches the shown version', async () => {
 
 it('closes through its header button and opens the table editor for a storyboard', async () => {
   const openTable = vi.fn()
-  const h = mount({ node: { ...video, type: 'storyboard', gen: undefined }, openTable })
+  const { gen: _gen, ...rest } = video
+  void _gen
+  const h = mount({ node: { ...rest, type: 'storyboard' }, openTable })
   await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.close' })).toBeTruthy() })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.close' }))
   expect(h.close).toHaveBeenCalled()

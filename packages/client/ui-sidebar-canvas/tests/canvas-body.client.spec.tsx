@@ -27,16 +27,19 @@ const view = { directory: '/project', episode: { id: 'e1', title: 'Canvas' }, re
 const emptyView = { ...view, document: empty }
 
 function mount(initial: Partial<CanvasState>) {
-  const state = createSnapshotStore<CanvasState>({ status: 'loading', view: undefined, error: undefined, notice: undefined, ...initial })
+  const state = createSnapshotStore<CanvasState>({
+    status: 'loading', view: undefined, error: undefined, notice: undefined, conflict: false, ...initial,
+  })
   const load = vi.fn(async () => {}), edit = vi.fn(async () => {}), dismiss = vi.fn(), readFile = vi.fn()
   const capabilities = vi.fn(async () => [])
+  const bible = vi.fn(async () => ({ bible: { version: 1, revision: 0, logline: '', style: { visual: '', aspect: '9:16' }, entries: [] }, revision: 0 }))
   const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${String(params.message)}`
   const props = {
     useCanvas: (select: (value: CanvasState) => unknown) => select(state.getSnapshot()), load, edit, dismiss, readFile,
-    capabilities, t,
+    capabilities, bible, t,
   } as never as CanvasBodyProps
   const view = render(<CanvasBody {...props} />)
-  return { state, load, edit, dismiss, readFile, t, rerender: () => { view.rerender(<CanvasBody {...props} />) } }
+  return { state, load, edit, dismiss, readFile, capabilities, bible, t, rerender: () => { view.rerender(<CanvasBody {...props} />) } }
 }
 
 it('reads the canvas on mount and shows a spinner until the first read settles', () => {
@@ -107,4 +110,11 @@ it('reports nodes an external change added', async () => {
   h.state.set({ ...h.state.getSnapshot(), view: next as never })
   h.rerender()
   await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('canvas.added') })
+})
+
+it('opens the bible panel with the shared entries', async () => {
+  const h = mount({ status: 'ready', view: view as never })
+  fireEvent.click(screen.getByRole('button', { name: 'bible.tab' }))
+  await waitFor(() => { expect(h.bible).toHaveBeenCalledOnce() })
+  expect(screen.getByRole('tab', { name: 'bible.tab' })).toBeTruthy()
 })

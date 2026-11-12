@@ -264,7 +264,7 @@ describe('inspector model', () => {
   })
 
   it('builds the generation update from the fields the user edited', () => {
-    expect(genOperation({ id: 'n1', gen: { kind: 'video', prompt: 'p', params: {} } }, { model: 'm', prompt: 'new', params: { duration: 5 } }))
+    expect(genOperation({ id: 'n1', gen: { prompt: 'p', params: {} } }, { model: 'm', prompt: 'new', params: { duration: 5 } }))
       .toEqual({ op: 'set_gen', node: 'n1', gen: { model: 'm', prompt: 'new', params: { duration: 5 } } })
     expect(genOperation({ id: 'n1' }, { prompt: 'only' })).toEqual({ op: 'set_gen', node: 'n1', gen: { prompt: 'only' } })
   })
