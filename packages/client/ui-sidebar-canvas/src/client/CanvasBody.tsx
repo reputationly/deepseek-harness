@@ -8,6 +8,7 @@ import { LazyCanvasFlow } from './LazyCanvasFlow.tsx'
 import { Inspector } from './Inspector.tsx'
 import { StoryboardTable } from './StoryboardTable.tsx'
 import { inspectorPlacement } from './model/inspector.ts'
+import { EditHistory } from './model/history.ts'
 import type { NS } from './locales.ts'
 import css from './CanvasBody.module.css'
 
@@ -26,6 +27,7 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
   const [width, setWidth] = useState(0)
   const [selectedId, setSelectedId] = useState<string>()
   const [tableId, setTableId] = useState<string>()
+  const history = useRef(new EditHistory()).current
   useEffect(() => {
     const element = root.current
     if (element === null) return
@@ -55,11 +57,12 @@ export function CanvasBody({ useCanvas, load, edit, dismiss, readFile, capabilit
     </div>}
     {document.nodes.length === 0
       ? <div className={css.center}><p className={css.message}>{t('empty')}</p></div>
-      : <><LazyCanvasFlow document={document} readFile={readFile} t={t} edit={edit} reload={load} onSelect={setSelectedId} />
-        {selected === undefined ? undefined : <Inspector
-          document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}
-          edit={edit} close={() => { setSelectedId(undefined) }} openTable={setTableId} t={t}
-        />}
-        {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t} />}</>}
+      : <><LazyCanvasFlow document={document} readFile={readFile} t={t} edit={edit} reload={load}
+        onSelect={setSelectedId} history={history} />
+      {selected === undefined ? undefined : <Inspector
+        document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}
+        edit={edit} close={() => { setSelectedId(undefined) }} openTable={setTableId} t={t}
+      />}
+      {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t} />}</>}
   </section>
 }
