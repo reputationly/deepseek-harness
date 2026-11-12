@@ -106,7 +106,7 @@ export function registerMediaSkills(
     provider: 'dsh-tool-media',
     source: 'bundled',
     rank: BUNDLED_SKILL_RANK,
-    resourceBase: { kind: 'directory', path: skill.directory.split('\\').join('/') },
+    resourceBase: { kind: 'directory', path: `${skill.directory.split('\\').join('/')}/` },
     locator: skill.locator,
   }))
   const provider: SkillProvider = {

@@ -89,7 +89,7 @@ describe('bundled media-editing skill', () => {
       const skill = await ctx.skills.get('media-editing')
       expect(skill?.resourceBase).toEqual({
         kind: 'directory',
-        path: join(root, 'media-editing'),
+        path: `${join(root, 'media-editing')}/`,
       })
       expect(skill?.content).toContain('## 替换音轨')
     } finally {
