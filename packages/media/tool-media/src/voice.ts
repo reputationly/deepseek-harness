@@ -70,6 +70,7 @@ export function planDialogue(
       const voice = voiceOf(bible, line)
       create.push({
         op: 'add',
+        ref: `voice-${shot.id}-${line.id}`,
         type: 'audio',
         title: titleOf(bible, line),
         gen: {
