@@ -10,7 +10,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -22,11 +22,10 @@ import { CatalogSource } from './catalog.ts'
 import { registerMediaSkills, resolveSkillRoot } from './skills.ts'
 import { registerEditTools } from './edit-tools.ts'
 import { FfmpegRunner } from './ffmpeg.ts'
-import type { JobHandle } from '@deepseek-ai/dsh-jobs'
 import { createGenerator } from './generators.ts'
 import { registerNodeTools } from './node-tools.ts'
 import { MediaService } from './remote.ts'
-import type { NodeToolDeps } from './node-tools.ts'
+import { createNodeToolDeps } from './node-deps.ts'
 import { createMediaRuntime } from './remote-runtime.ts'
 import { awaitTask, downloadMedia, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
 import { placeMediaArtifact, registerVisualTools } from './visual-tools.ts'
@@ -284,80 +283,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     videoDefaultDuration: resolved.videoDefaultDuration,
   })
   const jobsRegistry = ctx.get('jobs')
-  const nodeToolDeps: NodeToolDeps = {
+  const nodeToolDeps = createNodeToolDeps({
     canvas: () => ctx.get('canvas') as import('@deepseek-ai/dsh-canvas').CanvasService | undefined,
-    limits: {
-      maxVideoSeconds: resolved.maxSegmentSeconds,
-      videoDefaultDuration: resolved.videoDefaultDuration,
-      videoModel: resolved.videoModel,
-      videoRefModel: resolved.videoRefModel,
-      imageModel: resolved.imageModel,
-      speechModel: resolved.speechModel,
-      musicModel: resolved.musicModel,
+    resolved, generator, ffmpeg,
+    jobs: jobsRegistry === undefined ? undefined : {
+      start: spec => jobsRegistry.start(spec),
     },
-    confirmLimits: {
-      confirmVideoCalls: resolved.confirmVideoCalls,
-      confirmVideoSeconds: resolved.confirmVideoSeconds,
-      confirmSpeechLines: resolved.confirmSpeechLines,
-      confirmImageCalls: resolved.confirmImageCalls,
-      confirmMusicCalls: resolved.confirmMusicCalls,
-    },
-    concurrency: resolved.generateConcurrency,
-    generate: generator,
-    jobs: session => ({
-      start: (spec) => {
-        if (jobsRegistry === undefined) throw new Error('tool-media: the jobs service is not available')
-        const owner = session.id
-        let settle: (value: Awaited<ReturnType<typeof spec.run>>) => void = () => {}
-        let reject: (error: unknown) => void = () => {}
-        const done = new Promise<Awaited<ReturnType<typeof spec.run>>>((resolve, fail) => { settle = resolve; reject = fail })
-        const controller = new AbortController()
-        const id = jobsRegistry.start({
-          kind: 'media',
-          label: spec.label,
-          owner,
-          run: (job: JobHandle) => {
-            job.append(`generating ${spec.label}\n`, { channel: 'log' })
-            spec.run(controller.signal).then((value) => {
-              settle(value)
-              job.append(`wrote ${value.path}\n`, { channel: 'log' })
-            }, (error: unknown) => {
-              reject(error)
-              job.append(`${error instanceof Error ? error.message : String(error)}\n`, { channel: 'log' })
-            })
-            return {
-              cancel: (reason?: string) => controller.abort(reason),
-              done: done.then(
-                value => ({ status: 'completed' as const, result: value.path }),
-                (error: unknown) => ({ status: 'failed' as const, detail: error instanceof Error ? error.message : String(error) }),
-              ),
-            }
-          },
-        })
-        return { id, done, signal: controller.signal }
-      },
-    }),
-    probe: async (path) => {
-      const probe = await ffmpeg.probe(path)
-      const stream = probe.streams?.find(entry => entry.codec_type === 'video')
-      const duration = Number(probe.format?.duration ?? stream?.duration ?? 0)
-      return {
-        ...Number.isFinite(duration) && duration > 0 ? { durationMs: Math.round(duration * 1000) } : {},
-        ...stream?.width === undefined ? {} : { width: stream.width },
-        ...stream?.height === undefined ? {} : { height: stream.height },
-      }
-    },
-    tailFrame: async (path) => {
-      const directory = isAbsolute(resolved.outputDir) ? resolved.outputDir : join(process.cwd(), resolved.outputDir)
-      await mkdir(directory, { recursive: true })
-      const scratch = join(directory, 'tail-scratch.png')
-      await ffmpeg.exec(['-sseof', '-0.05', '-i', path, '-frames:v', '1', '-y', scratch])
-      const bytes = await readFile(scratch)
-      const target = join(directory, `tail-${createHash('sha256').update(bytes).digest('hex').slice(0, 8)}.png`)
-      await rename(scratch, target)
-      return target
-    },
-  }
+  })
   registerNodeTools(ctx, nodeToolDeps)
   const canvasOf = (): import('@deepseek-ai/dsh-canvas').CanvasService => {
     const canvas = ctx.get('canvas') as import('@deepseek-ai/dsh-canvas').CanvasService | undefined
