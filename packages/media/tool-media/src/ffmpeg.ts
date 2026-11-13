@@ -5,26 +5,38 @@ const MAX_CONCURRENT_JOBS = 2
 const OUTPUT_LIMIT = 4 * 1024 * 1024
 const ERROR_TAIL_LIMIT = 2_000
 
+/** Failure kinds one FFmpeg or FFprobe run can report. */
 export type FfmpegErrorCode = 'binary-not-found' | 'timeout' | 'aborted' | 'process-exit' | 'disposed' | 'invalid-probe'
 
+/** One failed FFmpeg or FFprobe run, carrying its kind. */
 export class FfmpegError extends Error {
+  /**
+   * @param code - failure kind.
+   * @param message - diagnostic text shown to the model.
+   * @param options - standard error options, such as a cause.
+   */
   constructor(readonly code: FfmpegErrorCode, message: string, options?: ErrorOptions) {
     super(message, options)
     this.name = 'FfmpegError'
   }
 }
 
+/** Options one FFmpeg or FFprobe run accepts. */
 export interface FfmpegRunOptions {
   readonly signal?: AbortSignal
   readonly cwd?: string
   readonly timeoutMs?: number
 }
 
+/** Output one FFmpeg run captured. */
 export interface FfmpegRunResult {
+  /** Standard output, limited to the tail this package retains. */
   readonly stdout: string
+  /** Standard error, limited to the tail this package retains. */
   readonly stderr: string
 }
 
+/** The subset of ffprobe's JSON that this package reads. */
 export interface FfprobeDocument {
   readonly streams?: readonly {
     readonly index?: number
@@ -79,6 +91,7 @@ function processError(bin: string, error: NodeJS.ErrnoException): FfmpegError {
   return new FfmpegError('process-exit', `${path.basename(bin)} could not start: ${error.message}`, { cause: error })
 }
 
+/** Runs FFmpeg and FFprobe under one concurrency bound, recording seen from every child. */
 export class FfmpegRunner {
   private readonly children = new Set<ChildProcess>()
   private readonly waiters: Waiter[] = []
@@ -91,6 +104,13 @@ export class FfmpegRunner {
     readonly timeoutMs = 600_000,
   ) {}
 
+  /**
+   * Run FFmpeg with one argument list.
+   * @param args - arguments after the executable name.
+   * @param options - cancellation and other run options.
+   * @returns the exit code and captured output.
+   * @throws `FfmpegError` when the binary is missing, times out, or exits non-zero.
+   */
   async exec(args: readonly string[], options: FfmpegRunOptions = {}): Promise<FfmpegRunResult> {
     const signal = options.signal
     await this.acquire(signal)
@@ -101,6 +121,13 @@ export class FfmpegRunner {
     }
   }
 
+  /**
+   * Read one file's streams and container data.
+   * @param pathname - file to inspect.
+   * @param options - cancellation and other run options.
+   * @returns the parsed ffprobe document.
+   * @throws `FfmpegError` `invalid-probe` when ffprobe does not return JSON.
+   */
   async probe(pathname: string, options: FfmpegRunOptions = {}): Promise<FfprobeDocument> {
     const signal = options.signal
     await this.acquire(signal)
@@ -118,6 +145,7 @@ export class FfmpegRunner {
     }
   }
 
+  /** Kill every running child and reject the waiters it holds. */
   dispose(): void {
     if (this.disposed) return
     this.disposed = true

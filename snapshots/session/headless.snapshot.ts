@@ -49,14 +49,42 @@ import {
   writesCurrentSessionFixtures,
   type HarvestedLog,
   type NormalizeContext,
-  type SnapshotManifest,
   type WorkspaceSnapshotEntry,
 } from '@deepseek-ai/dsh-session-snapshot'
+import { startFakeGateway, type SnapshotManifest } from '@deepseek-ai/dsh-session-snapshot'
 import { LOADER_SMOKE_TEST_TIMEOUT_MS, resolveExampleMode, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import { parseSessionLog, prepareSessionSnapshotFixtureForComparison } from '@deepseek-ai/dsh-llm-replay'
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
+
+/** Media the canned gateway answers with, and stub executables that stand in for FFmpeg. */
+async function startMediaFixture(
+  manifest: SnapshotManifest,
+): Promise<{ readonly env: Record<string, string>; close(): Promise<void> }> {
+  const gateway = manifest.gateway === true ? await startFakeGateway() : undefined
+  let bin: string | undefined
+  if (manifest.ffmpeg === true) {
+    bin = await mkdtemp(join(tmpdir(), 'dsh-media-bin-'))
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+    const probe = join(bin, 'ffprobe')
+    const ffmpeg = join(bin, 'ffmpeg')
+    await writeFile(probe, `#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({streams:[{codec_type:'video',width:720,height:1280}],format:{duration:'3.0'}}))\n`)
+    await chmod(probe, 0o755)
+    await writeFile(ffmpeg, `#!/usr/bin/env node\nimport { writeFileSync } from 'node:fs'\nconst args = process.argv.slice(2)\nif (args.includes('-frames:v')) writeFileSync(args.at(-1), Buffer.from('${png.toString('base64')}','base64'))\n`)
+    await chmod(ffmpeg, 0o755)
+  }
+  return {
+    env: {
+      ...gateway === undefined ? {} : { DSH_SNAPSHOT_GATEWAY: gateway.url },
+      ...bin === undefined ? {} : { DSH_SNAPSHOT_FFMPEG: join(bin, 'ffmpeg'), DSH_SNAPSHOT_FFPROBE: join(bin, 'ffprobe') },
+    },
+    close: async () => {
+      await gateway?.close()
+      if (bin !== undefined) await rm(bin, { recursive: true, force: true })
+    },
+  }
+}
 const snapshotsRoot = fileURLToPath(new URL('./', import.meta.url))
 const dshBin = join(repoRoot, 'apps/cli/src/bin.ts')
 const tsconfigPath = join(repoRoot, 'tsconfig.json')
@@ -1372,8 +1400,11 @@ describe('headless recorded-session snapshots', () => {
         ?? scenario.manifest.input?.task
       if (task === undefined) throw new Error(`${scenario.name}: no accepted or exceptional task input`)
       const pin = pinOf(scenario)
-      const ignoredWorkspaceEntries = scenario.manifest.workspace?.setup === 'git-worktree'
-        ? [...RUNTIME_WORKSPACE_ENTRIES.filter(entry => entry !== '.agents'), '.git'] : RUNTIME_WORKSPACE_ENTRIES
+      const ignoredWorkspaceEntries = [
+        ...scenario.manifest.workspace?.setup === 'git-worktree'
+          ? [...RUNTIME_WORKSPACE_ENTRIES.filter(entry => entry !== '.agents'), '.git'] : RUNTIME_WORKSPACE_ENTRIES,
+        ...scenario.manifest.workspace?.ignoredRootEntries ?? [],
+      ]
       let model: { provider: string; model: string } | undefined
       if (primaryFixture !== undefined) {
         try {
@@ -1404,6 +1435,9 @@ describe('headless recorded-session snapshots', () => {
       const locatorRoot = snapshotSpillRoot(fixturePath)
       const mcpDemo = scenario.name === 'plugin-manager-mcp' || scenario.name === 'mcp-template-error'
         ? await startHttpMcpFixture({ rejectToolCalls: scenario.name === 'mcp-template-error' }) : undefined
+      const mediaFixture = scenario.manifest.gateway === true || scenario.manifest.ffmpeg === true
+        ? await startMediaFixture(scenario.manifest)
+        : undefined
       let result: Awaited<ReturnType<typeof runLoaderSmoke>>
       try {
         result = await runLoaderSmoke({
@@ -1446,6 +1480,7 @@ describe('headless recorded-session snapshots', () => {
               ? {}
               : { DSH_PERMISSION_MODE: scenario.manifest.permission }),
             ...scenario.manifest.environment,
+            ...mediaFixture?.env,
             ...(scenario.name === 'mcp-resources' || scenario.name === 'mcp-resources-ptc' ? {
               DSH_MCP_RESOURCES_FIXTURE: join(repoRoot, 'packages/mcp/mcp-client/tests/fixtures/resources-server.ts'),
             } : {}),
@@ -1572,6 +1607,7 @@ describe('headless recorded-session snapshots', () => {
           },
         })
       } finally {
+        await mediaFixture?.close()
         await mcpDemo?.close()
         await rm(spillRoot, { recursive: true, force: true })
       }

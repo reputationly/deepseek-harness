@@ -1,0 +1,12 @@
+@deepseek-ai/dsh-canvas
+
+This package contains code ported from @ninkch/dsh-infinite-canvas 0.20.5,
+which is licensed under the Apache License, Version 2.0.
+
+- src/segments.ts — the storyboard segmentation planner, ported from
+  `shot-segments.js` (`planShotSegments`, the cut-point rules, the forced-seam
+  warnings, and the tail-merge tolerance), with field names mapped onto this
+  package's Shot type.
+
+A copy of the Apache License, Version 2.0 is available at
+https://www.apache.org/licenses/LICENSE-2.0

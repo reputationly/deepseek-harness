@@ -13,14 +13,17 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { bibleFile, EMPTY_BIBLE, parseBible, type Bible, type BibleEntry } from './bible.ts'
 import type z from '@deepseek-ai/schemastery'
-import { Config as configSchema, resolveConfig, type Config as CanvasConfig, type ResolvedConfig } from './config.ts'
+import { Config as configSchema, resolveConfig, type Config, type ResolvedConfig } from './config.ts'
 import { activeVersionOf, assertWithinLimits, CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
 import { applyOperations, CanvasConflictError, checkRevision } from './operations.ts'
 import { episodeOf, parseProject, withBinding, withEpisode, type ProjectSpec, type ProductionFormat, type StudioProject } from './project.ts'
+import { advanceStage, EMPTY_PRODUCTION, parseProductionFile, stageOf } from './production.ts'
+import { planShotSegments } from './segments.ts'
 import { canvasFile, CanvasStore } from './store.ts'
 import { registerCanvasTools } from './tools.ts'
 import type {
-  BibleEntryId, CanvasDocument, CanvasEditResult, CanvasEpisode, CanvasNode, CanvasOperation, CanvasView, EpisodeId,
+  BibleEntryId, CanvasDocument, CanvasEditResult, CanvasEpisode, CanvasNode, CanvasOperation, CanvasView, EpisodeId, GateId,
+  Production, StageId,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -28,10 +31,34 @@ export { activeVersionOf, CanvasCorruptError, CanvasUnsupportedVersionError } fr
 export { CanvasConflictError } from './operations.ts'
 export { Config } from './config.ts'
 export type { StudioProject, ProjectSpec, ProductionFormat } from './project.ts'
+export { gateBibleFirst, gateStoryboardQuality, STAGE_ORDER, videoNodesByShots } from './production.ts'
+export { planShotSegments, shotSegmentKind } from './segments.ts'
 export type { Bible, BibleEntry } from './bible.ts'
+
+/**
+ * Generation segments of every storyboard in one document.
+ * @param document - canvas document.
+ * @param maxSegmentSeconds - longest segment one generation call may cover.
+ * @returns segments keyed by storyboard node id.
+ */
+function storyboardSegments(
+  document: CanvasDocument,
+  maxSegmentSeconds: number,
+): Readonly<Record<string, readonly import('./types.ts').StoryboardSegment[]>> {
+  const segments: Record<string, readonly import('./types.ts').StoryboardSegment[]> = {}
+  for (const node of document.nodes) {
+    if (node.type !== 'storyboard') continue
+    const shots = (node.versions ?? []).find(version => version.id === node.activeVersion)?.shots ?? []
+    segments[node.id] = planShotSegments(shots, { maxSegmentSec: maxSegmentSeconds }).segments
+  }
+  return segments
+}
 
 /** Project metadata file relative to `.canvas/`. */
 const PROJECT_FILE = 'project.json'
+
+/** Production record file relative to `.canvas/`. */
+const PRODUCTION_FILE = 'production.json'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -76,7 +103,7 @@ export interface BibleReferences {
 export class CanvasService extends TypertRemoteService {
   static inject = ['tools', 'workingDirectory']
 
-  static Config: z<CanvasConfig> = configSchema
+  static Config: z<Config> = configSchema
 
   private readonly store: CanvasStore
   private readonly limits: ResolvedConfig
@@ -85,7 +112,7 @@ export class CanvasService extends TypertRemoteService {
    * @param ctx - Host context carrying the tool registry and Session directories.
    * @param config - deployment bounds for canvas documents.
    */
-  constructor(ctx: Context, config: CanvasConfig = {}) {
+  constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'canvas')
     this.limits = resolveConfig(config)
     this.store = new CanvasStore(this.limits)
@@ -283,6 +310,46 @@ export class CanvasService extends TypertRemoteService {
   }
 
   /**
+   * Read the production record of a Session's project.
+   * @param session - Session opened on the project.
+   * @returns the production record, an empty one when the project has none, and its revision.
+   */
+  async productionOf(session: Session): Promise<{ readonly production: Production; readonly revision: number }> {
+    const stored = await this.store.readDocument(this.directoryOf(session), PRODUCTION_FILE, parseProductionFile)
+    return stored === undefined
+      ? { production: EMPTY_PRODUCTION, revision: 0 }
+      : { production: stored.value, revision: stored.revision }
+  }
+
+  /**
+   * Record the stage one episode has reached.
+   * @param session - Session opened on the project.
+   * @param to - stage to record.
+   * @param override - gate to record as overridden, with the reason a user gave.
+   * @param baseRevision - production revision the caller read, or undefined to skip the check.
+   * @returns the production record after the write, its revision, and the previous stage.
+   * @throws `CanvasConflictError` when the production moved past the caller's base revision.
+   */
+  async setStage(
+    session: Session,
+    to: StageId,
+    override?: { readonly gate: GateId; readonly reason: string },
+    baseRevision?: number,
+  ): Promise<{ readonly production: Production; readonly revision: number; readonly previous: StageId }> {
+    const directory = this.directoryOf(session)
+    const target = await this.targetOf(session)
+    const previous = stageOf((await this.productionOf(session)).production, target.episode.id)
+    const at = new Date().toISOString()
+    const written = await this.store.updateDocument(directory, PRODUCTION_FILE, parseProductionFile, () => EMPTY_PRODUCTION, (current) => {
+      if (baseRevision !== undefined && baseRevision !== current.revision) throw new CanvasConflictError(baseRevision, current.revision)
+      return { document: advanceStage(current, target.episode.id, to, override, at), value: undefined }
+    })
+    const production = (await this.productionOf(session)).production
+    this.ctx.emit('canvas/change', { directory, revisions: { production: written.revision } })
+    return { production, revision: written.revision, previous }
+  }
+
+  /**
    * Create the project metadata, making the existing single canvas its first episode.
    * @param session - Session opened on the project.
    * @param request - production format, title, and output specification.
@@ -378,7 +445,11 @@ export class CanvasService extends TypertRemoteService {
         ...current,
         ...change.logline === undefined ? {} : { logline: change.logline },
         style: { ...current.style, ...change.style },
-        entries: [...current.entries.filter(entry => !removed.includes(entry.id)), ...upserted],
+        // An upsert replaces the entry with the same id instead of appending a duplicate.
+        entries: [
+          ...current.entries.filter(entry => !removed.includes(entry.id) && !upserted.some(change => change.id === entry.id)),
+          ...upserted,
+        ],
       }
       return { document: next, value: next }
     })
@@ -398,7 +469,13 @@ export class CanvasService extends TypertRemoteService {
   async get(session: Session, episode?: EpisodeId): Promise<CanvasView> {
     const target = await this.targetOf(session, episode)
     const document = await this.remote(target.directory, target.file, () => this.read(session, target.episode.id))
-    return { directory: target.directory, episode: target.episode, revisions: { canvas: document.revision }, document }
+    return {
+      directory: target.directory,
+      episode: target.episode,
+      revisions: { canvas: document.revision },
+      document,
+      segments: storyboardSegments(document, this.limits.maxSegmentSeconds),
+    }
   }
 
   /**
@@ -418,6 +495,18 @@ export class CanvasService extends TypertRemoteService {
       origin: 'user',
       ...episode === undefined ? {} : { episode },
     }))
+  }
+
+  /**
+   * Read the shared bible the Client panels show.
+   * @param session - Session opened on the project.
+   * @returns the bible and its revision.
+   * @throws RemoteError `canvas/corrupt` when the bible file is not a valid bible.
+   */
+  @Remote('bible')
+  bible(session: Session): Promise<{ readonly bible: Bible; readonly revision: number }> {
+    const directory = this.directoryOf(session)
+    return this.remote(directory, bibleFile(), () => this.bibleOf(session))
   }
 
   /** Read the project metadata, or undefined when the project has none. */

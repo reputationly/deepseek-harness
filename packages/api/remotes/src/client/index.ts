@@ -13,6 +13,7 @@ import settingsControllerRemote from '@deepseek-ai/dsh-api-settings-controller/r
 import gatewayStatusRemote from '@deepseek-ai/dsh-api-gateway-status/remote'
 import officeToPdfRemote from '@deepseek-ai/dsh-office-to-pdf/remote'
 import canvasRemote from '@deepseek-ai/dsh-canvas/remote'
+import mediaRemote from '@deepseek-ai/dsh-tool-media/remote'
 import goalsRemote from '@deepseek-ai/dsh-goal/remote'
 import scheduleRemote from '@deepseek-ai/dsh-schedule/remote'
 import llmRemote from '@deepseek-ai/dsh-llm/remote'
@@ -64,6 +65,10 @@ export type {} from '@deepseek-ai/dsh-web/remote'
 export type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
 export type {} from '@deepseek-ai/dsh-api-account-controller/remote'
 export type {} from '@deepseek-ai/dsh-canvas/remote'
+export type {} from '@deepseek-ai/dsh-tool-media/remote'
+export type {
+  MediaCapabilityView, MediaJobRef, MediaParamView, MediaPlanLine, MediaPlanTotals, MediaPlanView,
+} from '@deepseek-ai/dsh-tool-media/types'
 export type {} from '@deepseek-ai/dsh-goal/remote'
 export type {} from '@deepseek-ai/dsh-schedule/remote'
 export type {} from '@deepseek-ai/dsh-office-to-pdf/remote'
@@ -201,7 +206,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   try {
     for (const contribution of [
       productAnalyticsRemote, agentPresetsRemote, commandsRemote, agentTeamsRemote, settingsControllerRemote, accountRemote,
-      goalsRemote, canvasRemote, llmRemote, dynamicRemote, scheduleRemote,
+      goalsRemote, canvasRemote, mediaRemote, llmRemote, dynamicRemote, scheduleRemote,
       pluginInventoryRemote, pluginManagerRemote, mcpManagerRemote, pluginMarketRemote, pluginRegistryProbeRemote,
       toolResultsRemote,
       messageFeedbackRemote, sessionFeedbackRemote,

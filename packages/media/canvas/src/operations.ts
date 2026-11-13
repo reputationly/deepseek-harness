@@ -200,7 +200,9 @@ export function applyOperations(
         const group = operation.group === undefined ? undefined : joinGroup(operation.group)
         const content = isTextType(operation.type) ? operation.text : operation.path
         const needsContent = operation.type !== 'storyboard' && operation.type !== 'timeline'
-        if (needsContent && (content === undefined || content === '')) {
+        // A node that names only what it will generate exists so a job can fill it later.
+        const pending = operation.gen !== undefined && (content === undefined || content === '') && operation.shots === undefined
+        if (needsContent && !pending && (content === undefined || content === '')) {
           throw new Skip(isTextType(operation.type) ? `a ${operation.type} node needs text` : `${operation.type === 'image' || operation.type === 'audio' ? 'an' : 'a'} ${operation.type} node needs path`)
         }
         if (operation.gen !== undefined && operation.gen.prompt.length > options.limits.maxPromptLength) {
@@ -223,8 +225,8 @@ export function applyOperations(
         const title = operation.title ?? (content === undefined || content === '' ? operation.type : isTextType(operation.type) ? content.slice(0, 24) : basename(content))
         nodes.set(id, {
           id, type: operation.type, title, x: 0, y: 0, ...nodeSize(operation.type),
-          versions: [version],
-          activeVersion: version.id,
+          versions: pending ? [] : [version],
+          ...pending ? {} : { activeVersion: version.id },
           ...operation.gen === undefined ? {} : { gen: operation.gen },
           ...operation.bible === undefined ? {} : { bible: operation.bible },
           ...group === undefined ? {} : { group: brandString<CanvasNodeId>(group) },
@@ -318,6 +320,42 @@ export function applyOperations(
         node.activeVersion = brandString<VersionId>(operation.version)
         return
       }
+      case 'append_version': {
+        const node = find(operation.node)
+        if (node.type === 'group') throw new Skip(`node ${node.id} is a group`)
+        const { id, ...body } = operation.version
+        setVersion(node, {
+          ...body,
+          id: id === undefined ? nextVersionId(node.versions) : brandString<VersionId>(id),
+          createdAt: body.createdAt ?? now(),
+          origin: body.origin ?? origin,
+        })
+        return
+      }
+      case 'set_stale': {
+        const node = find(operation.node)
+        if (operation.stale) node.stale = true
+        else delete node.stale
+        return
+      }
+      case 'set_input_changed': {
+        const node = find(operation.node)
+        if (operation.changed) node.inputChanged = true
+        else delete node.inputChanged
+        return
+      }
+      case 'set_tail': {
+        const node = find(operation.node)
+        if (operation.tailOf === null) delete node.tailOf
+        else node.tailOf = operation.tailOf
+        return
+      }
+      case 'set_status': {
+        const node = find(operation.node)
+        if (operation.status === null) delete node.status
+        else node.status = operation.status
+        return
+      }
       case 'connect': {
         const from = find(operation.from)
         const to = find(operation.to)
@@ -373,6 +411,7 @@ export function applyOperations(
         nodes.set(id, {
           id: brandString<CanvasNodeId>(id), type: 'group', title: operation.title ?? 'Group',
           x: 0, y: 0, width: 0, height: 0, versions: [],
+          ...operation.sceneOrigin === undefined ? {} : { sceneOrigin: operation.sceneOrigin },
         })
         for (const member of members) member.group = brandString<CanvasNodeId>(id)
         claim(operation.ref, id)

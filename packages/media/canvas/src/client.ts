@@ -4,3 +4,5 @@
  */
 
 export type * from './types.ts'
+export { edgeId, inferRole } from './roles.ts'
+export { planShotSegments, shotSegmentKind } from './segments.ts'

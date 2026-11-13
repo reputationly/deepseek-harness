@@ -64,7 +64,15 @@ export interface MediaPlacementNode {
   readonly model?: string
 }
 
-/** Place one written media artifact and connect its known source nodes and paths. */
+/**
+ * Place one written media artifact and connect its known source nodes and paths.
+ * @param canvas - canvas service, when one is mounted.
+ * @param session - Session whose project receives the node.
+ * @param node - node content, including the written file.
+ * @param sourceNodes - canvas nodes the media was generated from.
+ * @param sourceFiles - local files the media was generated from.
+ * @returns the created node id, or the reason placement failed.
+ */
 export async function placeMediaArtifact(
   canvas: CanvasService | undefined,
   session: Session | undefined,

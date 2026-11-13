@@ -9,22 +9,25 @@ const view = (directory: string, nextId = 1): CanvasView => ({
   episode: { id: 'e1' as never, title: 'Canvas' },
   revisions: { canvas: 3 },
   document: { version: 2, revision: 3, nextId, nodes: [], edges: [] },
+  segments: {},
 })
 const ok = <T>(value: T): RemoteResult<T> => ({ ok: true, value })
-const failure = (message: string): RemoteResult<never> => ({ ok: false, error: { code: 'internal', message } as never })
+const failure = (message: string, code = 'internal'): RemoteResult<never> => ({ ok: false, error: { code, message } as never })
 const applied: CanvasEditResult = { revision: 3, refs: {}, created: [], skipped: [] }
 
 it('shows the document it read and keeps it visible when a later read fails', async () => {
   const get = vi.fn<() => Promise<RemoteResult<CanvasView>>>().mockResolvedValueOnce(ok(view('/project')))
   const source = new CanvasSource({ get, apply: vi.fn() })
-  expect(source.state.getSnapshot()).toEqual({ status: 'loading', view: undefined, error: undefined, notice: undefined })
+  expect(source.state.getSnapshot()).toEqual({ status: 'loading', view: undefined, error: undefined, notice: undefined, conflict: false })
 
   await source.load()
-  expect(source.state.getSnapshot()).toEqual({ status: 'ready', view: view('/project'), error: undefined, notice: undefined })
+  expect(source.state.getSnapshot()).toEqual({ status: 'ready', view: view('/project'), error: undefined, notice: undefined, conflict: false })
 
   get.mockResolvedValueOnce(failure('canvas file is corrupt'))
   await source.load()
-  expect(source.state.getSnapshot()).toEqual({ status: 'failed', view: view('/project'), error: 'canvas file is corrupt', notice: undefined })
+  expect(source.state.getSnapshot()).toEqual({
+    status: 'failed', view: view('/project'), error: 'canvas file is corrupt', notice: undefined, conflict: false,
+  })
 
   get.mockResolvedValueOnce(ok(view('/project', 2)))
   await source.load()
@@ -92,10 +95,39 @@ it('forgets the document on a replaced connection and stops publishing once disp
 
   get.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
   source.reset()
-  expect(source.state.getSnapshot()).toEqual({ status: 'loading', view: undefined, error: undefined, notice: undefined })
+  expect(source.state.getSnapshot()).toEqual({ status: 'loading', view: undefined, error: undefined, notice: undefined, conflict: false })
 
   source.dispose()
   finish(ok(view('/project', 9)))
   await Promise.resolve()
   expect(source.state.getSnapshot().view).toBeUndefined()
+})
+
+it('flags a conflict so the form keeps its draft', async () => {
+  const get = vi.fn<() => Promise<RemoteResult<CanvasView>>>().mockResolvedValue(ok(view('/project')))
+  const apply = vi.fn(async () => failure('revision 4 was expected, found 7', 'canvas/conflict'))
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  await source.edit([{ op: 'move', node: 'n1', x: 1, y: 1 }])
+  expect(source.state.getSnapshot()).toMatchObject({ conflict: true, notice: 'revision 4 was expected, found 7' })
+  source.dismiss()
+  expect(source.state.getSnapshot()).toMatchObject({ conflict: false, notice: undefined })
+})
+
+it('clears the notice after a successful edit', async () => {
+  const get = vi.fn(async () => ok(view('/project')))
+  const apply = vi.fn(async () => ok({ revision: 3, refs: {}, created: [], skipped: [{ reason: 'skipped edge' }] } as never))
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  await source.edit([{ op: 'move', node: 'n1', x: 1, y: 1 }])
+  expect(source.state.getSnapshot().notice).toBe('skipped edge')
+  source.dismiss()
+  expect(source.state.getSnapshot().notice).toBeUndefined()
+})
+
+it('edits before the first read with base revision zero', async () => {
+  const apply = vi.fn(async () => ok({ revision: 1, refs: {}, created: [], skipped: [] } as never))
+  const source = new CanvasSource({ get: vi.fn(async () => ok(view('/project'))), apply })
+  await source.edit([{ op: 'move', node: 'n1', x: 1, y: 1 }])
+  expect(apply).toHaveBeenCalledWith([{ op: 'move', node: 'n1', x: 1, y: 1 }], 0)
 })

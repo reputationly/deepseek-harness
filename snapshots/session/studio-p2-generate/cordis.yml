@@ -1,0 +1,33 @@
+# P2 generation scenario: the media gateway and FFmpeg are canned so a replay never leaves the machine.
+- id: llm-deepseek
+  config:
+    apiKeyEnv: AURORA_API_KEY
+    baseURL: https://maas.ovaijisuan.com/v1
+    models:
+      - id: deepseek-v4-1-flash
+- id: tool-media
+  disabled: false
+  config:
+    baseURL: !!js process.env.DSH_SNAPSHOT_GATEWAY
+    apiKeyEnv: AURORA_API_KEY
+    outputDir: media-output
+    ffmpegPath: !!js process.env.DSH_SNAPSHOT_FFMPEG
+    ffprobePath: !!js process.env.DSH_SNAPSHOT_FFPROBE
+    imageModel: fake-image
+    videoModel: fake-video
+    videoRefModel: fake-video-ref
+    speechModel: fake-speech
+    maxSegmentSeconds: 15
+    generateConcurrency: 1
+- id: canvas
+  disabled: false
+- id: agent-default-model
+  config:
+    provider: deepseek-official
+    model: deepseek-v4-1-flash
+- id: tool-fs-search
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true

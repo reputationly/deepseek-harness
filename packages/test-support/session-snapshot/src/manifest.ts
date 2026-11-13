@@ -49,6 +49,8 @@ export interface SnapshotWorkspaceManifest {
   final?: true
   /** Place the generated cwd outside automatically writable temporary roots. */
   parent?: 'outside-temp'
+  /** Root entries whose names a replayed run cannot reproduce; omitted from the workspace oracle. */
+  ignoredRootEntries?: readonly string[]
 }
 
 /** Controller input that cannot enter a session because admission rejects it. */
@@ -116,6 +118,10 @@ export interface SnapshotManifest {
   environment?: Record<string, string>
   /** Process timeout in milliseconds for a scenario whose live recording outlasts the default. */
   timeoutMs?: number
+  /** Start the canned media gateway and export its URL as `DSH_SNAPSHOT_GATEWAY`. */
+  gateway?: boolean
+  /** Provide stub `ffmpeg` and `ffprobe` executables through `DSH_SNAPSHOT_FFMPEG` and `DSH_SNAPSHOT_FFPROBE`. */
+  ffmpeg?: boolean
   /** Workspace setup and external final-state ownership. */
   workspace?: SnapshotWorkspaceManifest
   /** Exceptional controller input absent for ordinary log-driven scenarios. */
@@ -222,6 +228,8 @@ export function parseSnapshotManifest(source: string, path = 'snapshot.yml'): Sn
       'permission',
       'environment',
       'timeoutMs',
+      'gateway',
+      'ffmpeg',
       'workspace',
       'input',
       'session',
@@ -326,20 +334,29 @@ export function parseSnapshotManifest(source: string, path = 'snapshot.yml'): Sn
       timeoutMs = root.timeoutMs
     }
 
+    for (const key of ['gateway', 'ffmpeg'] as const) {
+      if (root[key] !== undefined && typeof root[key] !== 'boolean') throw new Error(`manifest.${key} must be a boolean`)
+    }
+
     let workspace: SnapshotWorkspaceManifest | undefined
     if (root.workspace !== undefined) {
       const value = record(root.workspace, 'manifest.workspace')
-      exactKeys(value, ['setup', 'final', 'parent'], 'manifest.workspace')
+      exactKeys(value, ['setup', 'final', 'parent', 'ignoredRootEntries'], 'manifest.workspace')
       if (value.final !== undefined && value.final !== true) {
         throw new Error('manifest.workspace.final must equal true when present')
       }
       if (value.parent !== undefined && value.parent !== 'outside-temp') {
         throw new Error('manifest.workspace.parent must equal outside-temp')
       }
+      if (value.ignoredRootEntries !== undefined
+        && (!Array.isArray(value.ignoredRootEntries) || value.ignoredRootEntries.some(entry => typeof entry !== 'string' || entry === ''))) {
+        throw new Error('manifest.workspace.ignoredRootEntries must be a list of non-empty strings')
+      }
       workspace = {
         ...(value.setup === undefined ? {} : { setup: name(value.setup, 'manifest.workspace.setup') }),
         ...(value.final === true ? { final: true as const } : {}),
         ...(value.parent === 'outside-temp' ? { parent: 'outside-temp' as const } : {}),
+        ...(value.ignoredRootEntries === undefined ? {} : { ignoredRootEntries: value.ignoredRootEntries as readonly string[] }),
       }
       if (Object.keys(workspace).length === 0) throw new Error('manifest.workspace must not be empty')
     }
@@ -432,6 +449,8 @@ export function parseSnapshotManifest(source: string, path = 'snapshot.yml'): Sn
       ...(permission === undefined ? {} : { permission }),
       ...(environment === undefined ? {} : { environment }),
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      ...(root.gateway === true ? { gateway: true } : {}),
+      ...(root.ffmpeg === true ? { ffmpeg: true } : {}),
       ...(workspace === undefined ? {} : { workspace }),
       ...(input === undefined ? {} : { input }),
       ...(session === undefined ? {} : { session }),

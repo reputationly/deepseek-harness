@@ -324,3 +324,69 @@ describe('search and lookup paths', () => {
       .toEqual([{ index: 0, op: 'move_shot', reason: 'shot s9 does not exist' }])
   })
 })
+
+describe('host-side version and status operations', () => {
+  it('appends a version a generation produced', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'image', path: '/a.png' }]).document
+    const { document } = run(base, [{
+      op: 'append_version',
+      node: 'n1',
+      version: { path: '/a-v2.png', prompt: 'again', model: 'm', durationMs: 1000, createdAt: 'then', origin: 'agent' },
+    }])
+    expect(document.nodes[0]?.versions?.map(version => [version.id, version.path, version.origin])).toEqual([
+      ['v1', '/a.png', 'user'],
+      ['v2', '/a-v2.png', 'agent'],
+    ])
+    expect(document.nodes[0]?.activeVersion).toBe('v2')
+  })
+
+  it('accepts an explicit version id and the call clock, and rejects a group', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'image', path: '/a.png' }, { op: 'group', nodes: ['n1'] }]).document
+    const { document } = run(base, [{
+      op: 'append_version', node: 'n1', version: { id: 'v9', path: '/b.png', createdAt: 'then', origin: 'user' },
+    }])
+    expect(document.nodes[0]?.versions?.[1]).toMatchObject({ id: 'v9', createdAt: 'then', origin: 'user' })
+    expect(run(base, [{ op: 'append_version', node: 'g2', version: { path: '/b.png', createdAt: 'now', origin: 'user' } }]).result.skipped)
+      .toEqual([{ index: 0, op: 'append_version', reason: 'node g2 is a group' }])
+  })
+
+  it('mirrors and clears a generation status', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'image', path: '/a.png' }]).document
+    const running = run(base, [{
+      op: 'set_status', node: 'n1', status: { state: 'running', jobId: 'media-1' as never, at: 'now', progress: 0.4 },
+    }]).document
+    expect(running.nodes[0]?.status).toEqual({ state: 'running', jobId: 'media-1', at: 'now', progress: 0.4 })
+    const cleared = run(running, [{ op: 'set_status', node: 'n1', status: null }]).document
+    expect(cleared.nodes[0]?.status).toBeUndefined()
+  })
+})
+
+describe('host-side stale and tail operations', () => {
+  it('marks and clears a stale node', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'video', path: '/a.mp4' }]).document
+    const stale = run(base, [{ op: 'set_stale', node: 'n1', stale: true }]).document
+    expect(stale.nodes[0]?.stale).toBe(true)
+    expect(run(stale, [{ op: 'set_stale', node: 'n1', stale: false }]).document.nodes[0]?.stale).toBeUndefined()
+  })
+
+  it('records and clears the tail frame of a video node', () => {
+    const base = run(EMPTY_CANVAS, [
+      { op: 'add', type: 'video', path: '/a.mp4' },
+      { op: 'add', type: 'image', path: '/tail.png' },
+    ]).document
+    const withTail = run(base, [{
+      op: 'set_tail', node: 'n1', tailOf: { node: 'n2' as never, version: 'v1' as never },
+    }]).document
+    expect(withTail.nodes[0]?.tailOf).toEqual({ node: 'n2', version: 'v1' })
+    expect(run(withTail, [{ op: 'set_tail', node: 'n1', tailOf: null }]).document.nodes[0]?.tailOf).toBeUndefined()
+  })
+})
+
+describe('host-side input-changed operation', () => {
+  it('marks and clears that an input changed', () => {
+    const base = run(EMPTY_CANVAS, [{ op: 'add', type: 'video', path: '/a.mp4' }]).document
+    const changed = run(base, [{ op: 'set_input_changed', node: 'n1', changed: true }]).document
+    expect(changed.nodes[0]?.inputChanged).toBe(true)
+    expect(run(changed, [{ op: 'set_input_changed', node: 'n1', changed: false }]).document.nodes[0]?.inputChanged).toBeUndefined()
+  })
+})

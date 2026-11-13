@@ -189,7 +189,11 @@
       "y": 310,
       "width": 840,
       "height": 400,
-      "versions": []
+      "versions": [],
+      "sceneOrigin": {
+        "script": "n1",
+        "scene": 1
+      }
     },
     {
       "id": "n5",
@@ -381,7 +385,11 @@
       "y": 650,
       "width": 840,
       "height": 400,
-      "versions": []
+      "versions": [],
+      "sceneOrigin": {
+        "script": "n1",
+        "scene": 2
+      }
     },
     {
       "id": "n8",
@@ -557,7 +565,11 @@
       "y": 990,
       "width": 840,
       "height": 400,
-      "versions": []
+      "versions": [],
+      "sceneOrigin": {
+        "script": "n1",
+        "scene": 3
+      }
     }
   ],
   "edges": [

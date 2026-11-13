@@ -73,11 +73,12 @@ export function settleParams(capability: Capability, options: SettleOptions): Se
         params[id] = hit
         continue
       }
-      choices.push({ id, title: schema.title ?? id, options: accepted, recommended: recommended ?? '', rejected: stated.trim() })
+      // A non-empty enumeration always yields a recommendation from its first value.
+      choices.push({ id, title: schema.title ?? id, options: accepted, recommended: recommended as string, rejected: stated.trim() })
       continue
     }
     if (accepted.length > 1 && options.ask.includes(id)) {
-      choices.push({ id, title: schema.title ?? id, options: accepted, recommended: recommended ?? '' })
+      choices.push({ id, title: schema.title ?? id, options: accepted, recommended: recommended as string })
       continue
     }
     if (recommended !== undefined) params[id] = recommended

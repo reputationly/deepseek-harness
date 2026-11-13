@@ -9,6 +9,7 @@
  * @module @deepseek-ai/dsh-tool-media
  */
 
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
@@ -21,11 +22,18 @@ import { CatalogSource } from './catalog.ts'
 import { registerMediaSkills, resolveSkillRoot } from './skills.ts'
 import { registerEditTools } from './edit-tools.ts'
 import { FfmpegRunner } from './ffmpeg.ts'
+import { createGenerator } from './generators.ts'
+import { registerNodeTools } from './node-tools.ts'
+import { MediaService } from './remote.ts'
+import { createNodeToolDeps } from './node-deps.ts'
+import { createMediaRuntime } from './remote-runtime.ts'
 import { awaitTask, downloadMedia, generateSpeech, submitTask, type GatewayRequest } from './gateway.ts'
 import { placeMediaArtifact, registerVisualTools } from './visual-tools.ts'
 
 export { MediaGatewayError } from './gateway.ts'
 export type { MediaArtifact } from './gateway.ts'
+export type { MediaCapabilityView } from './types.ts'
+export { MediaService } from './remote.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-media'
@@ -59,6 +67,22 @@ export interface Config {
   catalogCacheFile?: string
   /** Video length recommended when the user names none, in seconds. */
   videoDefaultDuration?: number
+  /** Video model used when a node has reference images but no first frame. */
+  videoRefModel?: string
+  /** Longest video segment one generation call may cover, in seconds. */
+  maxSegmentSeconds?: number
+  /** Generation tasks one call may run at once. */
+  generateConcurrency?: number
+  /** Video calls above which a plan needs the user's confirmation. */
+  confirmVideoCalls?: number
+  /** Total video seconds above which a plan needs the user's confirmation. */
+  confirmVideoSeconds?: number
+  /** Spoken lines above which a plan needs the user's confirmation. */
+  confirmSpeechLines?: number
+  /** Image calls above which a plan needs the user's confirmation. */
+  confirmImageCalls?: number
+  /** Music calls above which a plan needs the user's confirmation. */
+  confirmMusicCalls?: number
   /** FFmpeg executable, or an absolute path to its bundled runtime copy. */
   ffmpegPath?: string
   /** FFprobe executable, or an absolute path to its bundled runtime copy. */
@@ -71,7 +95,8 @@ export interface Config {
   skillsRoot?: string
 }
 
-const CONFIG_FIELDS = {
+/** Config fields one deployment may set; the schema below gives every default. */
+export const Config: z<Config> = z.object({
   baseURL: z.string(),
   apiKeyEnv: z.string().role('credential-ref').default('DSH_MAAS_API_KEY'),
   imageModel: z.string().default('qwen-image-pro'),
@@ -84,17 +109,34 @@ const CONFIG_FIELDS = {
   catalog: z.boolean().default(true),
   catalogCacheFile: z.string().default(''),
   videoDefaultDuration: z.number().default(5),
+  videoRefModel: z.string().default('minimax-h3-ref2va'),
+  maxSegmentSeconds: z.number().default(15),
+  generateConcurrency: z.number().default(3),
+  confirmVideoCalls: z.number().default(2),
+  confirmVideoSeconds: z.number().default(20),
+  confirmSpeechLines: z.number().default(20),
+  confirmImageCalls: z.number().default(8),
+  confirmMusicCalls: z.number().default(2),
   ffmpegPath: z.string().default('ffmpeg'),
   ffprobePath: z.string().default('ffprobe'),
   editTimeoutMs: z.number().default(600_000),
   fontFile: z.string().min(1),
   skillsRoot: z.string().min(1).default('../assets/'),
-} satisfies Record<keyof Config, unknown>
+})
 
-export const Config: z<Config> = z.object(CONFIG_FIELDS)
+declare module '@deepseek-ai/dsh-jobs' {
+  interface JobKindMap {
+    media: 'media'
+  }
+}
 
 /** Declared config keys; a deployment that carries a retired key must fail at load instead of silently falling back. */
-const CONFIG_KEYS: readonly string[] = Object.keys(CONFIG_FIELDS)
+const CONFIG_KEYS = [
+  'baseURL', 'apiKeyEnv', 'imageModel', 'speechModel', 'musicModel', 'videoModel', 'outputDir', 'taskTimeoutMs',
+  'pollIntervalMs', 'catalog', 'catalogCacheFile', 'videoDefaultDuration', 'videoRefModel', 'maxSegmentSeconds',
+  'generateConcurrency', 'confirmVideoCalls', 'confirmVideoSeconds', 'confirmSpeechLines', 'confirmImageCalls',
+  'confirmMusicCalls', 'ffmpegPath', 'ffprobePath', 'editTimeoutMs', 'fontFile', 'skillsRoot',
+] as const satisfies readonly (keyof Config)[]
 
 /**
  * Reject a config key this build does not declare.
@@ -103,7 +145,7 @@ const CONFIG_KEYS: readonly string[] = Object.keys(CONFIG_FIELDS)
  */
 function rejectUnknownKeys(config: Config): void {
   for (const key of Object.keys(config)) {
-    if (!CONFIG_KEYS.includes(key)) throw new Error(`tool-media: unknown config key ${key}`)
+    if (!(CONFIG_KEYS as readonly string[]).includes(key)) throw new Error(`tool-media: unknown config key ${key}`)
   }
 }
 
@@ -168,7 +210,9 @@ async function voiceReference(voice: string): Promise<string> {
 async function writeArtifact(root: string, prefix: string, contentType: string, bytes: Uint8Array): Promise<string> {
   const directory = isAbsolute(root) ? root : join(process.cwd(), root)
   await mkdir(directory, { recursive: true })
-  const path = join(directory, `${prefix}-${String(Date.now())}${extensionFor(contentType)}`)
+  // Content-addressed names keep two runs that produce the same bytes in the same place.
+  const digest = createHash('sha256').update(bytes).digest('hex').slice(0, 8)
+  const path = join(directory, `${prefix}-${digest}${extensionFor(contentType)}`)
   await writeFile(path, bytes)
   return path
 }
@@ -220,6 +264,43 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     },
     canvas: () => ctx.get('canvas'),
   })
+  const catalogOf = async (): Promise<import('./catalog.ts').MediaCatalog | undefined> => {
+    if (!resolved.catalog) return undefined
+    const gateway = await request(AbortSignal.timeout(resolved.taskTimeoutMs))
+    return new CatalogSource({ baseURL: resolved.baseURL, cacheFile }).load(gateway.apiKey, gateway.signal)
+  }
+  const generator = createGenerator({
+    request,
+    ...resolved.catalog ? {
+      catalog: async () => {
+        const gateway = await request(AbortSignal.timeout(resolved.taskTimeoutMs))
+        return new CatalogSource({ baseURL: resolved.baseURL, cacheFile }).load(gateway.apiKey, gateway.signal)
+      },
+    } : {},
+    write: (prefix, contentType, bytes) => writeArtifact(resolved.outputDir, prefix, contentType, bytes),
+    taskTimeoutMs: resolved.taskTimeoutMs,
+    pollIntervalMs: resolved.pollIntervalMs,
+    videoDefaultDuration: resolved.videoDefaultDuration,
+  })
+  const jobsRegistry = ctx.get('jobs')
+  const nodeToolDeps = createNodeToolDeps({
+    canvas: () => ctx.get('canvas') as import('@deepseek-ai/dsh-canvas').CanvasService | undefined,
+    resolved, generator, ffmpeg,
+    jobs: jobsRegistry === undefined ? undefined : {
+      start: spec => jobsRegistry.start(spec),
+    },
+  })
+  registerNodeTools(ctx, nodeToolDeps)
+  const canvasOf = (): import('@deepseek-ai/dsh-canvas').CanvasService => {
+    const canvas = ctx.get('canvas') as import('@deepseek-ai/dsh-canvas').CanvasService | undefined
+    /* v8 ignore next -- the deployment enables the canvas row with these tools */
+    if (canvas === undefined) throw new Error('tool-media: the canvas service is not available')
+    return canvas
+  }
+  void new MediaService(ctx, catalogOf, createMediaRuntime({
+    canvasOf, tools: nodeToolDeps,
+    jobs: jobsRegistry === undefined ? undefined : { kill: (id, caller, reason) => jobsRegistry.kill(id, caller, reason) },
+  }))
   const skills = ctx.get('skills')
   if (skills !== undefined) registerMediaSkills(ctx, skills, resolveSkillRoot(resolved.skillsRoot))
 

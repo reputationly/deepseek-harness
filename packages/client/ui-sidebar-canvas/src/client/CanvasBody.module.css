@@ -5,3 +5,7 @@
 .noticeText { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .titleIcon { flex: none; margin-right: 4px; }
 .dismiss { flex: none; width: 28px; padding: 0; }
+
+.fullscreen { position: fixed; inset: 0; z-index: 30; border-radius: 0; }
+.canvasActions { position: absolute; top: 8px; right: 8px; z-index: 8; display: flex; align-items: center; gap: 6px; }
+.addedBadge { padding: 2px 8px; border-radius: var(--dsw-radius-sm); color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-1); box-shadow: var(--dsw-elevation-stroke); font-size: 12px; }

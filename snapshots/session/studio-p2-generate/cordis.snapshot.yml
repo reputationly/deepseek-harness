@@ -1,0 +1,75 @@
+# Replay disables live model requests and preserves the media composition.
+
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: deepseek-official
+    model: deepseek-v4-1-flash
+
+- id: llm-deepseek
+  disabled: true
+
+- id: plugin-package-inventory-deepseek
+  disabled: true
+
+- id: session-title-llm
+  disabled: true
+
+- id: session-persistence-jsonl
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: !!js dshHomePath('sessions')
+    compression: none
+
+- id: tool-media
+  name: '@deepseek-ai/dsh-tool-media'
+  disabled: false
+  config:
+    baseURL: !!js process.env.DSH_SNAPSHOT_GATEWAY
+    apiKeyEnv: DEEPSEEK_API_KEY
+    outputDir: media-output
+    ffmpegPath: !!js process.env.DSH_SNAPSHOT_FFMPEG
+    ffprobePath: !!js process.env.DSH_SNAPSHOT_FFPROBE
+    imageModel: fake-image
+    videoModel: fake-video
+    videoRefModel: fake-video-ref
+    speechModel: fake-speech
+    maxSegmentSeconds: 15
+    generateConcurrency: 1
+
+- id: canvas
+  name: '@deepseek-ai/dsh-canvas'
+  disabled: false
+
+- insert:
+    - id: llm-replay
+      name: '@deepseek-ai/dsh-llm-replay'
+      config:
+        providers:
+          - id: deepseek-official
+            name: DeepSeek
+            models:
+              - id: deepseek-v4-1-flash
+                contextWindow: 1000000
+                defaultMaxTokens: 256000
+                reasoningEfforts: ['off', 'low', 'high', 'max']
+                defaultReasoningEffort: high
+                toolUpdate: in-history
+              - id: deepseek-v4-flash
+                toolUpdate: in-history
+              - id: deepseek-v4-pro
+          - id: deepseek-messages
+            name: DeepSeek Messages
+            models:
+              - id: deepseek-v4-flash
+                toolUpdate: in-history
+              - id: deepseek-v4-pro
+
+- id: tool-bash
+  disabled: true
+
+- id: tool-pwsh
+  disabled: true
+
+- id: tool-fs-search
+  disabled: true

@@ -104,6 +104,7 @@
     "@deepseek-ai/dsh-user-approval": "workspace:*",
     "@deepseek-ai/dsh-user-questions": "workspace:*",
     "@deepseek-ai/dsh-web": "workspace:*",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "@deepseek-ai/dsh-tool-media": "workspace:*"
   }
 }

@@ -1,0 +1,145 @@
+{
+  "version": 2,
+  "revision": 3,
+  "nextId": 5,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "script",
+      "title": "第一集剧本",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 260,
+      "versions": [
+        {
+          "id": "v1",
+          "text": "《雨夜测验》第一集\n\n【场1】雨夜考场走廊\n暴雨砸在玻璃上，走廊尽头的教室门缝里透出一道白光。\n林夏抱着帆布包快步走过，湿透的鞋在地面拖出水声，频闪的灯管让她每一步都像踩进黑暗里。\n手机屏幕亮起：一行没有署名的短信——“第三考场，迟到者取消资格。”\n她停住。走廊里除了雨声，什么都没有。\n她抬手推门，门缝里的白光顺着地板淌出来，照亮她攥紧包带的手。\n门内传来椅子挪动的轻响，像有人已经坐在那里等了很久。",
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v1"
+    },
+    {
+      "id": "n2",
+      "type": "text",
+      "title": "场1 雨夜考场走廊",
+      "x": 0,
+      "y": 380,
+      "width": 280,
+      "height": 160,
+      "group": "g4",
+      "versions": [
+        {
+          "id": "v1",
+          "text": "暴雨砸在玻璃上，走廊尽头的教室门缝里透出一道白光。\n林夏抱着帆布包快步走过，湿透的鞋在地面拖出水声，频闪的灯管让她每一步都像踩进黑暗里。\n手机屏幕亮起：一行没有署名的短信——“第三考场，迟到者取消资格。”\n她停住。走廊里除了雨声，什么都没有。\n她抬手推门，门缝里的白光顺着地板淌出来，照亮她攥紧包带的手。\n门内传来椅子挪动的轻响，像有人已经坐在那里等了很久。",
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v1"
+    },
+    {
+      "id": "n3",
+      "type": "storyboard",
+      "title": "场1 雨夜考场走廊 分镜",
+      "x": 360,
+      "y": 380,
+      "width": 420,
+      "height": 300,
+      "group": "g4",
+      "versions": [
+        {
+          "id": "v1",
+          "shots": [],
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        },
+        {
+          "id": "v2",
+          "shots": [
+            {
+              "id": "s1",
+              "title": "雨夜走廊",
+              "shotSize": "full",
+              "visual": "竖幅走廊深处，林夏背对镜头快步走向尽头：米白风衣被雨浸透贴在背上，湿发贴着脸，右侧落地窗糊满雨痕与钠灯橙光，左侧一排贴着褪色编号的空教室门，地面磨石子反着冷光，一根日光灯管正在频闪",
+              "motion": "林夏抱着帆布包快步前行，脚步踩过积水，回头看了一眼身后漆黑的走廊",
+              "camera": "缓慢推镜，从走廊全景推向人物的背影",
+              "durationSec": 5,
+              "characters": [
+                "linxia"
+              ],
+              "scene": "corridor",
+              "props": [],
+              "dialogue": [
+                {
+                  "id": "d1",
+                  "speaker": {
+                    "kind": "character",
+                    "entry": "linxia"
+                  },
+                  "line": "（心声）第三考场……走廊尽头那间。"
+                }
+              ],
+              "sfx": "暴雨敲玻璃、皮鞋踩水声、灯管频闪的低频嗡鸣",
+              "negative": "多余的手指、文字水印、镜头抖动、人脸扭曲"
+            },
+            {
+              "id": "s2",
+              "title": "短信与白门",
+              "shotSize": "close",
+              "visual": "中近景贴近林夏的侧脸与手：手机屏幕的冷蓝光映在她警觉的眼睛和紧绷的下颌上，背景是走廊尽头半开的教室门，门缝里透出一道刺眼白光洒在地面，雨痕在玻璃上不断下淌",
+              "motion": "林夏停住，低头从风衣口袋摸出手机，屏幕蓝光打亮她的下半张脸；随后抬手推门，门缝里的白光洒出，她攥紧包带",
+              "camera": "固定，轻微手持呼吸感",
+              "durationSec": 5,
+              "characters": [
+                "linxia"
+              ],
+              "scene": "corridor",
+              "props": [],
+              "dialogue": [
+                {
+                  "id": "d1",
+                  "speaker": {
+                    "kind": "character",
+                    "entry": "linxia"
+                  },
+                  "line": "（心声）谁在发这条短信？我根本没报名。"
+                }
+              ],
+              "sfx": "雨声转闷、手机振动一声、门轴轻响、门内椅子挪动的轻响",
+              "negative": "多余的手指、文字水印、镜头抖动、血腥、可直接读清的短信文字"
+            }
+          ],
+          "createdAt": "{{timestamp}}",
+          "origin": "agent"
+        }
+      ],
+      "activeVersion": "v2"
+    },
+    {
+      "id": "g4",
+      "type": "group",
+      "title": "场1 雨夜考场走廊",
+      "x": -30,
+      "y": 310,
+      "width": 840,
+      "height": 400,
+      "versions": [],
+      "sceneOrigin": {
+        "script": "n1",
+        "scene": 1
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "n2->n3:prompt",
+      "source": "n2",
+      "target": "n3",
+      "kind": "reference",
+      "role": "prompt"
+    }
+  ]
+}

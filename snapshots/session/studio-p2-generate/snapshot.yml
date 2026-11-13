@@ -1,0 +1,15 @@
+version: 1
+scenario: studio-p2-generate
+profile: headless
+composition: studio-p2-generate
+recording: live
+timeoutMs: 600000
+gateway: true
+workspace:
+  final: true
+  ignoredRootEntries: [media-output]
+header:
+  class: studio-p2-generate
+  pin: true
+input:
+  task: 创建一个短剧项目《雨夜测验》，竖屏。写设定集：一个角色、一个场景。写第一集剧本，1 场 2 个镜头。铺开剧本，然后给场1分镜生成视频前先把预算给我，不要直接开始生成。

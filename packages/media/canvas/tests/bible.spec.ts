@@ -67,6 +67,16 @@ describe('bible', () => {
     expect(entryNamed(bible, 'nobody')).toBeUndefined()
   })
 
+  it('rejects two entries with the same id', () => {
+    expect(() => parseBible(JSON.stringify({
+      version: 1, revision: 0, logline: '', style: { visual: '', aspect: '16:9' },
+      entries: [
+        { id: 'c1', kind: 'character', name: 'Lin', aliases: [], description: 'a' },
+        { id: 'c1', kind: 'character', name: 'Chen', aliases: [], description: 'b' },
+      ],
+    }))).toThrow('duplicate entry id c1')
+  })
+
   it('starts from an empty bible', () => {
     expect(EMPTY_BIBLE).toMatchObject({ revision: 0, entries: [], style: { aspect: '16:9' } })
   })

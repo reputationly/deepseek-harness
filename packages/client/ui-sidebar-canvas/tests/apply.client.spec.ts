@@ -41,10 +41,17 @@ async function mountPlugin() {
   const canvas = {
     get: vi.fn(async (sessionId: SessionId) => ({ ok: true as const, value: view(`/projects/${sessionId}`) })),
     apply: vi.fn(async () => ({ ok: true as const, value: { refs: {}, created: [], skipped: [] } })),
+    bible: vi.fn(async () => ({ ok: true as const, value: { bible: { version: 1, revision: 0, logline: '', style: { visual: '', aspect: '9:16' }, entries: [] }, revision: 0 } })),
   }
   const workspaceFiles = { readBytes: vi.fn() }
+  const plan = { state: 'ready' as const, lines: [], totals: { videoCalls: 0, videoSeconds: 0, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [] }
+  const media = {
+    capabilities: vi.fn(async () => ({ ok: true as const, value: [] })),
+    planNodes: vi.fn(async () => ({ ok: true as const, value: plan })),
+    generateNodes: vi.fn(async () => ({ ok: true as const, value: plan })),
+  }
   ctx.provide('remote', {
-    canvas, workspaceFiles,
+    canvas, workspaceFiles, media,
     $on: (event: string, listener: (change: { directory: string }) => void) => {
       expect(event).toBe('canvas/change')
       listeners.add(listener)
@@ -52,10 +59,11 @@ async function mountPlugin() {
     },
   } as never)
   ctx.provide('remote.canvas', canvas as never)
+  ctx.provide('remote.media', media as never)
   ctx.provide('remote.workspaceFiles', workspaceFiles as never)
   const fiber = await ctx.plugin({ inject, apply })
   return {
-    ctx, tabs, entries, dictionaries, canvas, workspaceFiles, listeners,
+    ctx, tabs, entries, dictionaries, canvas, workspaceFiles, media, listeners,
     emitChange(directory: string) { for (const listener of listeners) listener({ directory }) },
     async dispose() { await fiber.dispose(); await ctx.fiber.dispose() },
   }
@@ -97,7 +105,7 @@ it('gives each Session one stable face that reads, edits, and follows Host chang
     expect(second).not.toBe(first)
 
     await first.load()
-    expect(h.canvas.get).toHaveBeenLastCalledWith('s1')
+    expect(h.canvas.get).toHaveBeenLastCalledWith('s1', undefined)
     expect(first.hooks.canvas.getSnapshot()).toMatchObject({ status: 'ready', view: view('/projects/s1') })
     await second.load()
 
@@ -106,11 +114,11 @@ it('gives each Session one stable face that reads, edits, and follows Host chang
 
     h.canvas.get.mockClear()
     h.emitChange('/projects/s2')
-    expect(h.canvas.get.mock.calls).toEqual([['s2']])
+    expect(h.canvas.get.mock.calls).toEqual([['s2', undefined]])
 
     h.canvas.get.mockClear()
     h.ctx.emit('connection/reset')
-    expect(h.canvas.get.mock.calls).toEqual([['s1'], ['s2']])
+    expect(h.canvas.get.mock.calls).toEqual([['s1', undefined], ['s2', undefined]])
     expect(first.hooks.canvas.getSnapshot().status).toBe('loading')
   } finally {
     await h.dispose()
@@ -141,4 +149,69 @@ it('stops following Host changes after unload', async () => {
   h.canvas.get.mockClear()
   h.emitChange('/projects/s1')
   expect(h.canvas.get).not.toHaveBeenCalled()
+})
+
+it('reads the bible and drives media planning through the optional namespace', async () => {
+  const h = await mountPlugin()
+  try {
+    const face = h.entries[0]!.inject!('s1' as SessionId) as {
+      bible: () => Promise<unknown>
+      planNodes: (nodes: string[]) => Promise<unknown>
+      generateNodes: (nodes: string[], token?: string) => Promise<unknown>
+    }
+    await expect(face.bible()).resolves.toMatchObject({ revision: 0 })
+    await expect(face.planNodes(['n1'])).resolves.toMatchObject({ state: 'ready' })
+    await expect(face.generateNodes(['n1'], 'tok')).resolves.toMatchObject({ state: 'ready' })
+    expect(h.media.planNodes).toHaveBeenCalledWith('s1', ['n1'])
+    expect(h.media.generateNodes).toHaveBeenCalledWith('s1', ['n1'], 'tok')
+  } finally {
+    await h.dispose()
+  }
+})
+
+it('returns no plan when the deployment lacks the media namespace', async () => {
+  const h = await mountPlugin()
+  try {
+    h.ctx.set('remote.media', undefined as never)
+    const face = h.entries[0]!.inject!('s1' as SessionId) as { planNodes: (nodes: string[]) => Promise<unknown> }
+    await expect(face.planNodes(['n1'])).resolves.toBeUndefined()
+  } finally {
+    await h.dispose()
+  }
+})
+
+it('surfaces remote failures and missing media for capabilities and plans', async () => {
+  const h = await mountPlugin()
+  try {
+    h.media.capabilities.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'cap boom' } } as never)
+    h.media.planNodes.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'plan boom' } } as never)
+    h.media.generateNodes.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'gen boom' } } as never)
+    h.canvas.bible.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'bible boom' } } as never)
+    const face = h.entries[0]!.inject!('s1' as SessionId) as {
+      capabilities: (operation: string) => Promise<unknown>
+      planNodes: (nodes: string[]) => Promise<unknown>
+      generateNodes: (nodes: string[], token?: string) => Promise<unknown>
+      bible: () => Promise<unknown>
+    }
+    await expect(face.capabilities('generate_image')).rejects.toThrow('cap boom')
+    await expect(face.planNodes(['n1'])).rejects.toThrow('plan boom')
+    await expect(face.generateNodes(['n1'])).rejects.toThrow('gen boom')
+    await expect(face.bible()).rejects.toThrow('bible boom')
+    h.ctx.set('remote.media', undefined as never)
+    await expect(face.capabilities('generate_image')).resolves.toEqual([])
+    await expect(face.generateNodes(['n1'])).resolves.toBeUndefined()
+  } finally {
+    await h.dispose()
+  }
+})
+
+it('returns capabilities from the successful namespace', async () => {
+  const h = await mountPlugin()
+  try {
+    h.media.capabilities.mockResolvedValueOnce({ ok: true, value: [{ id: 'c', model: 'm', operation: 'generate_image', params: [] }] } as never)
+    const face = h.entries[0]!.inject!('s1' as SessionId) as { capabilities: (operation: string) => Promise<unknown> }
+    await expect(face.capabilities('generate_image')).resolves.toHaveLength(1)
+  } finally {
+    await h.dispose()
+  }
 })

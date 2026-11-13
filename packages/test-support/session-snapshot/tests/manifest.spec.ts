@@ -225,3 +225,40 @@ timeoutMs: 1.5
 `)).toThrow('manifest.timeoutMs must be a positive integer')
   })
 })
+
+describe('media fixtures', () => {
+  it('accepts gateway and ffmpeg switches and ignored workspace roots', () => {
+    const manifest = parseSnapshotManifest(`
+version: 1
+profile: headless
+gateway: true
+ffmpeg: true
+workspace:
+  final: true
+  ignoredRootEntries: [media-output]
+`)
+    expect(manifest.gateway).toBe(true)
+    expect(manifest.ffmpeg).toBe(true)
+    expect(manifest.workspace?.ignoredRootEntries).toEqual(['media-output'])
+  })
+
+  it('rejects values that are not booleans or root names', () => {
+    expect(() => parseSnapshotManifest(`
+version: 1
+profile: headless
+gateway: yes-please
+`)).toThrow('manifest.gateway must be a boolean')
+    expect(() => parseSnapshotManifest(`
+version: 1
+profile: headless
+ffmpeg: 1
+`)).toThrow('manifest.ffmpeg must be a boolean')
+    expect(() => parseSnapshotManifest(`
+version: 1
+profile: headless
+workspace:
+  final: true
+  ignoredRootEntries: ['']
+`)).toThrow('manifest.workspace.ignoredRootEntries must be a list of non-empty strings')
+  })
+})

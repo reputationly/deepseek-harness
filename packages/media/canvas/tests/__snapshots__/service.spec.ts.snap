@@ -25,11 +25,12 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
           "type": "string",
         },
         "include": {
-          "description": "bible adds the shared style and entries; project adds the production format and episodes.",
+          "description": "bible adds the shared style and entries; project adds the production format and episodes; production adds the stage reached.",
           "items": {
             "enum": [
               "bible",
               "project",
+              "production",
             ],
             "type": "string",
           },

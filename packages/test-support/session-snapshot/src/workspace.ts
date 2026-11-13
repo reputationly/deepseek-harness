@@ -61,10 +61,23 @@ export interface CaptureWorkspaceSnapshotOptions {
 const TIMESTAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/gu
 const TIMESTAMP_TOKEN = '{{timestamp}}'
 
-function textContent(bytes: Buffer): string | undefined {
+/** Epoch-millisecond values a generated file name carries; a replay names its files differently. */
+const EPOCH_MS = /\b1[5-9]\d{11}\b/gu
+
+/**
+ * Text of one readable file, with the values a replay cannot reproduce replaced by tokens.
+ * @param bytes - file bytes.
+ * @param root - workspace root whose absolute path becomes `{{cwd}}`.
+ * @returns the text, or undefined when the file is not UTF-8 text.
+ */
+function textContent(bytes: Buffer, root: string): string | undefined {
   if (bytes.includes(0)) return undefined
   const text = bytes.toString('utf8')
-  return Buffer.from(text, 'utf8').equals(bytes) ? text.replace(TIMESTAMP, TIMESTAMP_TOKEN) : undefined
+  if (!Buffer.from(text, 'utf8').equals(bytes)) return undefined
+  return text
+    .replaceAll(root, '{{cwd}}')
+    .replace(TIMESTAMP, TIMESTAMP_TOKEN)
+    .replace(EPOCH_MS, '{{epochMs}}')
 }
 
 /**
@@ -93,7 +106,7 @@ export async function captureWorkspaceSnapshot(
         captured.push(...children.length === 0 ? [{ path, kind: 'empty-directory' as const }] : children)
       } else if (entry.isFile()) {
         const bytes = await readFile(absolute)
-        const content = textContent(bytes)
+        const content = textContent(bytes, root)
         captured.push(content === undefined
           ? { path, kind: 'binary', base64: bytes.toString('base64') }
           : { path, kind: 'text', content })

@@ -4,16 +4,42 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../../vendor/schemastery" },
-    { "path": "../../core/session" },
-    { "path": "../../core/tools" },
-    { "path": "../canvas" },
-    { "path": "../../skill/skill" },
-    { "path": "../../util/launch-environment" },
-    { "path": "../../credentials/credentials" },
-    { "path": "../../util/values" }
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../canvas"
+    },
+    {
+      "path": "../../skill/skill"
+    },
+    {
+      "path": "../../util/launch-environment"
+    },
+    {
+      "path": "../../credentials/credentials"
+    },
+    {
+      "path": "../../util/values"
+    },
+    {
+      "path": "../../jobs/jobs"
+    },
+    {
+      "path": "../../typert/protocol"
+    }
   ]
 }

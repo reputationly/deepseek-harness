@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "revision": 1,
+  "format": "drama",
+  "title": "雨夜测验",
+  "spec": {
+    "aspect": "9:16",
+    "resolution": "1080p",
+    "fps": 30
+  },
+  "episodes": [
+    {
+      "id": "e1",
+      "title": "第 1 集",
+      "file": "canvas.json"
+    }
+  ],
+  "bindings": {}
+}
