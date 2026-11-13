@@ -181,3 +181,20 @@ it('passes generation callbacks to the inspector and dispatches a refit on fulls
   await waitFor(() => { expect(fit).toHaveBeenCalled() })
   window.removeEventListener('canvas:fit', fit)
 })
+
+it('closes the inspector, the table, and the bible panel through their own controls', async () => {
+  mount({ status: 'ready', view: boardView as never })
+  const flow = drawn.mock.calls[0]![0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  act(() => { flow.onSelect('b1') })
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.close' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.close' }))
+  expect(screen.queryByRole('button', { name: 'inspector.close' })).toBeNull()
+  act(() => { flow.onSelect('b1') })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.openTable' }))
+  fireEvent.click(screen.getByRole('button', { name: 'table.close' }))
+  expect(screen.queryByRole('button', { name: 'table.addRow' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'bible.tab' }))
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'bible.close' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'bible.close' }))
+  expect(screen.queryByRole('button', { name: 'bible.close' })).toBeNull()
+})

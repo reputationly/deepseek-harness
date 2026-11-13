@@ -119,3 +119,61 @@ it('draws a group frame with its scene number and member count', () => {
   expect(screen.getByText('2')).toBeTruthy()
   expect(screen.getByText('group.members:{"count":3}')).toBeTruthy()
 })
+
+const readyFile = async () => ({ ok: true as const, bytes: new Uint8Array([1, 2, 3]) })
+
+it('draws a loaded image and a loaded video with its duration and segment badge', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  const { edit } = mount(ImageNode, {
+    readFile: readyFile, node: node('image', {
+      versions: [{ id: 'v1' as never, path: '/a.png', createdAt: 'now', origin: 'user', durationMs: 1234 }],
+      activeVersion: 'v1' as never,
+    }),
+  })
+  await waitFor(() => { expect(screen.getByAltText('image 标题')).toBeTruthy() })
+  expect(edit).not.toHaveBeenCalled()
+  cleanup()
+  mount(VideoNode, {
+    readFile: readyFile,
+    node: node('video', {
+      versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user', durationMs: 3200 }],
+      activeVersion: 'v1' as never,
+      gen: { kind: 'video', prompt: 'p', params: {}, shot: { storyboard: 'b1' as never, shots: ['s1' as never] } },
+    }),
+  })
+  await waitFor(() => { expect(globalThis.document.querySelector('video')).toBeTruthy() })
+  expect(screen.getByText(/badge.duration/)).toBeTruthy()
+})
+
+it('draws a loaded audio card with its spoken line and shows the play control while loading', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  class FakeContext {
+    decodeAudioData = vi.fn(async () => ({
+      length: 4096,
+      getChannelData: () => new Float32Array(4096).fill(0.5),
+    }))
+    close = vi.fn(async () => {})
+  }
+  Object.assign(globalThis, { AudioContext: FakeContext })
+  const { edit } = mount(AudioNode, {
+    readFile: async () => ({ ok: false as const, message: 'no' }),
+    node: node('audio', {
+      versions: [{ id: 'v1' as never, path: '/a.mp3', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+      gen: { kind: 'speech', prompt: '林夏：欢迎光临', params: {} },
+    }),
+  })
+  expect(screen.getByText('林夏：欢迎光临')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'audio.play' }))
+  expect(edit).not.toHaveBeenCalled()
+  cleanup()
+  mount(AudioNode, {
+    readFile: readyFile,
+    node: node('audio', {
+      versions: [{ id: 'v1' as never, path: '/a.mp3', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+      gen: { kind: 'speech', prompt: '林夏：欢迎光临', params: {} },
+    }),
+  })
+  await waitFor(() => { expect(globalThis.document.querySelector('audio')).toBeTruthy() })
+})

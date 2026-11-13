@@ -163,3 +163,38 @@ it('keeps the generate button away when the deployment has no media namespace', 
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
   expect(screen.queryByRole('button', { name: 'inspector.generateNow' })).toBeNull()
 })
+
+it('edits a free-text parameter and switches the model choice', async () => {
+  const edit = vi.fn(async () => {})
+  const capabilities = vi.fn(async () => [{
+    id: 'cap', model: 'video-model', operation: 'generate_video',
+    params: [{ id: 'note', type: 'string' }, { id: 'other', options: ['a', 'b'] }],
+  }, { id: 'cap2', model: 'second-model', operation: 'generate_video', params: [] }])
+  mount({ capabilities, edit })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.change(screen.getByLabelText('note'), { target: { value: '自由文本' } })
+  fireEvent.change(screen.getByLabelText('inspector.model'), { target: { value: 'second-model' } })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  expect(edit).toHaveBeenCalledWith([{
+    op: 'set_gen', node: 'v1', gen: { model: 'second-model', prompt: '雨夜', params: { duration: 6, note: '自由文本' } },
+  }])
+})
+
+it('cancels the budget dialog and reports a failure to start generation', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 'tok',
+    lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 1, seconds: 5 }],
+    totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => { throw new Error('gateway down') })
+  mount({ planNodes, generateNodes })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('dialog')).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'budget.cancel' }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('dialog')).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('gateway down') })
+})
