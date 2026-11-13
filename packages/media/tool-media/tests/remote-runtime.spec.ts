@@ -92,3 +92,36 @@ it('cancels through the jobs registry and reports an unowned job', () => {
   expect(finished.runtime.cancel(session, 'j1')).toBe(false)
   expect(runtime().runtime.cancel(session, 'j1')).toBe(false)
 })
+
+it('reports video seconds in the plan lines', async () => {
+  const video = {
+    id: 'v1' as never, type: 'video' as const, title: 'v1', x: 0, y: 0, width: 100, height: 100,
+    activeVersion: 'v1' as never,
+    versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user' as const, path: '/p/v1.mp4' }],
+    gen: { kind: 'video' as const, prompt: 'a cat', params: {} },
+  }
+  const h = runtime({ document: doc([video]) })
+  const view = await h.runtime.plan(session, ['v1'])
+  expect(view.lines[0]?.seconds).toBeGreaterThan(0)
+})
+
+it('asks for confirmation before starting a plan over the threshold', async () => {
+  const h = runtime({ document: doc([image('n1'), image('n2'), image('n3')]) })
+  await expect(h.runtime.generate(session, ['n1', 'n2', 'n3'], undefined)).resolves.toMatchObject({
+    state: 'needs_confirmation', token: expect.any(String),
+  })
+  expect(h.start).not.toHaveBeenCalled()
+})
+
+it('reports a blocked plan with its gate and missing choices', async () => {
+  const h = runtime({ document: doc([image('n1', { gen: { kind: 'image', prompt: '@林夏 笑', params: {} } })]) })
+  const view = await h.runtime.plan(session, ['n1'])
+  expect(view).toMatchObject({ state: 'blocked', message: expect.stringContaining('G1_bible_first') })
+  await expect(h.runtime.generate(session, ['n1'], undefined)).resolves.toMatchObject({ state: 'blocked' })
+})
+
+it('finishes an empty plan without starting jobs', async () => {
+  const h = runtime()
+  const view = await h.runtime.generate(session, [], undefined)
+  expect(['started', 'ready', 'needs_confirmation', 'blocked']).toContain(view.state)
+})

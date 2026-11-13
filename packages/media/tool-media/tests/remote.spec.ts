@@ -16,8 +16,12 @@ const catalog: MediaCatalog = {
   source: 'live',
   capabilities: [{
     id: 'v', operation: 'generate_video', model: 'video-model',
-    paramSchema: { properties: { duration: { enum: ['5'] }, resolution: { enum: ['2K'] } } },
-  }],
+    paramSchema: { properties: {
+      duration: { enum: ['5'], title: 'Duration', default: '5', type: 'string' },
+      resolution: { default: '2K', type: 'string' },
+      extra: {},
+    } },
+  }, { id: 'bare', operation: 'generate_image', model: 'image-model' }],
 }
 
 describe('media Remote namespace', () => {
@@ -27,10 +31,14 @@ describe('media Remote namespace', () => {
       {
         id: 'v', model: 'video-model', operation: 'generate_video',
         params: [
-          { id: 'duration', options: ['5'] },
-          { id: 'resolution', options: ['2K'] },
+          { id: 'duration', options: ['5'], title: 'Duration', default: '5', type: 'string' },
+          { id: 'resolution', default: '2K', type: 'string' },
+          { id: 'extra' },
         ],
       },
+    ])
+    await expect(service.capabilities({} as never, 'generate_image')).resolves.toEqual([
+      { id: 'bare', model: 'image-model', operation: 'generate_image', params: [] },
     ])
   })
 

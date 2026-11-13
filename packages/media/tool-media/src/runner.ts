@@ -233,7 +233,7 @@ export async function startPlan(
   requested: readonly string[],
   token: string | undefined,
   options: { readonly skipConfirmation?: boolean } = {},
-): Promise<RunOutcome> {
+): Promise<Exclude<RunOutcome, { readonly status: 'done' }>> {
   await recoverInterrupted(services)
   const loaded = await services.canvas.read()
   const bible = await services.canvas.bible()

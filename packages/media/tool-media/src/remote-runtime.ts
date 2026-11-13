@@ -77,7 +77,7 @@ export function createMediaRuntime(deps: MediaRuntimeDeps): {
       return {
         ...viewOfBudget(budgetOf(outcome.plan, deps.tools.confirmLimits)),
         state: 'started',
-        jobs: outcome.status === 'started' ? outcome.jobs.map(job => ({ node: job.node, jobId: job.jobId })) : [],
+        jobs: outcome.jobs.map(job => ({ node: job.node, jobId: job.jobId })),
       }
     },
     cancel: (session, jobId) => deps.jobs?.kill(jobId as JobId, session.id) === 'requested',

@@ -167,8 +167,6 @@ export function registerNodeTools(ctx: import('@deepseek-ai/cordis').Context, de
       if (outcome.status === 'already_running') {
         return { status: 'already_running', jobs: outcome.nodes.map(node => ({ node: String(node), jobId: '' })) }
       }
-      /* v8 ignore next -- startPlan only yields the four statuses already handled above */
-      if (outcome.status !== 'started') throw new Error(`canvas_generate: unexpected outcome ${outcome.status}`)
       return {
         status: 'started',
         jobs: outcome.jobs.map(job => ({ node: String(job.node), jobId: String(job.jobId) })),
@@ -235,8 +233,6 @@ export function registerNodeTools(ctx: import('@deepseek-ai/cordis').Context, de
       /* v8 ignore next -- this run already confirmed its own budget */
       if (outcome.status === 'needs_confirmation') return { status: 'needs_confirmation', budget: budgetView(outcome.budget) }
       if (outcome.status === 'already_running') return { status: 'already_running', jobs: [] }
-      /* v8 ignore next -- startPlan only yields the four statuses already handled above */
-      if (outcome.status !== 'started') throw new Error(`storyboard_voice: unexpected outcome ${outcome.status}`)
       return { status: 'started', jobs: outcome.jobs.map(job => ({ node: String(job.node), jobId: String(job.jobId) })) }
     },
   }))
