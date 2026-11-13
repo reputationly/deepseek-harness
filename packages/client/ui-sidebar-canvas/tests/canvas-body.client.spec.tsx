@@ -3,10 +3,14 @@
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasDocument, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { BibleEntryId, CanvasNodeId, ShotId, VersionId } from '@deepseek-ai/dsh-canvas/client'
+import { applyOperations } from '../../../media/canvas/src/operations.ts'
+import { resolveConfig } from '../../../media/canvas/src/config.ts'
 import { CanvasBody, type CanvasBodyProps } from '../src/client/CanvasBody.tsx'
 import { CanvasTitle } from '../src/client/CanvasTitle.tsx'
-import type { CanvasState } from '../src/client/canvas-source.ts'
+import type { CanvasEditOptions, CanvasState } from '../src/client/canvas-source.ts'
 import type { CanvasFlowProps } from '../src/client/CanvasFlow.tsx'
 
 const drawn = vi.hoisted(() => vi.fn((_props: unknown) => null))
@@ -26,11 +30,33 @@ const filled: CanvasDocument = {
 const view = { directory: '/project', episode: { id: 'e1', title: 'Canvas' }, revisions: { canvas: 0 }, document: filled, segments: {} }
 const emptyView = { ...view, document: empty }
 
+const fieldValue = (label: string): string => {
+  const field = screen.getByLabelText(label)
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+    return field.value
+  }
+  throw new Error(`expected ${label} to label a form field`)
+}
+
 function mount(initial: Partial<CanvasState>, extra: Record<string, unknown> = {}) {
   const state = createSnapshotStore<CanvasState>({
     status: 'loading', view: undefined, error: undefined, notice: undefined, conflict: false, ...initial,
   })
-  const load = vi.fn(async () => {}), edit = vi.fn(async () => {}), dismiss = vi.fn(), readFile = vi.fn()
+  const load = vi.fn(async () => {}), dismiss = vi.fn(), readFile = vi.fn()
+  const edit = vi.fn(async (operations: readonly CanvasOperation[], options?: CanvasEditOptions) => {
+    const current = state.getSnapshot()
+    const currentView = current.view
+    if (currentView === undefined) return
+    const settled = applyOperations(currentView.document, [...operations], { limits: resolveConfig({}), now: () => 'now' })
+    options?.onApplied?.(currentView.document, operations, settled.result)
+    state.set({
+      ...current,
+      view: {
+        ...currentView, document: settled.document,
+        revisions: { ...currentView.revisions, canvas: settled.document.revision },
+      },
+    })
+  })
   const capabilities = vi.fn(async () => [])
   const bible = vi.fn(async () => ({ bible: { version: 1, revision: 0, logline: '', style: { visual: '', aspect: '9:16' }, entries: [] }, revision: 0 }))
   const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${String(params.message)}`
@@ -65,7 +91,9 @@ it('draws a canvas with nodes through the lazily loaded flow', async () => {
   const h = mount({ status: 'ready', view: view as never })
   await waitFor(() => { expect(drawn).toHaveBeenCalled() })
   const props = drawn.mock.calls[0]![0] as CanvasFlowProps
-  expect(props).toMatchObject({ document: filled, readFile: h.readFile, t: h.t, edit: h.edit, reload: h.load })
+  expect(props).toMatchObject({ document: filled, readFile: h.readFile, t: h.t, reload: h.load })
+  expect(props.edit).not.toBe(h.edit)
+  expect(props.historyEdit).toBeTypeOf('function')
 })
 
 it('keeps the document drawn under a failed refresh and under an edit notice that can be dismissed', async () => {
@@ -141,7 +169,7 @@ const boardDoc: CanvasDocument = {
     }],
   }],
 }
-const boardView = { ...view, document: boardDoc, segments: { b1: [] } }
+const boardView = { ...view, document: boardDoc, segments: { b1: [{ shots: ['s1'] }, { shots: ['s2'] }] } }
 
 it('exports the canvas as a JSON download', () => {
   const create = vi.fn(() => 'blob:canvas')
@@ -156,11 +184,124 @@ it('exports the canvas as a JSON download', () => {
 it('opens the storyboard table for the selected node and hides the canvas actions', async () => {
   mount({ status: 'ready', view: boardView as never })
   const flow = drawn.mock.calls[0]![0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  expect(flow.segments).toEqual(boardView.segments)
   act(() => { flow.onSelect('b1') })
   await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.openTable' })).toBeTruthy() })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.openTable' }))
   expect(screen.getByRole('button', { name: 'table.addRow' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'canvas.export' })).toBeNull()
+})
+
+it('records storyboard table edits in the CanvasBody-owned history', async () => {
+  mount({ status: 'ready', view: boardView as never })
+  const flow = drawn.mock.calls[0]![0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  act(() => { flow.onSelect('b1') })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.openTable' }))
+  fireEvent.change(screen.getAllByRole('combobox')[0] as HTMLElement, { target: { value: 'wide' } })
+  expect(flow.history?.canUndo()).toBe(true)
+  expect(flow.history?.undo()).toEqual([{ op: 'set_shots', node: 'b1', shots: boardDoc.nodes[0]?.versions?.[0]?.shots }])
+})
+
+it('records inspector parameter edits in the CanvasBody-owned history', async () => {
+  const video: CanvasDocument = {
+    version: 2, revision: 0, nextId: 2, edges: [],
+    nodes: [{
+      id: brandString<CanvasNodeId>('v1'), type: 'video', title: 'Video', x: 0, y: 0, width: 280, height: 200,
+      gen: { kind: 'video', model: 'model', prompt: 'old', params: { seed: 1 } },
+    }],
+  }
+  const mediaView = { ...view, document: video }
+  const capabilities = vi.fn(async () => [{
+    id: 'cap', model: 'model', operation: 'generate_video', params: [],
+  }])
+  mount({ status: 'ready', view: mediaView as never }, { capabilities })
+  const flow = drawn.mock.calls[0]![0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  act(() => { flow.onSelect('v1') })
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.apply' })).toBeTruthy() })
+  fireEvent.change(screen.getByLabelText('inspector.prompt'), { target: { value: 'new' } })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  expect(flow.history?.canUndo()).toBe(true)
+  expect(flow.history?.undo()).toEqual([{
+    op: 'set_gen', node: 'v1', gen: { kind: 'video', model: 'model', prompt: 'old', params: { seed: 1 } },
+  }])
+})
+
+it('refreshes the selected inspector after local undo and redo', async () => {
+  const storyboard = {
+    id: brandString<CanvasNodeId>('b1'), type: 'storyboard' as const, title: 'Board', x: 0, y: 0, width: 320, height: 200,
+    activeVersion: brandString<VersionId>('v1'),
+    versions: [{
+      id: brandString<VersionId>('v1'), createdAt: 'now', origin: 'user' as const,
+      shots: [{
+        id: brandString<ShotId>('s1'), title: 's1', shotSize: 'medium' as const, visual: 'visual', motion: 'motion',
+        camera: 'camera', durationSec: 3, characters: [], props: [], dialogue: [], sfx: '', negative: '',
+      }],
+    }],
+  }
+  const video: CanvasDocument = {
+    version: 2, revision: 0, nextId: 3, edges: [],
+    nodes: [
+      { id: brandString<CanvasNodeId>('v1'), type: 'video', title: 'Video', x: 0, y: 0, width: 280, height: 200,
+        gen: { kind: 'video', model: 'model', prompt: 'old', params: { seed: 1 } } },
+      storyboard,
+    ],
+  }
+  const boardVersion = storyboard.versions[0]
+  if (boardVersion === undefined) throw new Error('expected a storyboard version')
+  const mediaView = { ...view, document: video }
+  const capabilities = vi.fn(async () => [{ id: 'cap', model: 'model', operation: 'generate_video', params: [] }])
+  mount({ status: 'ready', view: mediaView as never }, { capabilities })
+  const firstFlow = drawn.mock.calls.at(-1)?.[0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  act(() => { firstFlow.onSelect('v1') })
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.apply' })).toBeTruthy() })
+  fireEvent.change(screen.getByLabelText('inspector.prompt'), { target: { value: 'new' } })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  const selectedFlow = drawn.mock.calls.at(-1)?.[0] as CanvasFlowProps
+  const undo = selectedFlow.history?.undo()
+  expect(undo).toEqual([{
+    op: 'set_gen', node: 'v1', gen: { kind: 'video', model: 'model', prompt: 'old', params: { seed: 1 } },
+  }])
+  if (undo === undefined) throw new Error('expected the generation edit to be undoable')
+  const undoEdit = selectedFlow.historyEdit
+  if (undoEdit === undefined) throw new Error('expected a local history edit callback')
+  await act(async () => { await undoEdit(undo, 'undo') })
+  expect(fieldValue('inspector.prompt')).toBe('old')
+  const redoneFlow = drawn.mock.calls.at(-1)?.[0] as CanvasFlowProps
+  const redo = redoneFlow.history?.redo()
+  expect(redo).toEqual([{
+    op: 'set_gen', node: 'v1', gen: { model: 'model', prompt: 'new', params: { seed: 1 } },
+  }])
+  if (redo === undefined) throw new Error('expected the generation edit to be redoable')
+  const redoEdit = redoneFlow.historyEdit
+  if (redoEdit === undefined) throw new Error('expected a local history edit callback')
+  await act(async () => { await redoEdit(redo, 'redo') })
+  expect(fieldValue('inspector.prompt')).toBe('new')
+  fireEvent.change(screen.getByLabelText('inspector.prompt'), { target: { value: 'unsaved' } })
+  await act(async () => {
+    await redoEdit([{ op: 'set_shots', node: 'b1', shots: boardVersion.shots }], 'undo')
+    await redoEdit([{
+      op: 'set_gen', node: 'v1', gen: { prompt: 'x'.repeat(resolveConfig({}).maxPromptLength + 1) },
+    }], 'undo')
+  })
+  expect(fieldValue('inspector.prompt')).toBe('unsaved')
+})
+
+it('records Bible asset creation in the CanvasBody-owned history', async () => {
+  const entryId = brandString<BibleEntryId>('c1')
+  const bible = vi.fn(async () => ({
+    bible: {
+      version: 1, revision: 0, logline: '', style: { visual: '', aspect: '9:16' },
+      entries: [{ id: entryId, kind: 'character' as const, name: 'Ada', description: 'A character' }],
+    },
+    revision: 0,
+  }))
+  mount({ status: 'ready', view: view as never }, { bible })
+  const flow = drawn.mock.calls[0]![0] as CanvasFlowProps
+  fireEvent.click(screen.getByRole('button', { name: 'bible.tab' }))
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'bible.threeView' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'bible.threeView' }))
+  expect(flow.history?.canUndo()).toBe(true)
+  expect(flow.history?.undo()).toEqual([{ op: 'remove', node: 'n2' }])
 })
 
 it('passes generation callbacks to the inspector and dispatches a refit on fullscreen', async () => {

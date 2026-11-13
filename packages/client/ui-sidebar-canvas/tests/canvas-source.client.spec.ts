@@ -1,8 +1,14 @@
 /** The canvas source publishes the latest read, keeps a shown document through failures, and reports edits that did not apply. */
 import { expect, it, vi } from 'vitest'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
-import type { CanvasEditResult, CanvasView } from '@deepseek-ai/dsh-canvas/client'
+import type {
+  CanvasDocument, CanvasEditResult, CanvasNodeId, CanvasOperation, CanvasView, ShotId, VersionId,
+} from '@deepseek-ai/dsh-canvas/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import { applyOperations } from '../../../media/canvas/src/operations.ts'
+import { resolveConfig } from '../../../media/canvas/src/config.ts'
 import { CanvasSource } from '../src/client/canvas-source.ts'
+import { EditHistory } from '../src/client/model/history.ts'
 
 const view = (directory: string, nextId = 1): CanvasView => ({
   directory,
@@ -73,6 +79,120 @@ it('applies edits in one call, reads the settled document, and reports what did 
 
   source.dismiss()
   expect(source.state.getSnapshot().notice).toBeUndefined()
+})
+
+it('reports a rejected remote call even when it throws a non-Error value', async () => {
+  const get = vi.fn(async () => ok(view('/project')))
+  const apply = vi.fn(async () => { throw 'remote rejected the edit' })
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  await source.edit([{ op: 'remove', node: 'n1' }])
+  expect(source.state.getSnapshot()).toMatchObject({ status: 'ready', notice: 'remote rejected the edit' })
+})
+
+it('keeps the edit queue usable after a post-edit reload rejects', async () => {
+  const get = vi.fn<() => Promise<RemoteResult<CanvasView>>>()
+    .mockResolvedValueOnce(ok(view('/project')))
+    .mockRejectedValueOnce(new Error('reload failed'))
+    .mockResolvedValue(ok(view('/project')))
+  const apply = vi.fn(async () => ok(applied))
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  await expect(source.edit([{ op: 'remove', node: 'n1' }])).rejects.toThrow('reload failed')
+  await source.edit([{ op: 'remove', node: 'n2' }])
+  expect(apply).toHaveBeenCalledTimes(2)
+})
+
+it('serializes consecutive edits against the revision settled by the prior edit', async () => {
+  let revision = 3
+  const get = vi.fn(async () => ok({
+    ...view('/project'),
+    revisions: { canvas: revision },
+    document: { ...view('/project').document, revision },
+  }))
+  const apply = vi.fn(async (_operations: unknown[], baseRevision: number) => {
+    if (baseRevision !== revision) return failure('stale revision', 'canvas/conflict')
+    revision += 1
+    return ok({ ...applied, revision })
+  })
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  const first = source.edit([{ op: 'move', node: 'n1', x: 1, y: 1 }])
+  const second = source.edit([{ op: 'remove', node: 'n2' }])
+  await Promise.all([first, second])
+  expect(apply.mock.calls.map(call => call[1])).toEqual([3, 4])
+  expect(source.state.getSnapshot().view?.document.revision).toBe(5)
+  expect(source.state.getSnapshot().conflict).toBe(false)
+})
+
+it('undoes a queued shot removal to the motion saved by the preceding edit', async () => {
+  const storyboardId = brandString<CanvasNodeId>('b1')
+  const shotId = brandString<ShotId>('s1')
+  let document: CanvasDocument = {
+    version: 2, revision: 217, nextId: 2, edges: [],
+    nodes: [{
+      id: storyboardId, type: 'storyboard', title: 'Board', x: 0, y: 0, width: 320, height: 200,
+      activeVersion: brandString<VersionId>('v1'),
+      versions: [{
+        id: brandString<VersionId>('v1'), createdAt: 'now', origin: 'user',
+        shots: [{
+          id: shotId, title: 's1', shotSize: 'medium', visual: 'visual', motion: '', camera: 'camera',
+          durationSec: 3, characters: [], props: [], dialogue: [], sfx: '', negative: '',
+        }],
+      }],
+    }],
+  }
+  const currentView = (): CanvasView => ({
+    ...view('/project'), revisions: { canvas: document.revision }, document,
+  })
+  const get = vi.fn(async () => ok(currentView()))
+  const apply = vi.fn(async (operations: CanvasOperation[], baseRevision: number) => {
+    if (baseRevision !== document.revision) return failure('stale revision', 'canvas/conflict')
+    const settled = applyOperations(document, operations, { limits: resolveConfig({}), now: () => 'now' })
+    document = settled.document
+    return ok(settled.result)
+  })
+  const source = new CanvasSource({ get, apply })
+  const history = new EditHistory()
+  const onApplied = {
+    onApplied: (before: CanvasDocument, operations: readonly CanvasOperation[], result: CanvasEditResult) => {
+      history.record(before, operations, 'table edit', result)
+    },
+  }
+
+  await source.load()
+  const saveMotion = source.edit([{ op: 'update_shot', node: storyboardId, shot: shotId, patch: { motion: 'pan left' } }], onApplied)
+  const removeShot = source.edit([{ op: 'remove_shot', node: storyboardId, shot: shotId }], onApplied)
+  await Promise.all([saveMotion, removeShot])
+
+  expect(apply.mock.calls.map(call => call[1])).toEqual([217, 218])
+  const undo = history.undo()
+  expect(undo).toEqual([{
+    op: 'set_shots', node: storyboardId, shots: [{
+      id: shotId, title: 's1', shotSize: 'medium', visual: 'visual', motion: 'pan left', camera: 'camera',
+      durationSec: 3, characters: [], props: [], dialogue: [], sfx: '', negative: '',
+    }],
+  }])
+  if (undo === undefined) throw new Error('expected the shot removal to be undoable')
+  await source.edit(undo)
+  const restoredNode = document.nodes.find(node => node.id === storyboardId)
+  const restored = restoredNode?.versions?.find(version => version.id === restoredNode.activeVersion)?.shots?.[0]
+  expect(restored?.motion).toBe('pan left')
+})
+
+it('does not record a history entry when the Host rejects an edit', async () => {
+  const get = vi.fn(async () => ok(view('/project')))
+  const apply = vi.fn(async () => failure('revision conflict', 'canvas/conflict'))
+  const source = new CanvasSource({ get, apply })
+  const history = new EditHistory()
+  const onApplied = {
+    onApplied: (document: CanvasDocument, operations: readonly CanvasOperation[], result: CanvasEditResult) => {
+      history.record(document, operations, 'edit', result)
+    },
+  }
+  await source.load()
+  await source.edit([{ op: 'move', node: 'n1', x: 10, y: 10 }], onApplied)
+  expect(history.canUndo()).toBe(false)
 })
 
 it('reads again when the shown project changes and ignores other projects', async () => {

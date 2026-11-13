@@ -2,13 +2,14 @@
 import { useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { CanvasNode, CanvasOperation, DialogueLine, Shot, ShotId } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasNode, CanvasOperation, DialogueLine, Shot } from '@deepseek-ai/dsh-canvas/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  appendShotOperation, blankShot, cellOperation, moveShotOperation, removeShotOperation, rowsOf, segmentTone, summaryOf,
+  appendShotOperation, blankShot, cellOperation, moveShotOperations, removeShotOperation, rowsOf, segmentTone, summaryOf,
   type TableField,
 } from './model/table.ts'
 import type { NS } from './locales.ts'
+import { formatStoryboardSummary } from './storyboard-summary.ts'
 import css from './StoryboardTable.module.css'
 
 /** Inputs of the table editor. */
@@ -75,9 +76,13 @@ export function StoryboardTable({ node, edit, close, t, segments = [] }: Storybo
             onDragOver={(event) => { event.preventDefault() }}
             onDrop={() => {
               if (dragging === undefined || dragging === index) return
-              const after = index === 0 ? undefined : rows[index - 1]?.id
+              const target = rows[index]
+              const remaining = rows.filter((_row, at) => at !== dragging)
+              const targetIndex = remaining.findIndex(row => row.id === target?.id)
+              const after = targetIndex <= 0 ? undefined : remaining[targetIndex - 1]?.id
+              const shot = rows[dragging]?.id
               setDragging(undefined)
-              void edit([moveShotOperation(node, rows[dragging]?.id as ShotId, after)])
+              if (shot !== undefined) void edit(moveShotOperations(node, shot, after))
             }}
           >
             <td className={css.index}>{index + 1}</td>
@@ -110,11 +115,7 @@ export function StoryboardTable({ node, edit, close, t, segments = [] }: Storybo
       <Button variant="outline" size="sm" onClick={() => { void edit([appendShotOperation(node, blankShot())]) }}>
         {t('table.addRow')}
       </Button>
-      <span className={css.summary}>
-        {t('storyboard.summary', {
-          shots: summary.shots, seconds: summary.seconds, segments: summary.segments.length, calls: summary.videoCalls,
-        })}
-      </span>
+      <span className={css.summary}>{formatStoryboardSummary(summary, t)}</span>
     </footer>
   </section>
 }

@@ -101,11 +101,11 @@ function VersionBar({ data }: { data: CanvasFlowNode['data'] }): ReactNode {
 
 /** Overlay that reports a node's generation state. */
 function StatusLayer({ data }: { data: CanvasFlowNode['data'] }): ReactNode {
-  const { node, t, edit } = data
+  const { node, t, generate } = data
   const state = cardState(node.status, Date.now())
   const elapsed = useElapsed(node.status)
   if (state.kind === 'idle') return undefined
-  const retry = state.kind === 'failed' && state.retryable && node.gen !== undefined
+  const retry = state.kind === 'failed' && state.retryable && node.gen !== undefined && generate !== undefined
   return <div className={clsx(css.statusLayer, state.kind === 'failed' && css.statusFailed)} role="status">
     {state.kind === 'queued' && <span className={css.statusText}>{t('status.queued')}</span>}
     {state.kind === 'running' && <span className={css.statusText}>
@@ -118,8 +118,7 @@ function StatusLayer({ data }: { data: CanvasFlowNode['data'] }): ReactNode {
       size="sm" variant="outline" className="nodrag"
       onClick={(event) => {
         event.stopPropagation()
-        /* v8 ignore next -- retry renders only for a node that has a generation */
-        void edit([{ op: 'set_gen', node: node.id, gen: { params: node.gen?.params ?? {} } }])
+        generate?.(node.id)
       }}
     >{t('status.retry')}</Button>}
   </div>

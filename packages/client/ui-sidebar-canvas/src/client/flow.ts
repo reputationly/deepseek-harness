@@ -14,6 +14,8 @@ export type CanvasNodeFace = {
   readonly t: PropsLocale<typeof NS>['t']
   /** Applies the user's edits, such as switching the shown version. */
   readonly edit: (operations: readonly CanvasOperation[]) => Promise<void>
+  /** Starts media generation through the shared planning and budget flow. */
+  readonly generate?: (nodeId: string) => void
 }
 
 /** One drawn node: the document node, its group size, and the face its card reads. */
@@ -38,12 +40,20 @@ function segmentBadgeOf(
   document: CanvasDocument,
   node: CanvasNode,
   segments: Readonly<Record<string, readonly StoryboardSegment[]>>,
+  t: CanvasNodeFace['t'],
 ): string | undefined {
   const shot = node.gen?.shot
   if (shot === undefined) return undefined
   const board = document.nodes.find(candidate => candidate.id === shot.storyboard)
   const group = document.nodes.find(candidate => candidate.id === node.group)
-  return shotBadge(node, board, group?.sceneOrigin?.scene, board === undefined ? [] : segments[board.id] ?? [])
+  const badge = shotBadge(node, board, group?.sceneOrigin?.scene, board === undefined ? [] : segments[board.id] ?? [])
+  if (badge === undefined) return undefined
+  if (badge.scene !== undefined) {
+    return badge.segment === undefined
+      ? t('badge.scene', { scene: badge.scene })
+      : t('badge.shot', { scene: badge.scene, segment: badge.segment })
+  }
+  return t('badge.segment', { segment: badge.segment })
 }
 
 export function flowNodes(
@@ -54,7 +64,7 @@ export function flowNodes(
   const groups = new Map(document.nodes.filter(node => node.type === 'group').map(node => [node.id, node]))
   return [...groups.values(), ...document.nodes.filter(node => node.type !== 'group')].map((node) => {
     const parent = node.group === undefined ? undefined : groups.get(node.group)
-    const badge = segmentBadgeOf(document, node, segments)
+    const badge = segmentBadgeOf(document, node, segments, face.t)
     return {
       id: node.id,
       // `group` is a built-in flow type with its own styling; the frame card draws groups instead.

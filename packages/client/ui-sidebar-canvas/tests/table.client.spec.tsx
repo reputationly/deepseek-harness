@@ -2,12 +2,22 @@
 /** The storyboard table edits cells, rows, and shows the live segmentation. */
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { CanvasNode, CanvasOperation, Shot } from '@deepseek-ai/dsh-canvas/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CanvasNode, CanvasOperation, Shot, StoryboardSegment, VersionId } from '@deepseek-ai/dsh-canvas/client'
 import { StoryboardTable } from '../src/client/StoryboardTable.tsx'
+import type { StoryboardTableProps } from '../src/client/StoryboardTable.tsx'
+import { en, zh } from '../src/client/locales.ts'
 
 afterEach(() => { cleanup() })
 
 const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${JSON.stringify(params)}`
+const localeT = (messages: Readonly<Record<string, string>>): StoryboardTableProps['t'] => (key, params) => {
+  const template = messages[key] ?? key
+  return template.replace(/\{(\w+)\}/gu, (placeholder, name: string) => {
+    const value = params?.[name]
+    return typeof value === 'string' || typeof value === 'number' ? String(value) : placeholder
+  })
+}
 
 const shot = (id: string, extra: Partial<Shot> = {}): Shot => ({
   id: id as never, title: id, shotSize: 'medium', visual: `画面 ${id}`, motion: '动作', camera: '固定', durationSec: 3,
@@ -37,6 +47,37 @@ it('renders every row with its fields, dialogue, and the segmentation summary', 
   expect((screen.getAllByRole('spinbutton')[1] as HTMLInputElement).value).toBe('4')
   expect((screen.getAllByRole('textbox')[0] as HTMLTextAreaElement).value).toBe('画面 s1')
   expect(screen.getByText(/storyboard.summary/)).toBeTruthy()
+})
+
+it.each([
+  {
+    label: 'Chinese singular counts', t: localeT(zh), count: 1,
+    expected: '共 1 镜 · 1 秒 · 1 段 · 1 次视频调用',
+  },
+  {
+    label: 'Chinese plural counts', t: localeT(zh), count: 2,
+    expected: '共 2 镜 · 2 秒 · 2 段 · 2 次视频调用',
+  },
+  {
+    label: 'English singular counts', t: localeT(en), count: 1,
+    expected: '1 shot · 1 second · 1 segment · 1 video call',
+  },
+  {
+    label: 'English plural counts', t: localeT(en), count: 2,
+    expected: '2 shots · 2 seconds · 2 segments · 2 video calls',
+  },
+])('localizes the storyboard footer with $label', ({ count, expected, t }) => {
+  const versionId = brandString<VersionId>('summary-version')
+  const shots = Array.from({ length: count }, (_value, index) => shot(`summary-${String(index + 1)}`, { durationSec: 1 }))
+  const segments: StoryboardSegment[] = shots.map((current, index) => ({
+    index, shots: [current.id], durationSec: current.durationSec, kind: 'opening', join: 'strict', needsTailChain: false,
+  }))
+  const summaryNode: CanvasNode = {
+    ...node, activeVersion: versionId,
+    versions: [{ id: versionId, createdAt: 'now', origin: 'user', shots }],
+  }
+  render(<StoryboardTable node={summaryNode} edit={async () => {}} close={() => {}} t={t} segments={segments} />)
+  expect(screen.getByText(expected)).toBeTruthy()
 })
 
 it('sends a shot update for a changed cell and a duration below one second is raised', () => {
@@ -75,7 +116,10 @@ it('adds, removes, and reorders rows', () => {
   fireEvent.dragStart(rows[2] as HTMLElement)
   fireEvent.dragOver(rows[0] as HTMLElement)
   fireEvent.drop(rows[0] as HTMLElement)
-  expect(h.edit).toHaveBeenCalledWith([{ op: 'move_shot', node: 'b1', shot: 's3' }])
+  expect(h.edit).toHaveBeenCalledWith([
+    { op: 'move_shot', node: 'b1', shot: 's3', after: 's1' },
+    { op: 'move_shot', node: 'b1', shot: 's1', after: 's3' },
+  ])
 })
 
 it('edits the text cells, ignores a drop without a drag, and switches back to the bible tab', () => {

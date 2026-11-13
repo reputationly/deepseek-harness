@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CanvasDocument, CanvasNode, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
-import type { MediaCapabilityView, MediaPlanView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { MediaCapabilityView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   genOperation, modelChoices, operationFor, orderedRefs, paramControls, reorderOperation, type ParamControl,
@@ -21,12 +21,12 @@ export interface InspectorProps {
   readonly placement: InspectorPlacement
   readonly capabilities: (operation: string) => Promise<readonly MediaCapabilityView[]>
   readonly edit: (operations: readonly CanvasOperation[]) => Promise<void>
+  /** Local undo/redo generation state; external document refreshes do not change it. */
+  readonly historyEpoch?: number
   readonly close: () => void
   readonly openTable?: (nodeId: string) => void
-  /** Plans generation for this node, when the deployment has the media namespace. */
-  readonly planNodes?: (nodes: readonly string[]) => Promise<MediaPlanView | undefined>
-  /** Starts generation for this node after the budget is accepted. */
-  readonly generateNodes?: (nodes: readonly string[], token: string | undefined) => Promise<MediaPlanView | undefined>
+  /** Plans and starts generation for this node through the shared budget flow. */
+  readonly generate?: (nodeId: string) => void
   readonly t: PropsLocale<typeof NS>['t']
 }
 
@@ -57,7 +57,7 @@ function ParamField({ control, onChange }: { control: ParamControl; onChange: (n
  * @returns the panel with generation, references, frames, versions, and the table entry for storyboards.
  */
 export function Inspector({
-  document, node, placement, capabilities, edit, close, openTable, planNodes, generateNodes, t,
+  document, node, placement, capabilities, edit, historyEpoch = 0, close, openTable, generate, t,
 }: InspectorProps): ReactNode {
   const kind = node.gen?.kind
   const [models, setModels] = useState<readonly MediaCapabilityView[]>([])
@@ -68,8 +68,8 @@ export function Inspector({
     setModelId(node.gen?.model ?? '')
     setPrompt(node.gen?.prompt ?? '')
     setParams({ ...node.gen?.params })
-    // A reload after a conflict keeps the user's draft: only switching nodes resets it.
-  }, [node.id])
+    // External reloads keep the user's draft; local history actions reset it.
+  }, [node.id, historyEpoch])
   const operation = kind === undefined ? undefined : operationFor(kind)
   useEffect(() => {
     if (operation === undefined) return
@@ -85,8 +85,6 @@ export function Inspector({
   const choices = modelChoices(models, first !== undefined || last !== undefined, refs.length > 0)
   const nameOf = (id: string): string => document.nodes.find(candidate => candidate.id === id)?.title ?? id
   const [dragging, setDragging] = useState<number>()
-  const [plan, setPlan] = useState<MediaPlanView>()
-  const [note, setNote] = useState<string>()
   const apply = (): void => {
     const numeric: Record<string, string | number | boolean> = {}
     for (const [key, value] of Object.entries(params)) {
@@ -115,24 +113,9 @@ export function Inspector({
       <PromptField value={prompt} onChange={setPrompt} t={t} />
       <Button variant="primary" size="sm" onClick={apply}>{t('inspector.apply')}</Button>
     </section>}
-    {planNodes === undefined || generateNodes === undefined
-      || !['image', 'video', 'audio', 'storyboard', 'timeline'].includes(node.type) ? undefined
+    {generate === undefined || !['image', 'video', 'audio', 'storyboard', 'timeline'].includes(node.type) ? undefined
       : <section className={css.section}>
-        <Button variant="outline" size="sm" onClick={() => {
-          setNote(undefined)
-          void planNodes([node.id]).then(async (planned) => {
-            if (planned === undefined) return
-            if (planned.state === 'ready') {
-              const started = await generateNodes([node.id], undefined)
-              /* v8 ignore next -- the button renders only when the deployment starts generation */
-              setNote(started === undefined ? undefined : t('inspector.started', { count: started.jobs.length }))
-              return
-            }
-            if (planned.state === 'needs_confirmation') { setPlan(planned); return }
-            setNote(planned.message ?? planned.state)
-          }).catch((error: unknown) => { setNote(error instanceof Error ? error.message : String(error)) })
-        }}>{t('inspector.generateNow')}</Button>
-        {note === undefined ? undefined : <p className={css.note} role="status">{note}</p>}
+        <Button variant="outline" size="sm" onClick={() => { generate(node.id) }}>{t('inspector.generateNow')}</Button>
       </section>}
     {node.type === 'storyboard' && <section className={css.section}>
       <Button variant="outline" size="sm" onClick={() => { openTable?.(node.id) }}>{t('inspector.openTable')}</Button>
@@ -183,32 +166,5 @@ export function Inspector({
         </li>)}
       </ol>
     </section>
-    {plan === undefined ? undefined : <div className={css.dialogBackdrop} role="presentation">
-      <div className={css.dialog} role="dialog" aria-label={t('budget.title')}>
-        <span className={css.dialogTitle}>{t('budget.title')}</span>
-        <ul className={css.dialogLines}>
-          {plan.lines.map(line => <li key={line.node}>
-            {t('budget.line', {
-              node: nameOf(line.node), kind: line.kind, model: line.model, calls: line.calls,
-            })}
-          </li>)}
-        </ul>
-        <span className={css.dialogTotals}>{t('budget.totals', {
-          video: plan.totals.videoCalls, seconds: plan.totals.videoSeconds, images: plan.totals.imageCalls,
-          speech: plan.totals.speechLines, music: plan.totals.musicCalls,
-        })}</span>
-        <div className={css.dialogActions}>
-          <Button size="sm" onClick={() => { setPlan(undefined) }}>{t('budget.cancel')}</Button>
-          <Button variant="primary" size="sm" onClick={() => {
-            const token = plan.token
-            setPlan(undefined)
-            /* v8 ignore next -- the confirm button renders only when the deployment starts generation */
-            void generateNodes?.([node.id], token).then((started) => {
-              setNote(started === undefined ? undefined : t('inspector.started', { count: started.jobs.length }))
-            }).catch((error: unknown) => { setNote(error instanceof Error ? error.message : String(error)) })
-          }}>{t('budget.confirm')}</Button>
-        </div>
-      </div>
-    </div>}
   </aside>
 }

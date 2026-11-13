@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { scriptPreview, scriptScenes, storyboardCardView } from '../model/cards.ts'
 import type { CanvasFlowNode } from '../flow.ts'
+import { formatStoryboardSummary } from '../storyboard-summary.ts'
 import { NodeCard, shownVersion } from './shared.tsx'
 import css from '../CanvasFlow.module.css'
 
@@ -45,7 +46,7 @@ export function StoryboardNode({ data, selected }: NodeProps<CanvasFlowNode>): R
         <span className={css.shotSeconds}>{t('badge.duration', { seconds: row.seconds })}</span>
       </div>)}
     </div>
-    <p className={css.summary}>{view.summary}</p>
+    <p className={css.summary}>{formatStoryboardSummary(view.summary, t)}</p>
   </NodeCard>
 }
 

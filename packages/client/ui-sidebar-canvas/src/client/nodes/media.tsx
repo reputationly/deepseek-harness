@@ -80,6 +80,14 @@ function DurationBadge({ node, t }: { node: CanvasNode; t: NodeProps<CanvasFlowN
   return seconds === undefined ? undefined : <span className={css.badge}>{t('badge.duration', { seconds })}</span>
 }
 
+/** Input state badges shared by image, video, and audio cards. */
+function ChangeBadges({ node, t }: { node: CanvasNode; t: NodeProps<CanvasFlowNode>['data']['t'] }): ReactNode {
+  return <>
+    {node.inputChanged === true && <span className={css.badge}>{t('badge.inputChanged')}</span>}
+    {node.stale === true && <span className={css.badge}>{t('badge.stale')}</span>}
+  </>
+}
+
 /** An image card. */
 export function ImageNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
   const { node, readFile, t } = data
@@ -90,7 +98,7 @@ export function ImageNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
         ? <img className={css.image} src={media.url} alt={node.title} draggable={false} />
         : <MediaStatus media={media} loading={t('media.loading')} failed={t('media.failed')} />}
     </div>
-    <div className={css.badges}><DurationBadge node={node} t={t} /></div>
+    <div className={css.badges}><ChangeBadges node={node} t={t} /><DurationBadge node={node} t={t} /></div>
   </NodeCard>
 }
 
@@ -118,6 +126,7 @@ export function VideoNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
         : <MediaStatus media={media} loading={t('media.loading')} failed={t('media.failed')} />}
     </div>
     <div className={css.badges}>
+      <ChangeBadges node={node} t={t} />
       <DurationBadge node={node} t={t} />
       {/* v8 ignore next -- the segment badge shows only for a storyboard segment */}
       {badge === undefined ? undefined : <span className={css.badge}>{badge}</span>}
@@ -140,11 +149,10 @@ export function AudioNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
       {media.status !== 'ready' && <Button variant="outline" size="sm" className="nodrag" aria-label={t('audio.play')}
         icon={<IconPlayOutlineRegular />} onClick={() => { setWanted(true) }}>{t('audio.play')}</Button>}
       {/* v8 ignore next -- the spoken line shows only for speech nodes */}
-      /* v8 ignore next -- the spoken line shows only for speech nodes */
       {node.gen !== undefined && node.gen.kind === 'speech'
         ? <p className={css.line}>{node.gen.prompt}</p>
         : undefined}
     </div>
-    <div className={css.badges}><DurationBadge node={node} t={t} /></div>
+    <div className={css.badges}><ChangeBadges node={node} t={t} /><DurationBadge node={node} t={t} /></div>
   </NodeCard>
 }

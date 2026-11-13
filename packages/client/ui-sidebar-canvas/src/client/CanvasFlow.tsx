@@ -14,13 +14,15 @@ import {
 import { NODE_TYPES } from './nodes/index.ts'
 import { CanvasRoleMenu } from './CanvasRoleMenu.tsx'
 import { useGestures } from './useGestures.ts'
-import type { EditHistory } from './model/history.ts'
+import type { EditHistory, HistoryDirection } from './model/history.ts'
 import css from './CanvasFlow.module.css'
 
 /** The document to draw and the calls its edits go through. */
 export type CanvasFlowProps = CanvasNodeFace & {
   readonly document: CanvasDocument
   readonly edit: (operations: readonly CanvasOperation[]) => Promise<void>
+  /** Applies undo/redo edits and refreshes local-only state after the Host accepts them. */
+  readonly historyEdit?: (operations: readonly CanvasOperation[], direction: HistoryDirection) => Promise<void>
   readonly reload: () => Promise<void>
   /** Reports the selected node, or undefined when the user clicks the pane. */
   readonly onSelect?: (nodeId: string | undefined) => void
@@ -97,22 +99,24 @@ function Toolbar({ document, nodes, edges, edit, reload, t, undo, redo, canUndo,
  * @param props - document, media reads, copy, and the edit and reload calls.
  * @returns the flow with its toolbar and overview.
  */
-export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, history, segments = {} }: CanvasFlowProps): ReactNode {
-  const [drawn, setDrawn] = useState({ document, readFile, t, edit })
+export function CanvasFlow({
+  document, readFile, t, edit, historyEdit, generate, reload, onSelect, history, segments = {},
+}: CanvasFlowProps): ReactNode {
+  const [drawn, setDrawn] = useState({ document, readFile, t, edit, generate })
   const apply = useCallback(async (operations: readonly CanvasOperation[]) => {
-    history?.record(document, operations, t('undo.edit'))
     await edit(operations)
-  }, [history, document, edit, t])
-  const face = { readFile, t, edit: apply }
+  }, [edit])
+  const face = { readFile, t, edit: apply, ...generate === undefined ? {} : { generate } }
   const [nodes, setNodes] = useState(() => flowNodes(document, face, segments))
   const [edges, setEdges] = useState(() => flowEdges(document, t))
-  if (drawn.document !== document || drawn.readFile !== readFile || drawn.t !== t || drawn.edit !== edit) {
-    setDrawn({ document, readFile, t, edit })
+  if (drawn.document !== document || drawn.readFile !== readFile || drawn.t !== t || drawn.edit !== edit || drawn.generate !== generate) {
+    setDrawn({ document, readFile, t, edit, generate })
     setNodes(keepSelection(flowNodes(document, face, segments), nodes))
     setEdges(keepSelection(flowEdges(document, t), edges))
   }
   const gestures = useGestures<CanvasFlowNode, CanvasFlowEdge>({
     document, apply, edit, nodes, setNodes, setEdges,
+    ...historyEdit === undefined ? {} : { historyEdit },
     ...history === undefined ? {} : { history },
     confirmDelete: count => t('canvas.confirmDelete', { count }), groupTitle: t('group.new'),
   })

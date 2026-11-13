@@ -7,13 +7,14 @@ import type {
 import type { CanvasDocument, CanvasEdgeRole, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
 import { connectionIntent, deleteIntent, keyboardIntent } from './model/gestures.ts'
 import { moveOperations } from './flow.ts'
-import type { EditHistory } from './model/history.ts'
+import type { EditHistory, HistoryDirection } from './model/history.ts'
 
 /** Props one gesture hook needs. */
 export interface GestureProps<N extends Node, E extends Edge> {
   readonly document: CanvasDocument
   readonly apply: (operations: readonly CanvasOperation[]) => Promise<void>
   readonly edit: (operations: readonly CanvasOperation[]) => Promise<void>
+  readonly historyEdit?: (operations: readonly CanvasOperation[], direction: HistoryDirection) => Promise<void>
   readonly history?: EditHistory
   /** Copy for the delete confirmation. */
   readonly confirmDelete: (count: number) => string
@@ -57,17 +58,17 @@ export interface Gestures<N extends Node, E extends Edge> {
  * @returns handlers bound to xyflow and the pending role menu.
  */
 export function useGestures<N extends Node, E extends Edge>(props: GestureProps<N, E>): Gestures<N, E> {
-  const { document, apply, edit, history, confirmDelete, groupTitle, nodes, setNodes, setEdges } = props
+  const { document, apply, edit, historyEdit, history, confirmDelete, groupTitle, nodes, setNodes, setEdges } = props
   const [menu, setMenu] = useState<PendingMenu>()
   const pointer = useRef({ x: 0, y: 0 })
   const undo = useCallback(() => {
     const operations = history?.undo()
-    if (operations !== undefined) void edit(operations)
-  }, [history, edit])
+    if (operations !== undefined) void (historyEdit?.(operations, 'undo') ?? edit(operations))
+  }, [history, historyEdit, edit])
   const redo = useCallback(() => {
     const operations = history?.redo()
-    if (operations !== undefined) void edit(operations)
-  }, [history, edit])
+    if (operations !== undefined) void (historyEdit?.(operations, 'redo') ?? edit(operations))
+  }, [history, historyEdit, edit])
   const onNodesChange = useCallback((changes: NodeChange<N>[]) => {
     setNodes((current) => {
       const list = changes.reduce((previous, change) => {

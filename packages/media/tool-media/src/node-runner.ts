@@ -215,6 +215,7 @@ export function planNodes(
   limits: PlanLimits,
 ): NodePlan {
   const create: CanvasOperation[] = []
+  const edits: CanvasOperation[] = []
   const entries: PlannedGeneration[] = []
   const segments: { storyboard: CanvasNodeId; index: number; shots: readonly string[] }[] = []
   const stale: CanvasNodeId[] = []
@@ -235,6 +236,7 @@ export function planNodes(
       for (const [index, segment] of plan.segments.entries()) {
         const existing = videoForSegment(document, node.id, segment)
         const covered = shotsOfSegment(shots, segment)
+        const prompt = segmentPrompt(covered, bible)
         const model = previous?.tail === undefined ? limits.videoRefModel : limits.videoModel
         const createdRef = `segment-${String(index)}`
         const chosen: PlannedGeneration = {
@@ -258,12 +260,14 @@ export function planNodes(
             title: `${node.title} · 段${String(index + 1)}`,
             gen: {
               kind: 'video',
-              prompt: segmentPrompt(covered, bible),
+              prompt,
               model,
               params: { duration: Number(chosen.seconds) },
               shot: { storyboard: node.id, shots: segment.shots },
             },
           })
+        } else if (existing.gen?.prompt !== prompt) {
+          edits.push({ op: 'set_gen', node: existing.id, gen: { prompt } })
         }
         entries.push(chosen)
         segments.push({ storyboard: node.id, index, shots: segment.shots })
@@ -316,5 +320,5 @@ export function planNodes(
     })
   }
 
-  return { nodes: entries, create, stale, segments, entries }
+  return { nodes: entries, create, ...edits.length === 0 ? {} : { edits }, stale, segments, entries }
 }

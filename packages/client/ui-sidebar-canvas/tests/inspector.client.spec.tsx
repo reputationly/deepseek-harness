@@ -4,10 +4,19 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, expect, it, vi } from 'vitest'
 import type { CanvasDocument, CanvasNode } from '@deepseek-ai/dsh-canvas/client'
 import { Inspector, type InspectorProps } from '../src/client/Inspector.tsx'
+import { useGenerationControls } from '../src/client/GenerationControls.tsx'
 
 afterEach(() => { cleanup() })
 
 const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${JSON.stringify(params)}`
+
+const fieldValue = (label: string): string => {
+  const field = screen.getByLabelText(label)
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+    return field.value
+  }
+  throw new Error(`expected ${label} to label a form field`)
+}
 
 const video: CanvasNode = {
   id: 'v1' as never, type: 'video', title: '场1 段1', x: 0, y: 0, width: 320, height: 220,
@@ -41,12 +50,46 @@ const capabilities = vi.fn(async () => [{
   ],
 }])
 
-function mount(overrides: Partial<InspectorProps> = {}) {
+type GenerationProps = Parameters<typeof useGenerationControls>[0]
+type TestProps = Partial<InspectorProps> & Pick<GenerationProps, 'planNodes' | 'generateNodes'>
+
+function mount(overrides: TestProps = {}) {
   const edit = vi.fn(async () => {})
   const close = vi.fn()
-  render(<Inspector document={document} node={video} placement="sidebar" capabilities={capabilities}
-    edit={edit} close={close} t={t} {...overrides} />)
+  const { planNodes, generateNodes, ...inspectorProps } = overrides
+  const Harness = () => {
+    const { generate: overrideGenerate, ...baseProps } = inspectorProps
+    const generation = useGenerationControls({
+      document: baseProps.document ?? document,
+      ...planNodes === undefined ? {} : { planNodes },
+      ...generateNodes === undefined ? {} : { generateNodes },
+      t: baseProps.t ?? t,
+    })
+    const generate = overrideGenerate ?? (planNodes === undefined || generateNodes === undefined
+      ? undefined
+      : (nodeId: string) => { generation.generate([nodeId]) })
+    return <>
+      <Inspector document={document} node={video} placement="sidebar" capabilities={capabilities}
+        edit={edit} close={close} t={t} {...baseProps}
+        {...generate === undefined ? {} : { generate }} />
+      {generation.feedback}
+    </>
+  }
+  render(<Harness />)
   return { edit, close }
+}
+
+function GenerationProbe({ document, planNodes, generateNodes, t }: GenerationProps) {
+  const generation = useGenerationControls({
+    document,
+    ...planNodes === undefined ? {} : { planNodes },
+    ...generateNodes === undefined ? {} : { generateNodes },
+    t,
+  })
+  return <>
+    <button onClick={() => { generation.generate(['missing']) }}>Generate</button>
+    {generation.feedback}
+  </>
 }
 
 it('lists the model, its catalog parameters, and the node prompt', async () => {
@@ -68,6 +111,51 @@ it('applies model, prompt, and numeric parameters as one generation update', asy
   expect(h.edit).toHaveBeenCalledWith([{
     op: 'set_gen', node: 'v1', gen: { model: 'video-model', prompt: '新提示', params: { duration: 10 } },
   }])
+})
+
+it('resets an applied parameter draft when local history restores the persisted value', async () => {
+  const original: CanvasNode = {
+    ...video, gen: { kind: 'video', prompt: '雨夜', model: 'video-model', params: { duration: 5 } },
+  }
+  const restored: CanvasNode = {
+    ...original, gen: { kind: 'video', prompt: '雨夜', model: 'video-model', params: { duration: 5 } },
+  }
+  const edit = vi.fn(async () => {})
+  const testCapabilities = vi.fn(async () => [{
+    id: 'cap', model: 'video-model', operation: 'generate_video',
+    params: [{ id: 'duration', options: ['5', '10'], default: '5' }],
+  }])
+  const props: InspectorProps = {
+    document, node: original, placement: 'sidebar', capabilities: testCapabilities, edit, close: vi.fn(), t,
+  }
+  const rendered = render(<Inspector {...props} historyEpoch={0} />)
+  await waitFor(() => { expect(screen.getByLabelText('duration')).toBeTruthy() })
+  fireEvent.change(screen.getByLabelText('duration'), { target: { value: '10' } })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  expect(fieldValue('duration')).toBe('10')
+  rendered.rerender(<Inspector {...props} node={restored} historyEpoch={1} />)
+  expect(fieldValue('duration')).toBe('5')
+})
+
+it('keeps an unsaved inspector draft when an external document refreshes', async () => {
+  const original: CanvasNode = {
+    ...video, gen: { kind: 'video', prompt: '雨夜', model: 'video-model', params: { duration: 5 } },
+  }
+  const external: CanvasNode = {
+    ...original, gen: { kind: 'video', prompt: '外部提示', model: 'video-model', params: { duration: 5 } },
+  }
+  const testCapabilities = vi.fn(async () => [{
+    id: 'cap', model: 'video-model', operation: 'generate_video',
+    params: [{ id: 'duration', options: ['5', '10'], default: '5' }],
+  }])
+  const props: InspectorProps = {
+    document, node: original, placement: 'sidebar', capabilities: testCapabilities, edit: vi.fn(async () => {}), close: vi.fn(), t,
+  }
+  const rendered = render(<Inspector {...props} historyEpoch={0} />)
+  await waitFor(() => { expect(screen.getByLabelText('duration')).toBeTruthy() })
+  fireEvent.change(screen.getByLabelText('duration'), { target: { value: '10' } })
+  rendered.rerender(<Inspector {...props} node={external} historyEpoch={0} />)
+  expect(fieldValue('duration')).toBe('10')
 })
 
 it('reorders references by drag and removes one', async () => {
@@ -119,6 +207,79 @@ it('asks for the budget and starts generation once the user confirms', async () 
   expect(screen.getByText(/budget.totals/)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
   await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['v1'], 'tok') })
+  expect(screen.getByRole('status').textContent).toContain('inspector.started')
+})
+
+it('does not plan when either generation endpoint is unavailable', () => {
+  const planNodes = vi.fn(async () => undefined)
+  const generateNodes = vi.fn(async () => undefined)
+  const { rerender } = render(<GenerationProbe document={document} planNodes={planNodes} t={t} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+  expect(planNodes).not.toHaveBeenCalled()
+  rerender(<GenerationProbe document={document} generateNodes={generateNodes} t={t} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+  expect(generateNodes).not.toHaveBeenCalled()
+})
+
+it('falls back to the node id when a budget line has no document title', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 'tok',
+    lines: [{ node: 'missing', kind: 'video', model: 'video-model', calls: 1, seconds: 3 }],
+    totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => undefined)
+  const emptyDocument: CanvasDocument = { ...document, nodes: [] }
+  for (const current of [undefined, emptyDocument]) {
+    const rendered = render(<GenerationProbe document={current} planNodes={planNodes} generateNodes={generateNodes} t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
+    expect(screen.getByText(/"node":"missing"/)).toBeTruthy()
+    rendered.unmount()
+  }
+})
+
+it('does not start from a confirmation after the generation endpoint disappears', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 'tok',
+    lines: [{ node: 'missing', kind: 'video', model: 'video-model', calls: 1, seconds: 3 }],
+    totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => undefined)
+  const { rerender } = render(<GenerationProbe document={document} planNodes={planNodes} generateNodes={generateNodes} t={t} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
+  rerender(<GenerationProbe document={document} planNodes={planNodes} t={t} />)
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
+  expect(generateNodes).not.toHaveBeenCalled()
+})
+
+it('reopens confirmation with the revised budget when the confirmed plan is stale', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 'tok-old',
+    lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 1, seconds: 5 }],
+    totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn()
+    .mockResolvedValueOnce({
+      state: 'needs_confirmation' as const, token: 'tok-new',
+      lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 3, seconds: 18 }],
+      totals: { videoCalls: 3, videoSeconds: 18, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+    })
+    .mockResolvedValueOnce({
+      state: 'started' as const, lines: [], totals: { videoCalls: 3, videoSeconds: 18, imageCalls: 0, speechLines: 0, musicCalls: 0 },
+      jobs: [{ node: 'v1', jobId: 'j1' }],
+    })
+  mount({ planNodes, generateNodes })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(screen.getByText('budget.changed')).toBeTruthy() })
+  expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy()
+  expect(screen.getByText(/"calls":3/)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(generateNodes).toHaveBeenNthCalledWith(2, ['v1'], 'tok-new') })
   expect(screen.getByRole('status').textContent).toContain('inspector.started')
 })
 

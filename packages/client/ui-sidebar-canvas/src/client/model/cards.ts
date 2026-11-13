@@ -9,6 +9,11 @@ export interface VersionChoice {
   readonly active: boolean
 }
 
+export type ShotBadge =
+  | { readonly scene: number; readonly segment: number }
+  | { readonly scene: number; readonly segment?: never }
+  | { readonly segment: number; readonly scene?: never }
+
 /** State the card's status layer shows. */
 export type CardState =
   | { readonly kind: 'idle' }
@@ -56,22 +61,21 @@ export function cardState(status: NodeStatus | undefined, now: number): CardStat
  * @param node - video node.
  * @param board - storyboard the segment belongs to, when the view has it.
  * @param scene - scene number the group records, when known.
- * @returns e.g. `场2·段1`, or undefined when the node is not a storyboard segment.
+ * @returns the scene and segment numbers, or undefined when the node is not a storyboard segment.
  */
 export function shotBadge(
   node: CanvasNode,
   board?: CanvasNode,
   scene?: number,
   boardSegments: readonly StoryboardSegment[] = [],
-): string | undefined {
+): ShotBadge | undefined {
   const shots = node.gen?.shot?.shots
   if (shots === undefined || shots.length === 0) return undefined
   const key = [...shots].sort().join(',')
   const index = board === undefined ? -1 : boardSegments.findIndex(segment => [...segment.shots].sort().join(',') === key)
-  const segment = index < 0 ? undefined : `段${String(index + 1)}`
-  const prefix = scene === undefined ? undefined : `场${String(scene)}`
-  if (prefix === undefined && segment === undefined) return undefined
-  return [prefix, segment].filter(part => part !== undefined).join('·')
+  const segment = index < 0 ? undefined : index + 1
+  if (scene === undefined) return segment === undefined ? undefined : { segment }
+  return segment === undefined ? { scene } : { scene, segment }
 }
 
 /**
@@ -123,7 +127,7 @@ export interface StoryboardRow {
 /** What a storyboard card's small table and footer show. */
 export interface StoryboardCardView {
   readonly rows: readonly StoryboardRow[]
-  readonly summary: string
+  readonly summary: ReturnType<typeof summaryOf>
 }
 
 /**
@@ -140,11 +144,7 @@ export function storyboardCardView(
     id: shot.id, title: shot.title, shotSize: shot.shotSize, seconds: shot.durationSec, visual: shot.visual,
   }))
   const summary = summaryOf(node, segments)
-  const text = [
-    `${String(summary.shots)} 镜`, `${String(summary.seconds)} 秒`,
-    `${String(summary.segments.length)} 段`, `${String(summary.videoCalls)} 次生成`,
-  ].join(' · ')
-  return { rows, summary: text }
+  return { rows, summary }
 }
 
 /**

@@ -86,15 +86,22 @@ export function removeShotOperation(node: CanvasNode, shot: ShotId): CanvasOpera
 }
 
 /**
- * Operation that moves a shot after another one.
+ * Operations that move a shot after another one or to the front.
  * @param node - storyboard node.
  * @param shot - shot being moved.
- * @param after - shot it should follow; omit to move it first.
- * @returns the move operation.
+ * @param after - shot it should follow, or undefined to move it first.
+ * @returns the operation sequence needed for the requested position.
  */
-export function moveShotOperation(node: CanvasNode, shot: ShotId, after: ShotId | undefined): CanvasOperation {
-  /* v8 ignore next -- the first row maps to no preceding shot */
-  return { op: 'move_shot', node: node.id, shot, ...after === undefined ? {} : { after } }
+export function moveShotOperations(node: CanvasNode, shot: ShotId, after: ShotId | undefined): CanvasOperation[] {
+  const rows = rowsOf(node)
+  if (!rows.some(row => row.id === shot) || after === shot) return []
+  if (after !== undefined) return [{ op: 'move_shot', node: node.id, shot, after }]
+  const first = rows[0]
+  if (first === undefined || first.id === shot) return []
+  return [
+    { op: 'move_shot', node: node.id, shot, after: first.id },
+    { op: 'move_shot', node: node.id, shot: first.id, after: shot },
+  ]
 }
 
 /**
@@ -110,7 +117,7 @@ export function segmentOfShot(segments: readonly StoryboardSegment[], shot: Shot
 /** Template a new table row starts from. */
 export function blankShot(): Omit<Shot, 'id'> {
   return {
-    title: '', shotSize: 'medium', visual: '', motion: '', camera: '固定', durationSec: 3,
+    title: '', shotSize: 'medium', visual: '', motion: '', camera: '', durationSec: 3,
     characters: [], props: [], dialogue: [], sfx: '', negative: '',
   }
 }
