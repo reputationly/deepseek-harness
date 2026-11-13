@@ -136,3 +136,30 @@ it('starts a plan that needs no confirmation directly', async () => {
   await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['v1'], undefined) })
   expect(screen.queryByRole('dialog')).toBeNull()
 })
+
+it('reports a blocked or running plan without starting work', async () => {
+  const blocked = vi.fn(async () => ({
+    state: 'blocked' as const, message: 'G1_stage_order: 先完成设定集',
+    lines: [], totals: { videoCalls: 0, videoSeconds: 0, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn()
+  mount({ planNodes: blocked, generateNodes })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('G1_stage_order') })
+  expect(generateNodes).not.toHaveBeenCalled()
+})
+
+it('surfaces a planning failure in the inspector', async () => {
+  const planNodes = vi.fn(async () => { throw new Error('canvas node missing') })
+  mount({ planNodes, generateNodes: vi.fn() })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('canvas node missing') })
+})
+
+it('keeps the generate button away when the deployment has no media namespace', async () => {
+  mount()
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  expect(screen.queryByRole('button', { name: 'inspector.generateNow' })).toBeNull()
+})

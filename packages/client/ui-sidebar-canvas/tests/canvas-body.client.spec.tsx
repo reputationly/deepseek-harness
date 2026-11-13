@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** The canvas tab shows reading, failure, empty, and drawn states, and its notices keep the document visible. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
 import { CanvasBody, type CanvasBodyProps } from '../src/client/CanvasBody.tsx'
@@ -26,7 +26,7 @@ const filled: CanvasDocument = {
 const view = { directory: '/project', episode: { id: 'e1', title: 'Canvas' }, revisions: { canvas: 0 }, document: filled, segments: {} }
 const emptyView = { ...view, document: empty }
 
-function mount(initial: Partial<CanvasState>) {
+function mount(initial: Partial<CanvasState>, extra: Record<string, unknown> = {}) {
   const state = createSnapshotStore<CanvasState>({
     status: 'loading', view: undefined, error: undefined, notice: undefined, conflict: false, ...initial,
   })
@@ -36,7 +36,7 @@ function mount(initial: Partial<CanvasState>) {
   const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${String(params.message)}`
   const props = {
     useCanvas: (select: (value: CanvasState) => unknown) => select(state.getSnapshot()), load, edit, dismiss, readFile,
-    capabilities, bible, t,
+    capabilities, bible, t, ...extra,
   } as never as CanvasBodyProps
   const view = render(<CanvasBody {...props} />)
   return { state, load, edit, dismiss, readFile, capabilities, bible, t, rerender: () => { view.rerender(<CanvasBody {...props} />) } }
@@ -125,4 +125,59 @@ it('moves from the loading pane to the drawn canvas without changing hook order'
   h.state.set({ status: 'ready', view: view as never, error: undefined, notice: undefined, conflict: false })
   h.rerender()
   await waitFor(() => { expect(drawn).toHaveBeenCalled() })
+})
+
+const boardDoc: CanvasDocument = {
+  version: 2, revision: 0, nextId: 3, edges: [],
+  nodes: [{
+    id: 'b1' as never, type: 'storyboard', title: '场1 分镜', x: 0, y: 0, width: 320, height: 200,
+    activeVersion: 'v1' as never,
+    versions: [{
+      id: 'v1' as never, createdAt: 'now', origin: 'user',
+      shots: [{
+        id: 's1' as never, title: 's1', shotSize: 'medium', visual: '画面', motion: '动作', camera: '固定',
+        durationSec: 3, characters: [], props: [], dialogue: [], sfx: '', negative: '',
+      }],
+    }],
+  }],
+}
+const boardView = { ...view, document: boardDoc, segments: { b1: [] } }
+
+it('exports the canvas as a JSON download', () => {
+  const create = vi.fn(() => 'blob:canvas')
+  const revoke = vi.fn()
+  Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke })
+  mount({ status: 'ready', view: view as never })
+  fireEvent.click(screen.getByRole('button', { name: 'canvas.export' }))
+  expect(create).toHaveBeenCalledOnce()
+  expect(revoke).toHaveBeenCalledWith('blob:canvas')
+})
+
+it('opens the storyboard table for the selected node and hides the canvas actions', async () => {
+  mount({ status: 'ready', view: boardView as never })
+  const flow = drawn.mock.calls[0]![0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  act(() => { flow.onSelect('b1') })
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.openTable' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.openTable' }))
+  expect(screen.getByRole('button', { name: 'table.addRow' })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'canvas.export' })).toBeNull()
+})
+
+it('passes generation callbacks to the inspector and dispatches a refit on fullscreen', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'ready' as const, lines: [], totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => undefined)
+  mount({ status: 'ready', view: boardView as never }, { planNodes, generateNodes })
+  const flow = drawn.mock.calls[0]![0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  act(() => { flow.onSelect('b1') })
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.generateNow' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(planNodes).toHaveBeenCalledWith(['b1']) })
+  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['b1'], undefined) })
+  const fit = vi.fn()
+  window.addEventListener('canvas:fit', fit)
+  fireEvent.click(screen.getByRole('button', { name: 'canvas.fullscreen' }))
+  await waitFor(() => { expect(fit).toHaveBeenCalled() })
+  window.removeEventListener('canvas:fit', fit)
 })

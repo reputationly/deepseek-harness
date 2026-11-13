@@ -298,3 +298,106 @@ describe('external changes', () => {
     expect(movedForward(2, 3)).toBe(true)
   })
 })
+
+describe('invertOperations coverage of every operation', () => {
+  const text = node('t1', 'text', {
+    versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', text: 'old' }],
+    activeVersion: 'v1' as never,
+  })
+  const image = node('i1', 'image', {
+    versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', path: '/a.png' }],
+    activeVersion: 'v1' as never,
+    gen: { kind: 'image', prompt: 'p', params: {} },
+  })
+  const board = node('b1', 'storyboard', {
+    versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1'), shot('s2')] }],
+    activeVersion: 'v1' as never,
+  })
+  const group = node('g1', 'group', { title: '组', versions: [] })
+  const member = node('m1', 'text', { group: 'g1' as never, versions: [] })
+  const doc = document([text, image, board, group, member], [
+    { id: 'i1->b1:ref', source: 'i1' as never, target: 'b1' as never, kind: 'reference', role: 'ref', order: 0 },
+    { id: 'i1->b1:first_frame', source: 'i1' as never, target: 'b1' as never, kind: 'reference', role: 'first_frame' },
+  ])
+
+  it('reverses the state operations from the document they started in', () => {
+    expect(invertOperations(doc, [{ op: 'resize', node: 't1', width: 1, height: 1 }])).toEqual([
+      { op: 'resize', node: 't1', width: 100, height: 80 },
+    ])
+    expect(invertOperations(doc, [{ op: 'set_version', node: 't1', version: 'v9' as never }])).toEqual([
+      { op: 'set_version', node: 't1', version: 'v1' },
+    ])
+    expect(invertOperations(doc, [{ op: 'set_gen', node: 'i1', gen: { prompt: 'x', params: {} } }])).toEqual([
+      { op: 'set_gen', node: 'i1', gen: { kind: 'image', prompt: 'p', params: {} } },
+    ])
+    expect(invertOperations(doc, [{ op: 'set_text', node: 't1', text: 'new' }])).toEqual([
+      { op: 'set_text', node: 't1', text: 'old' },
+    ])
+    expect(invertOperations(doc, [{ op: 'update_shot', node: 'b1', shot: 's1' as never, patch: { durationSec: 5 } }]))
+      .toEqual([{ op: 'set_shots', node: 'b1', shots: [shot('s1'), shot('s2')] }])
+    expect(invertOperations(doc, [{ op: 'insert_shot', node: 'b1', shot: shot('s3') }])).toEqual([
+      { op: 'remove_shot', node: 'b1', shot: '' },
+    ])
+    expect(invertOperations(doc, [{ op: 'remove_shot', node: 'b1', shot: 's2' as never }])).toEqual([
+      { op: 'insert_shot', node: 'b1', after: 's1', shot: { title: 's2', shotSize: 'medium', visual: '画面 s2', motion: '动作', camera: '固定', durationSec: 3, characters: [], props: [], dialogue: [], sfx: '', negative: '' } },
+    ])
+    expect(invertOperations(doc, [{ op: 'move_shot', node: 'b1', shot: 's1' as never }])).toEqual([
+      { op: 'move_shot', node: 'b1', shot: 's1' },
+    ])
+    expect(invertOperations(doc, [{ op: 'disconnect', from: 'i1', to: 'b1', role: 'first_frame' }])).toEqual([
+      { op: 'connect', from: 'i1', to: 'b1', kind: 'reference', role: 'first_frame' },
+    ])
+    expect(invertOperations(doc, [{ op: 'ungroup', node: 'g1' as never }])).toEqual([
+      { op: 'group', title: '组', nodes: ['m1'] },
+    ])
+    expect(invertOperations(doc, [{ op: 'reorder_refs', node: 'b1', sources: [] }])).toEqual([
+      { op: 'reorder_refs', node: 'b1', sources: ['i1'] },
+    ])
+    expect(invertOperations(doc, [{ op: 'group', title: '新组', nodes: ['t1', 'i1'] }])).toBeUndefined()
+  })
+
+  it('refuses to reverse an operation whose referent the document lacks', () => {
+    const empty = document([])
+    for (const operation of [
+      { op: 'move', node: 'x', x: 0, y: 0 },
+      { op: 'resize', node: 'x', width: 1, height: 1 },
+      { op: 'set_version', node: 'x', version: 'v' },
+      { op: 'set_gen', node: 'x', gen: { prompt: '', params: {} } },
+      { op: 'set_text', node: 'x', text: '' },
+      { op: 'set_shots', node: 'x', shots: [] },
+      { op: 'remove_shot', node: 'x', shot: 's' },
+      { op: 'move_shot', node: 'x', shot: 's' },
+      { op: 'disconnect', from: 'a', to: 'b' },
+      { op: 'ungroup', node: 'g' },
+      { op: 'reorder_refs', node: 'x', sources: [] },
+    ] as const) {
+      expect(invertOperations(empty, [operation])).toBeUndefined()
+    }
+    const noVersion = document([node('n', 'text')])
+    expect(invertOperations(noVersion, [{ op: 'set_version', node: 'n', version: 'v' }])).toBeUndefined()
+    expect(invertOperations(noVersion, [{ op: 'set_text', node: 'n', text: 'x' }])).toBeUndefined()
+    expect(invertOperations(noVersion, [{ op: 'set_optional_group' } as never])).toBeUndefined()
+  })
+
+  it('treats host-owned operations as not reversible and keeps the empty undo entry', () => {
+    for (const operation of [
+      { op: 'update', node: 't1', patch: { title: 'x' } },
+      { op: 'add', type: 'text', text: 'x' },
+      { op: 'remove', node: 't1' },
+      { op: 'append_version', node: 't1' },
+      { op: 'set_stale', node: 't1', stale: true },
+      { op: 'set_input_changed', node: 't1' },
+      { op: 'set_tail', node: 't1', tail: 'x' },
+      { op: 'set_status', node: 't1', status: undefined },
+    ] as const) {
+      expect(invertOperations(doc, [operation as never])).toBeUndefined()
+    }
+    const history = new EditHistory()
+    history.record(doc, [], '空')
+    expect(history.undo()).toBeUndefined()
+    expect(history.redo()).toBeUndefined()
+    history.record(doc, [{ op: 'move', node: 't1', x: 0, y: 0 }], '移动')
+    history.undo()
+    expect(history.redo()).toEqual([{ op: 'move', node: 't1', x: 0, y: 0 }])
+  })
+})
