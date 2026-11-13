@@ -110,7 +110,9 @@ it('asks before deleting, respects a refusal, and forwards node and edge changes
   await act(async () => { await h.hook.result.current.onBeforeDelete({ nodes: [{ id: 'n1' }] as never, edges: [] }) })
   expect(h.apply).not.toHaveBeenCalled()
   window.confirm = vi.fn(() => true)
-  await act(async () => { await h.hook.result.current.onBeforeDelete({ nodes: [{ id: 'n1' }] as never, edges: [] }) })
+  await act(async () => {
+    await h.hook.result.current.onBeforeDelete({ nodes: [{ id: 'n1' }] as never, edges: [{ id: 'e1' }] as never })
+  })
   expect(h.apply).toHaveBeenCalled()
   const updates: unknown[] = []
   const withSetter = setup({ setNodes: (update) => { updates.push(update) }, setEdges: (update) => { updates.push(update) } })
@@ -164,7 +166,7 @@ it('swallows a rejected play request', async () => {
   wrapper.append(video)
   document.body.append(wrapper)
   act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' })) })
-  await Promise.resolve()
+  await new Promise(resolve => setTimeout(resolve, 20))
 })
 
 it('applies position and select updates to the flow nodes and edges', () => {

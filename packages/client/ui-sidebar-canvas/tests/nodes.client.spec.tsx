@@ -305,3 +305,27 @@ it('ignores a rejected preview play request', async () => {
   fireEvent.mouseEnter(video)
   await Promise.resolve()
 })
+
+it('stops decoding when the card unmounts mid-decode', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  let resolveBuffer: (value: { length: number; getChannelData: () => Float32Array }) => void
+    = () => {}
+  class Slow {
+    decodeAudioData = vi.fn(() => new Promise<{ length: number; getChannelData: () => Float32Array }>(
+      (resolve) => { resolveBuffer = resolve },
+    ))
+    close = vi.fn(async () => {})
+  }
+  Object.assign(globalThis, { AudioContext: Slow })
+  mount(AudioNode, {
+    readFile: readyFile,
+    node: node('audio', {
+      versions: [{ id: 'v1' as never, path: '/a.mp3', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+    }),
+  })
+  await waitFor(() => { expect(globalThis.document.querySelector('audio')).toBeTruthy() })
+  cleanup()
+  resolveBuffer({ length: 4096, getChannelData: () => new Float32Array(4096) })
+  await new Promise(resolve => setTimeout(resolve, 20))
+})

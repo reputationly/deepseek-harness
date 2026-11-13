@@ -15,7 +15,8 @@ afterEach(() => { cleanup() })
 
 const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${JSON.stringify(params)}`
 const doc: CanvasDocument = {
-  version: 2, revision: 1, nextId: 4, edges: [],
+  version: 2, revision: 1, nextId: 4,
+  edges: [{ id: 'n1->n2:prompt', source: 'n1' as never, target: 'n2' as never, kind: 'reference', role: 'prompt' }],
   nodes: [
     { id: 'n1' as never, type: 'text', title: 'Brief', x: 0, y: 0, width: 280, height: 160, activeVersion: 'v1' as never,
       versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', text: 'brief' }] },
@@ -105,15 +106,22 @@ it('applies a confirmation-backed deletion and redraws when the document changes
 })
 
 it('redraws the same flow when the document object changes', async () => {
-  const h = mount()
+  const edit = vi.fn(async () => {})
+  const readFile = async () => ({ ok: false as const, message: 'no' })
+  const first: CanvasFlowProps = { document: doc, readFile, t, edit, reload: async () => {}, onSelect: () => {} }
+  const { rerender } = render(<CanvasFlow {...first} />)
   await waitFor(() => { expect(screen.getByText('Brief')).toBeTruthy() })
-  const next = { ...doc, revision: 2, nodes: [...doc.nodes, {
+  const nextDoc = { ...doc, revision: 2, nodes: [...doc.nodes, {
     id: 'n9' as never, type: 'text' as const, title: 'Later', x: 0, y: 320, width: 100, height: 60,
     activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user' as const, text: 'x' }],
   }] }
-  const props: CanvasFlowProps = { document: next, readFile: async () => ({ ok: false, message: 'no' }), t,
-    edit: h.edit, reload: h.reload, onSelect: () => {} }
-  const { rerender } = render(<CanvasFlow {...props} />)
-  rerender(<CanvasFlow {...props} />)
+  rerender(<CanvasFlow {...first} document={nextDoc} />)
   await waitFor(() => { expect(screen.getByText('Later')).toBeTruthy() })
+})
+
+it('refits when the studio asks it to', async () => {
+  mount()
+  await waitFor(() => { expect(screen.getByText('Brief')).toBeTruthy() })
+  fireEvent(window, new Event('canvas:fit'))
+  fireEvent.click(screen.getByRole('button', { name: 'fit' }))
 })

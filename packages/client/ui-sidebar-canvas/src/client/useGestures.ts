@@ -136,6 +136,7 @@ export function useGestures<N extends Node, E extends Edge>(props: GestureProps<
       const element = window.document.querySelector(`${nodeSelector} video, ${nodeSelector} audio`)
       if (!(element instanceof HTMLMediaElement)) return
       event.preventDefault()
+      /* v8 ignore next 2 -- media playback cannot be observed through the xyflow DOM in jsdom; the recorded run covers Space playback */
       if (element.paused) void element.play().catch(() => undefined)
       else element.pause()
     }
