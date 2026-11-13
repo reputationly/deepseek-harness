@@ -1,10 +1,6 @@
 /** The canvas drawn as a flow: pan, zoom, drag, connect, group, and delete. */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import {
-  applyEdgeChanges, applyNodeChanges, Background, MiniMap, ReactFlow, useReactFlow,
-  type EdgeChange, type NodeChange, type OnBeforeDelete, type OnConnect, type OnConnectEnd, type OnConnectStart,
-  type OnNodeDrag,
-} from '@xyflow/react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Background, MiniMap, ReactFlow, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
   Button, IconFullscreenOutlineRegular, IconLayersOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular,
@@ -12,12 +8,13 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CanvasDocument, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
 import {
-  deleteOperations, flowEdges, flowNodes, groupable, keepSelection, moveOperations,
+  deleteOperations, flowEdges, flowNodes, groupable, keepSelection,
   type CanvasFlowEdge, type CanvasFlowNode, type CanvasNodeFace,
 } from './flow.ts'
 import { NODE_TYPES } from './nodes/index.ts'
 import { RoleMenu } from './RoleMenu.tsx'
-import { automaticRole, roleMenu } from './model/edges.ts'
+import { roleMenu } from './model/edges.ts'
+import { useGestures } from './useGestures.ts'
 import type { EditHistory } from './model/history.ts'
 import css from './CanvasFlow.module.css'
 
@@ -102,22 +99,12 @@ function Toolbar({ document, nodes, edges, edit, reload, t, undo, redo, canUndo,
  * @returns the flow with its toolbar and overview.
  */
 export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, history, segments = {} }: CanvasFlowProps): ReactNode {
-  const [menu, setMenu] = useState<{ x: number; y: number; source: string; target: string }>()
-  const pointer = useRef({ x: 0, y: 0 })
+  const [drawn, setDrawn] = useState({ document, readFile, t, edit })
   const apply = useCallback(async (operations: readonly CanvasOperation[]) => {
     history?.record(document, operations, t('undo.edit'))
     await edit(operations)
   }, [history, document, edit, t])
-  const undo = useCallback(() => {
-    const operations = history?.undo()
-    if (operations !== undefined) void edit(operations)
-  }, [history, edit])
-  const redo = useCallback(() => {
-    const operations = history?.redo()
-    if (operations !== undefined) void edit(operations)
-  }, [history, edit])
   const face = { readFile, t, edit: apply }
-  const [drawn, setDrawn] = useState({ document, readFile, t, edit })
   const [nodes, setNodes] = useState(() => flowNodes(document, face, segments))
   const [edges, setEdges] = useState(() => flowEdges(document, t))
   if (drawn.document !== document || drawn.readFile !== readFile || drawn.t !== t || drawn.edit !== edit) {
@@ -125,104 +112,38 @@ export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, hist
     setNodes(keepSelection(flowNodes(document, face, segments), nodes))
     setEdges(keepSelection(flowEdges(document, t), edges))
   }
-  const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {
-    setNodes(current => applyNodeChanges(changes, current))
-  }, [])
-  const onEdgesChange = useCallback((changes: EdgeChange<CanvasFlowEdge>[]) => {
-    setEdges(current => applyEdgeChanges(changes, current))
-  }, [])
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      const mod = event.metaKey || event.ctrlKey
-      if (mod && event.key.toLowerCase() === 'z') {
-        event.preventDefault()
-        if (event.shiftKey) redo()
-        else undo()
-        return
-      }
-      const target = event.target
-      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
-      if (event.code === 'Space') {
-        const selectedNode = nodes.find(node => node.selected === true)
-        if (selectedNode === undefined) return
-        const element = window.document.querySelector(`.react-flow__node[data-id="${selectedNode.id}"] video, .react-flow__node[data-id="${selectedNode.id}"] audio`)
-        if (!(element instanceof HTMLMediaElement)) return
-        event.preventDefault()
-        if (element.paused) void element.play().catch(() => undefined)
-        else element.pause()
-        return
-      }
-      if (event.key.toLowerCase() !== 'g' || event.metaKey || event.ctrlKey) return
-      const members = groupable(document, nodes.filter(node => node.selected === true).map(node => node.id))
-      if (members.length < 2) return
-      event.preventDefault()
-      void apply([{ op: 'group', title: t('group.new'), nodes: members }])
-    }
-    window.addEventListener('keydown', onKey)
-    return () => { window.removeEventListener('keydown', onKey) }
-  }, [apply, document, nodes, redo, t, undo])
-
-  const onNodeDragStop = useCallback<OnNodeDrag<CanvasFlowNode>>((_event, _node, dragged) => {
-    void apply(moveOperations(document, dragged))
-  }, [document, apply])
-  const onConnectStart = useCallback<OnConnectStart>((event) => {
-    pointer.current = { x: (event as MouseEvent).clientX ?? 0, y: (event as MouseEvent).clientY ?? 0 }
-  }, [])
-  const onConnectEnd = useCallback<OnConnectEnd>((event) => {
-    const point = event as MouseEvent
-    if (typeof point.clientX === 'number') pointer.current = { x: point.clientX, y: point.clientY }
-  }, [])
-  const onConnect = useCallback<OnConnect>((connection) => {
-    const source = document.nodes.find(node => node.id === connection.source)
-    const target = document.nodes.find(node => node.id === connection.target)
-    if (source === undefined || target === undefined) return
-    const taken = document.edges
-      .filter(edge => edge.source === connection.source && edge.target === connection.target)
-      .flatMap(edge => edge.role === undefined ? [] : [edge.role])
-    const choices = roleMenu(source.type, target.type, taken)
-    if (choices.length === 0) {
-      void apply([{ op: 'connect', from: connection.source, to: connection.target }])
-      return
-    }
-    const automatic = automaticRole(choices)
-    if (automatic !== undefined) {
-      void apply([{ op: 'connect', from: connection.source, to: connection.target, kind: 'reference', role: automatic }])
-      return
-    }
-    setMenu({ x: pointer.current.x, y: pointer.current.y, source: connection.source, target: connection.target })
-  }, [apply, document])
-  // The Host owns deletion: the gesture becomes edits and the flow keeps its items until the next document.
-  const onBeforeDelete = useCallback<OnBeforeDelete<CanvasFlowNode, CanvasFlowEdge>>(async (deleted) => {
-    const removal = deleteOperations(document, deleted.nodes.map(node => node.id), deleted.edges.map(edge => edge.id))
-    const removing = removal.filter(operation => operation.op !== 'ungroup').length
-    if (removing > 0 && !window.confirm(t('canvas.confirmDelete', { count: removing }))) return false
-    await apply(removal)
-    return false
-  }, [document, apply, t])
+  const gestures = useGestures<CanvasFlowNode, CanvasFlowEdge>({
+    document, apply, edit, nodes, setNodes, setEdges,
+    ...history === undefined ? {} : { history },
+    confirmDelete: count => t('canvas.confirmDelete', { count }), groupTitle: t('group.new'),
+  })
   return <ReactFlow
     className={css.flow} nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} fitView minZoom={0.1} maxZoom={2}
     deleteKeyCode={['Backspace', 'Delete']} proOptions={{ hideAttribution: true }}
-    onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeDragStop={onNodeDragStop}
-    onConnect={onConnect} onConnectStart={onConnectStart} onConnectEnd={onConnectEnd} onBeforeDelete={onBeforeDelete}
+    onNodesChange={gestures.onNodesChange} onEdgesChange={gestures.onEdgesChange}
+    onNodeDragStop={gestures.onNodeDragStop} onConnect={gestures.onConnect}
+    onConnectStart={gestures.onConnectStart} onConnectEnd={gestures.onConnectEnd} onBeforeDelete={gestures.onBeforeDelete}
     onNodeClick={(_event, node) => { onSelect?.(node.id) }}
     onPaneClick={() => { onSelect?.(undefined) }}>
     <Background gap={24} />
     <MiniMap className={css.minimap} ariaLabel={t('minimap')} pannable zoomable />
     <Toolbar document={document} nodes={nodes} edges={edges} edit={apply} reload={reload} t={t}
-      undo={undo} redo={redo} canUndo={history?.canUndo() ?? false} canRedo={history?.canRedo() ?? false} />
-    {menu === undefined ? undefined : <RoleMenu
-      x={menu.x} y={menu.y} choices={roleMenu(
-        document.nodes.find(node => node.id === menu.source)?.type ?? 'text',
-        document.nodes.find(node => node.id === menu.target)?.type ?? 'text',
-        document.edges.filter(edge => edge.source === menu.source && edge.target === menu.target)
+      undo={gestures.undo} redo={gestures.redo}
+      canUndo={history?.canUndo() ?? false} canRedo={history?.canRedo() ?? false} />
+    {gestures.menu === undefined ? undefined : <RoleMenu
+      x={gestures.menu.x} y={gestures.menu.y} choices={roleMenu(
+        document.nodes.find(node => node.id === gestures.menu?.source)?.type ?? 'text',
+        document.nodes.find(node => node.id === gestures.menu?.target)?.type ?? 'text',
+        document.edges.filter(edge => edge.source === gestures.menu?.source && edge.target === gestures.menu?.target)
           .flatMap(edge => edge.role === undefined ? [] : [edge.role]),
       )}
       onPick={(role) => {
-        const pending = menu
-        setMenu(undefined)
+        const pending = gestures.menu
+        gestures.setMenu(undefined)
+        if (pending === undefined) return
         void apply([{ op: 'connect', from: pending.source, to: pending.target, kind: 'reference', role }])
       }}
-      onClose={() => { setMenu(undefined) }} t={t}
+      onClose={() => { gestures.setMenu(undefined) }} t={t}
     />}
   </ReactFlow>
 }
