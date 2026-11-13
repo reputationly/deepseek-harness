@@ -12,8 +12,7 @@ import {
   type CanvasFlowEdge, type CanvasFlowNode, type CanvasNodeFace,
 } from './flow.ts'
 import { NODE_TYPES } from './nodes/index.ts'
-import { RoleMenu } from './RoleMenu.tsx'
-import { roleMenu } from './model/edges.ts'
+import { CanvasRoleMenu } from './CanvasRoleMenu.tsx'
 import { useGestures } from './useGestures.ts'
 import type { EditHistory } from './model/history.ts'
 import css from './CanvasFlow.module.css'
@@ -130,20 +129,7 @@ export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, hist
     <Toolbar document={document} nodes={nodes} edges={edges} edit={apply} reload={reload} t={t}
       undo={gestures.undo} redo={gestures.redo}
       canUndo={history?.canUndo() ?? false} canRedo={history?.canRedo() ?? false} />
-    {gestures.menu === undefined ? undefined : <RoleMenu
-      x={gestures.menu.x} y={gestures.menu.y} choices={roleMenu(
-        document.nodes.find(node => node.id === gestures.menu?.source)?.type ?? 'text',
-        document.nodes.find(node => node.id === gestures.menu?.target)?.type ?? 'text',
-        document.edges.filter(edge => edge.source === gestures.menu?.source && edge.target === gestures.menu?.target)
-          .flatMap(edge => edge.role === undefined ? [] : [edge.role]),
-      )}
-      onPick={(role) => {
-        const pending = gestures.menu
-        gestures.setMenu(undefined)
-        if (pending === undefined) return
-        void apply([{ op: 'connect', from: pending.source, to: pending.target, kind: 'reference', role }])
-      }}
-      onClose={() => { gestures.setMenu(undefined) }} t={t}
-    />}
+    <CanvasRoleMenu document={document} menu={gestures.menu} t={t}
+      onPick={(_pending, role) => { gestures.pickRole(role) }} onClose={gestures.dismissMenu} />
   </ReactFlow>
 }

@@ -4,7 +4,7 @@ import type {
   Connection, Edge, EdgeChange, Node, NodeChange,
   OnBeforeDelete, OnConnect, OnConnectEnd, OnConnectStart, OnNodeDrag,
 } from '@xyflow/react'
-import type { CanvasDocument, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasDocument, CanvasEdgeRole, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
 import { connectionIntent, deleteIntent, keyboardIntent } from './model/gestures.ts'
 import { moveOperations } from './flow.ts'
 import type { EditHistory } from './model/history.ts'
@@ -45,6 +45,10 @@ export interface Gestures<N extends Node, E extends Edge> {
   readonly onConnect: OnConnect
   readonly onNodeDragStop: OnNodeDrag<N>
   readonly onBeforeDelete: OnBeforeDelete<N, E>
+  /** Connect the pending menu's pair with the picked role. */
+  readonly pickRole: (role: CanvasEdgeRole) => void
+  /** Close the pending menu without connecting. */
+  readonly dismissMenu: () => void
 }
 
 /**
@@ -101,6 +105,13 @@ export function useGestures<N extends Node, E extends Edge>(props: GestureProps<
   const onNodeDragStop = useCallback<OnNodeDrag<N>>((_event, _node, dragged) => {
     void apply(moveOperations(document, dragged))
   }, [document, apply])
+  const pickRole = useCallback((role: CanvasEdgeRole) => {
+    const pending = menu
+    setMenu(undefined)
+    if (pending === undefined) return
+    void apply([{ op: 'connect', from: pending.source, to: pending.target, kind: 'reference', role }])
+  }, [apply, menu])
+  const dismissMenu = useCallback(() => { setMenu(undefined) }, [])
   const onBeforeDelete = useCallback<OnBeforeDelete<N, E>>(async (deleted) => {
     const intent = deleteIntent(document, deleted.nodes.map(node => node.id), deleted.edges.map(edge => edge.id))
     if (intent === undefined) return false
@@ -133,6 +144,6 @@ export function useGestures<N extends Node, E extends Edge>(props: GestureProps<
   }, [apply, document, groupTitle, nodes, redo, undo])
   return {
     menu, setMenu, undo, redo, onNodesChange, onEdgesChange,
-    onConnectStart, onConnectEnd, onConnect, onNodeDragStop, onBeforeDelete,
+    onConnectStart, onConnectEnd, onConnect, onNodeDragStop, onBeforeDelete, pickRole, dismissMenu,
   }
 }

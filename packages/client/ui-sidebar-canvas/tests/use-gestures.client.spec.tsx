@@ -125,3 +125,14 @@ it('asks before deleting, respects a refusal, and forwards node and edge changes
   expect(updates).toHaveLength(2)
   expect(typeof updates[0]).toBe('function')
 })
+
+it('connects the pending pair with the picked role, and dismisses without editing', () => {
+  const h = setup()
+  act(() => { h.hook.result.current.onConnect({ source: 'n1', target: 'n2' } as never) })
+  act(() => { h.hook.result.current.pickRole('first_frame') })
+  expect(h.apply).toHaveBeenCalledWith([{
+    op: 'connect', from: 'n1', to: 'n2', kind: 'reference', role: 'first_frame',
+  }])
+  act(() => { h.hook.result.current.dismissMenu() })
+  expect(h.hook.result.current.menu).toBeUndefined()
+})

@@ -69,3 +69,37 @@ it('toggles playback only when a media element is selected', async () => {
   fireEvent.keyDown(window, { code: 'Space' })
   expect(h.edit).not.toHaveBeenCalled()
 })
+
+it('drives zoom, fit, refresh, group, and remove from the toolbar', async () => {
+  const h = mount()
+  await waitFor(() => { expect(screen.getByText('Brief')).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'zoomOut' }))
+  fireEvent.click(screen.getByRole('button', { name: 'zoomIn' }))
+  fireEvent.click(screen.getByRole('button', { name: 'fit' }))
+  fireEvent.click(screen.getByRole('button', { name: 'refresh' }))
+  expect(h.reload).toHaveBeenCalled()
+  fireEvent.click(screen.getByText('Brief'))
+  fireEvent.click(screen.getByText('a.png'), { ctrlKey: true })
+  const group = screen.getByRole('button', { name: 'group' }) as HTMLButtonElement
+  if (!group.disabled) fireEvent.click(group)
+  const remove = screen.getByRole('button', { name: 'remove' }) as HTMLButtonElement
+  if (!remove.disabled) fireEvent.click(remove)
+  expect(h.edit.mock.calls.length).toBeGreaterThan(0)
+})
+
+it('applies a confirmation-backed deletion and redraws when the document changes', async () => {
+  const h = mount()
+  await waitFor(() => { expect(screen.getByText('Brief')).toBeTruthy() })
+  fireEvent.click(screen.getByText('Brief'))
+  window.confirm = vi.fn(() => true)
+  fireEvent.keyDown(screen.getByText('Brief'), { key: 'Delete' })
+  await waitFor(() => { expect(h.edit).toHaveBeenCalled() })
+  const next = { ...doc, revision: 2, nodes: [doc.nodes[0]!, {
+    id: 'n3' as never, type: 'text' as const, title: 'Added', x: 0, y: 300, width: 100, height: 100,
+    activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user' as const, text: 'x' }],
+  }] }
+  const reload = vi.fn(async () => {})
+  render(<CanvasFlow document={next} readFile={async () => ({ ok: false, message: 'no' })} t={t}
+    edit={h.edit} reload={reload} onSelect={() => {}} />)
+  await waitFor(() => { expect(screen.getByText('Added')).toBeTruthy() })
+})
