@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { CanvasDocument, CanvasNode, Shot } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasDocument, CanvasNode, CanvasNodeId, Shot } from '@deepseek-ai/dsh-canvas/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import { EditHistory, invertOperations } from '../src/client/model/history.ts'
 import { automaticRole, edgeLabel, edgeStyle, roleMenu } from '../src/client/model/edges.ts'
 import { inspectorPlacement } from '../src/client/model/inspector.ts'
@@ -53,9 +54,7 @@ describe('invertOperations', () => {
 
   it('returns undefined for edits it cannot reverse', () => {
     expect(invertOperations(document([]), [{ op: 'remove', node: 'n1' }])).toBeUndefined()
-    expect(invertOperations(document([]), [{ op: 'add', type: 'text', text: 'x' }])).toEqual([
-      { op: 'remove', node: 'n1' },
-    ])
+    expect(invertOperations(document([]), [{ op: 'add', type: 'text', text: 'x' }])).toBeUndefined()
   })
 
   it('undoes an added node and a new group with Host operation semantics', () => {
@@ -63,15 +62,17 @@ describe('invertOperations', () => {
     const before = document([node('n1', 'text'), node('n2', 'image')])
 
     const add = { op: 'add', type: 'text', text: 'new' } as const
-    const added = applyCanvasOperations(before, [add], { limits, now: () => 'now' }).document
-    const addInverse = invertOperations(before, [add])
+    const addedResult = applyCanvasOperations(before, [add], { limits, now: () => 'now' })
+    const added = addedResult.document
+    const addInverse = invertOperations(before, [add], addedResult.result)
     expect(addInverse).toEqual([{ op: 'remove', node: 'n3' }])
     const addRestored = applyCanvasOperations(added, addInverse ?? [], { limits, now: () => 'now' }).document
     expect(addRestored.nodes.map(current => current.id)).toEqual(['n1', 'n2'])
 
     const group = { op: 'group', title: 'Group', nodes: ['n1', 'n2'] } as const
-    const grouped = applyCanvasOperations(before, [group], { limits, now: () => 'now' }).document
-    const groupInverse = invertOperations(before, [group])
+    const groupResult = applyCanvasOperations(before, [group], { limits, now: () => 'now' })
+    const grouped = groupResult.document
+    const groupInverse = invertOperations(before, [group], groupResult.result)
     expect(groupInverse).toEqual([{ op: 'ungroup', node: 'g3' }])
     const groupRestored = applyCanvasOperations(grouped, groupInverse ?? [], { limits, now: () => 'now' }).document
     expect(groupRestored.nodes.filter(current => current.type === 'group')).toEqual([])
@@ -80,6 +81,54 @@ describe('invertOperations', () => {
     ])
   })
 
+  it('rebuilds create inverses with Host ids after undoing and redoing nodes and groups', () => {
+    const limits = resolveConfig({})
+    const before = document([node('n1', 'text'), node('n2', 'image')])
+    const history = new EditHistory()
+    const add = { op: 'add', type: 'text', text: 'new' } as const
+    const added = applyCanvasOperations(before, [add], { limits, now: () => 'now' })
+    expect(history.record(before, [add], 'add', added.result)).toBe(true)
+    const undoAdd = history.undo()
+    expect(undoAdd).toEqual([{ op: 'remove', node: 'n3' }])
+    if (undoAdd === undefined) throw new Error('expected the add to be undoable')
+    const withoutAdded = applyCanvasOperations(added.document, undoAdd, { limits, now: () => 'now' })
+    const redoAdd = history.redo()
+    expect(redoAdd).toEqual([add])
+    if (redoAdd === undefined) throw new Error('expected the add to be redoable')
+    const addedAgain = applyCanvasOperations(withoutAdded.document, redoAdd, { limits, now: () => 'now' })
+    expect(addedAgain.result.created).toEqual(['n4'])
+    expect(history.refreshAfterRedo(withoutAdded.document, redoAdd, addedAgain.result)).toBe(true)
+    const undoAgain = history.undo()
+    expect(undoAgain).toEqual([{ op: 'remove', node: 'n4' }])
+    if (undoAgain === undefined) throw new Error('expected the redone add to be undoable')
+    const addRemovedAgain = applyCanvasOperations(addedAgain.document, undoAgain, { limits, now: () => 'now' })
+    expect(addRemovedAgain.result.skipped).toEqual([])
+    expect(addRemovedAgain.document.nodes.map(current => current.id)).toEqual(['n1', 'n2'])
+
+    history.clear()
+    const group = { op: 'group', title: 'Group', nodes: ['n1', 'n2'] } as const
+    const grouped = applyCanvasOperations(before, [group], { limits, now: () => 'now' })
+    expect(history.record(before, [group], 'group', grouped.result)).toBe(true)
+    const undoGroup = history.undo()
+    expect(undoGroup).toEqual([{ op: 'ungroup', node: 'g3' }])
+    if (undoGroup === undefined) throw new Error('expected the group to be undoable')
+    const ungrouped = applyCanvasOperations(grouped.document, undoGroup, { limits, now: () => 'now' })
+    const redoGroup = history.redo()
+    expect(redoGroup).toEqual([group])
+    if (redoGroup === undefined) throw new Error('expected the group to be redoable')
+    const groupedAgain = applyCanvasOperations(ungrouped.document, redoGroup, { limits, now: () => 'now' })
+    expect(groupedAgain.result.created).toEqual(['g4'])
+    expect(history.refreshAfterRedo(ungrouped.document, redoGroup, groupedAgain.result)).toBe(true)
+    const undoGroupAgain = history.undo()
+    expect(undoGroupAgain).toEqual([{ op: 'ungroup', node: 'g4' }])
+    if (undoGroupAgain === undefined) throw new Error('expected the redone group to be undoable')
+    const groupRemovedAgain = applyCanvasOperations(groupedAgain.document, undoGroupAgain, { limits, now: () => 'now' })
+    expect(groupRemovedAgain.result.skipped).toEqual([])
+    expect(groupRemovedAgain.document.nodes.filter(current => current.type === 'group')).toEqual([])
+    expect(groupRemovedAgain.document.nodes.map(current => [current.id, current.group])).toEqual([
+      ['n1', undefined], ['n2', undefined],
+    ])
+  })
   it('restores shot lists with their original ids and positions', () => {
     const board = node('n1', 'storyboard', {
       versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1'), shot('s2')] }],
@@ -435,7 +484,9 @@ describe('invertOperations coverage of every operation', () => {
     expect(invertOperations(doc, [{ op: 'reorder_refs', node: 'b1', sources: [] }])).toEqual([
       { op: 'reorder_refs', node: 'b1', sources: ['i1'] },
     ])
-    expect(invertOperations(doc, [{ op: 'group', title: '新组', nodes: ['t1', 'i1'] }])).toEqual([
+    expect(invertOperations(doc, [{ op: 'group', title: '新组', nodes: ['t1', 'i1'] }], {
+      revision: doc.revision + 1, refs: {}, created: [brandString<CanvasNodeId>('g6')], skipped: [],
+    })).toEqual([
       { op: 'ungroup', node: 'g6' },
     ])
   })
@@ -464,6 +515,21 @@ describe('invertOperations coverage of every operation', () => {
     expect(invertOperations(noVersion, [{ op: 'set_version', node: 'n', version: 'v' }])).toBeUndefined()
     expect(invertOperations(noVersion, [{ op: 'set_text', node: 'n', text: 'x' }])).toBeUndefined()
     expect(invertOperations(noVersion, [{ op: 'set_optional_group' } as never])).toBeUndefined()
+    expect(invertOperations(doc, [{ op: 'group', title: 'new', nodes: ['t1', 'i1'] }])).toBeUndefined()
+  })
+
+  it('handles skipped edits and unsuccessful redo inverse refreshes', () => {
+    const add = { op: 'add', type: 'text', text: 'new' } as const
+    const accepted = { revision: doc.revision + 1, refs: {}, created: [], skipped: [] }
+    const skipped = { ...accepted, skipped: [{ index: 0, op: 'add' as const, reason: 'ignored' }] }
+    expect(invertOperations(doc, [add], skipped)).toEqual([])
+    expect(invertOperations(doc, [add], accepted)).toBeUndefined()
+
+    const history = new EditHistory()
+    expect(history.refreshAfterRedo(doc, [], accepted)).toBe(false)
+    history.record(doc, [{ op: 'move', node: 't1', x: 11, y: 20 }], 'move')
+    expect(history.refreshAfterRedo(doc, [{ op: 'move', node: 't1', x: 12, y: 20 }], skipped)).toBe(false)
+    expect(history.refreshAfterRedo(doc, [{ op: 'remove', node: 't1' }], accepted)).toBe(false)
   })
 
   it('treats host-owned operations as not reversible and keeps the empty undo entry', () => {

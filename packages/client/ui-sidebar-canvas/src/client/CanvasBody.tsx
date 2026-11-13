@@ -11,7 +11,7 @@ import { useGenerationControls } from './GenerationControls.tsx'
 import { StoryboardTable } from './StoryboardTable.tsx'
 import { BibleAssetsPanel } from './BibleAssetsPanel.tsx'
 import { inspectorPlacement } from './model/inspector.ts'
-import { EditHistory } from './model/history.ts'
+import { EditHistory, type HistoryDirection } from './model/history.ts'
 import { movedForward, newNodeIds } from './model/changes.ts'
 import clsx from 'clsx'
 import type { NS } from './locales.ts'
@@ -35,6 +35,7 @@ export function CanvasBody({
   const [selectedId, setSelectedId] = useState<string>()
   const [tableId, setTableId] = useState<string>()
   const history = useRef(new EditHistory()).current
+  const [historyEpoch, setHistoryEpoch] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
   const seen = useRef<{ revision: number; document: CanvasDocument }>()
   const [added, setAdded] = useState<readonly string[]>([])
@@ -47,11 +48,26 @@ export function CanvasBody({
     t,
   })
   const generateNode = useCallback((nodeId: string): void => { generation.generate([nodeId]) }, [generation.generate])
-  const viewForEdits = state.view
-  const editWithHistory = viewForEdits === undefined ? edit : async (operations: Parameters<typeof edit>[0]): Promise<void> => {
-    history.record(viewForEdits.document, operations, t('undo.edit'))
-    await edit(operations)
-  }
+  const editWithHistory = useCallback(async (operations: Parameters<typeof edit>[0]): Promise<void> => {
+    await edit(operations, {
+      onApplied: (document, applied, result) => { history.record(document, applied, t('undo.edit'), result) },
+    })
+  }, [edit, history, t])
+  const editHistory = useCallback(async (
+    operations: Parameters<typeof edit>[0],
+    direction: HistoryDirection,
+  ): Promise<void> => {
+    const resetInspectorDraft = { value: false }
+    await edit(operations, {
+      onApplied: (document, applied, result) => {
+        if (direction === 'redo') history.refreshAfterRedo(document, applied, result)
+        const skipped = new Set(result.skipped.map(entry => entry.index))
+        resetInspectorDraft.value = operations.some((operation, index) =>
+          operation.op === 'set_gen' && operation.node === selectedId && !skipped.has(index))
+      },
+    })
+    if (resetInspectorDraft.value) setHistoryEpoch(epoch => epoch + 1)
+  }, [edit, history, selectedId])
   useEffect(() => {
     const element = root.current
     if (element === null) return
@@ -124,12 +140,13 @@ export function CanvasBody({
     </div>}
     {document.nodes.length === 0
       ? <div className={css.center}><p className={css.message}>{t('empty')}</p></div>
-      : <><CanvasFlow document={document} segments={state.view.segments} readFile={readFile} t={t} edit={edit}
+      : <><CanvasFlow document={document} segments={state.view.segments} readFile={readFile} t={t} edit={editWithHistory}
+        historyEdit={editHistory}
         {...planNodes === undefined || generateNodes === undefined ? {} : { generate: generateNode }} reload={load}
         onSelect={setSelectedId} history={history} />
       {selected === undefined ? undefined : <Inspector
         document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}
-        edit={editWithHistory} close={() => { setSelectedId(undefined) }} openTable={setTableId}
+        edit={editWithHistory} historyEpoch={historyEpoch} close={() => { setSelectedId(undefined) }} openTable={setTableId}
         {...planNodes === undefined || generateNodes === undefined ? {} : { generate: generateNode }} t={t}
       />}
       {table === undefined ? undefined : <StoryboardTable node={table} edit={editWithHistory} close={() => { setTableId(undefined) }} t={t}

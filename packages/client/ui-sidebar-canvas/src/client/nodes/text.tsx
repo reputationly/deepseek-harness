@@ -6,6 +6,8 @@ import type { CanvasFlowNode } from '../flow.ts'
 import { NodeCard, shownVersion } from './shared.tsx'
 import css from '../CanvasFlow.module.css'
 
+const pluralKey = (count: number): 'one' | 'other' => count === 1 ? 'one' : 'other'
+
 /** A plain note. */
 export function TextNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
   return <NodeCard data={data} selected={selected} className={css.text}>
@@ -46,8 +48,10 @@ export function StoryboardNode({ data, selected }: NodeProps<CanvasFlowNode>): R
       </div>)}
     </div>
     <p className={css.summary}>{t('storyboard.summary', {
-      shots: view.summary.shots, seconds: view.summary.seconds,
-      segments: view.summary.segments.length, calls: view.summary.videoCalls,
+      shots: t(`storyboard.shots.${pluralKey(view.summary.shots)}`, { count: view.summary.shots }),
+      seconds: t(`storyboard.seconds.${pluralKey(view.summary.seconds)}`, { count: view.summary.seconds }),
+      segments: t(`storyboard.segments.${pluralKey(view.summary.segments.length)}`, { count: view.summary.segments.length }),
+      calls: t(`storyboard.calls.${pluralKey(view.summary.videoCalls)}`, { count: view.summary.videoCalls }),
     })}</p>
   </NodeCard>
 }

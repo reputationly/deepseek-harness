@@ -100,13 +100,19 @@ it('uses Ctrl+Z to undo a table cell edit stored in the shared history', async (
     }],
   }
   const edit = vi.fn(async () => {})
+  const historyEdit = vi.fn(async () => {})
   render(<CanvasFlow document={board} readFile={async () => ({ ok: false, message: 'unused' })} t={t}
-    edit={edit} reload={async () => {}} history={history} />)
+    edit={edit} historyEdit={historyEdit} reload={async () => {}} history={history} />)
   history.record(board, [{ op: 'update_shot', node: 'b1', shot: brandString<ShotId>('s1'), patch: { shotSize: 'wide' } }], 'table edit')
   fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-  expect(edit).toHaveBeenCalledWith([{
+  expect(historyEdit).toHaveBeenCalledWith([{
     op: 'set_shots', node: 'b1', shots: board.nodes[0]?.versions?.[0]?.shots,
-  }])
+  }], 'undo')
+  fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true })
+  expect(historyEdit).toHaveBeenLastCalledWith([{
+    op: 'update_shot', node: 'b1', shot: 's1', patch: { shotSize: 'wide' },
+  }], 'redo')
+  expect(edit).not.toHaveBeenCalled()
 })
 
 it('toggles playback only when a media element is selected', async () => {

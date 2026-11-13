@@ -10,12 +10,13 @@ import { AudioNode, ImageNode, VideoNode } from '../src/client/nodes/media.tsx'
 import { ScriptNode, StoryboardNode, TextNode, TimelineNode } from '../src/client/nodes/text.tsx'
 import { GroupNode } from '../src/client/nodes/group.tsx'
 import { useGenerationControls } from '../src/client/GenerationControls.tsx'
+import { en, zh } from '../src/client/locales.ts'
 
 afterEach(() => { cleanup() })
 
-const shot = (id: string): Shot => ({
+const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
   id: id as never, title: id, shotSize: 'medium', visual: `画面 ${id}`, motion: '动作', camera: '固定', durationSec: 3,
-  characters: [], props: [], dialogue: [], sfx: '', negative: '',
+  characters: [], props: [], dialogue: [], sfx: '', negative: '', ...overrides,
 })
 
 const node = (type: CanvasNode['type'], extra: Partial<CanvasNode> = {}): CanvasNode => ({
@@ -23,6 +24,16 @@ const node = (type: CanvasNode['type'], extra: Partial<CanvasNode> = {}): Canvas
 })
 
 const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${JSON.stringify(params)}`
+const localeT = (messages: Readonly<Record<string, string>>) => (key: string, params?: Record<string, unknown>): string => {
+  const template = messages[key] ?? key
+  return template.replace(/\{(\w+)\}/gu, (placeholder, name: string) => {
+    const value = params?.[name]
+    return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+      ? String(value) : placeholder
+  })
+}
+const englishT = localeT(en)
+const chineseT = localeT(zh)
 
 /** Renders one card component with the props a node would give it. */
 function CardHost({ Card, props }: { readonly Card: (props: never) => ReactNode; readonly props: Record<string, unknown> }): ReactNode {
@@ -90,10 +101,39 @@ it('draws text, script, storyboard, and timeline content', () => {
     node: node('storyboard', { versions: [{ id: 'v1' as never, shots: [shot('s1')], createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never }),
     segments: [{ shots: ['s1'] }, { shots: ['s1'] }],
   })
-  expect(screen.getByText(/storyboard.summary/).textContent).toContain('"segments":2')
+  expect(screen.getByText(/storyboard.summary/).textContent).toContain('storyboard.segments.other')
   cleanup()
   mount(TimelineNode, { node: node('timeline', { timeline: { file: 't.json', durationMs: 12_000, exports: [] } }) })
   expect(screen.getByText(/timeline.clips/)).toBeTruthy()
+})
+
+it('uses singular and plural English storyboard counts', () => {
+  const renderSummary = (count: 1 | 2): string => {
+    const shots = count === 1 ? [shot('s1', { durationSec: 1 })] : [
+      shot('s1', { durationSec: 1 }), shot('s2', { durationSec: 1 }),
+    ]
+    const segments = shots.map(entry => ({ shots: [entry.id] }))
+    mount(StoryboardNode, {
+      node: node('storyboard', { versions: [{ id: 'v1' as never, shots, createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never }),
+      segments,
+      t: englishT,
+    })
+    return screen.getByText(/1 shot|2 shots/u).textContent ?? ''
+  }
+
+  expect(renderSummary(1)).toBe('1 shot · 1 second · 1 segment · 1 video call')
+  cleanup()
+  expect(renderSummary(2)).toBe('2 shots · 2 seconds · 2 segments · 2 video calls')
+  cleanup()
+  mount(StoryboardNode, {
+    node: node('storyboard', {
+      versions: [{ id: 'v1' as never, shots: [shot('s1', { durationSec: 1 })], createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+    }),
+    segments: [{ shots: ['s1'] }],
+    t: chineseT,
+  })
+  expect(screen.getByText('共 1 镜 · 1 秒 · 1 段 · 1 次视频调用')).toBeTruthy()
 })
 
 it('switches version from the version bar', () => {

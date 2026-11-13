@@ -10,6 +10,14 @@ afterEach(() => { cleanup() })
 
 const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${JSON.stringify(params)}`
 
+const fieldValue = (label: string): string => {
+  const field = screen.getByLabelText(label)
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+    return field.value
+  }
+  throw new Error(`expected ${label} to label a form field`)
+}
+
 const video: CanvasNode = {
   id: 'v1' as never, type: 'video', title: '场1 段1', x: 0, y: 0, width: 320, height: 220,
   activeVersion: 'v2' as never,
@@ -103,6 +111,51 @@ it('applies model, prompt, and numeric parameters as one generation update', asy
   expect(h.edit).toHaveBeenCalledWith([{
     op: 'set_gen', node: 'v1', gen: { model: 'video-model', prompt: '新提示', params: { duration: 10 } },
   }])
+})
+
+it('resets an applied parameter draft when local history restores the persisted value', async () => {
+  const original: CanvasNode = {
+    ...video, gen: { kind: 'video', prompt: '雨夜', model: 'video-model', params: { duration: 5 } },
+  }
+  const restored: CanvasNode = {
+    ...original, gen: { kind: 'video', prompt: '雨夜', model: 'video-model', params: { duration: 5 } },
+  }
+  const edit = vi.fn(async () => {})
+  const testCapabilities = vi.fn(async () => [{
+    id: 'cap', model: 'video-model', operation: 'generate_video',
+    params: [{ id: 'duration', options: ['5', '10'], default: '5' }],
+  }])
+  const props: InspectorProps = {
+    document, node: original, placement: 'sidebar', capabilities: testCapabilities, edit, close: vi.fn(), t,
+  }
+  const rendered = render(<Inspector {...props} historyEpoch={0} />)
+  await waitFor(() => { expect(screen.getByLabelText('duration')).toBeTruthy() })
+  fireEvent.change(screen.getByLabelText('duration'), { target: { value: '10' } })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  expect(fieldValue('duration')).toBe('10')
+  rendered.rerender(<Inspector {...props} node={restored} historyEpoch={1} />)
+  expect(fieldValue('duration')).toBe('5')
+})
+
+it('keeps an unsaved inspector draft when an external document refreshes', async () => {
+  const original: CanvasNode = {
+    ...video, gen: { kind: 'video', prompt: '雨夜', model: 'video-model', params: { duration: 5 } },
+  }
+  const external: CanvasNode = {
+    ...original, gen: { kind: 'video', prompt: '外部提示', model: 'video-model', params: { duration: 5 } },
+  }
+  const testCapabilities = vi.fn(async () => [{
+    id: 'cap', model: 'video-model', operation: 'generate_video',
+    params: [{ id: 'duration', options: ['5', '10'], default: '5' }],
+  }])
+  const props: InspectorProps = {
+    document, node: original, placement: 'sidebar', capabilities: testCapabilities, edit: vi.fn(async () => {}), close: vi.fn(), t,
+  }
+  const rendered = render(<Inspector {...props} historyEpoch={0} />)
+  await waitFor(() => { expect(screen.getByLabelText('duration')).toBeTruthy() })
+  fireEvent.change(screen.getByLabelText('duration'), { target: { value: '10' } })
+  rendered.rerender(<Inspector {...props} node={external} historyEpoch={0} />)
+  expect(fieldValue('duration')).toBe('10')
 })
 
 it('reorders references by drag and removes one', async () => {

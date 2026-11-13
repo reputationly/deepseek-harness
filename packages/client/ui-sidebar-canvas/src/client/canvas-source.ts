@@ -1,7 +1,13 @@
 /** One Session's canvas as the tab reads and edits it through the `canvas` Remote namespace. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
-import type { CanvasEditResult, CanvasOperation, CanvasView } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasDocument, CanvasEditResult, CanvasOperation, CanvasView } from '@deepseek-ai/dsh-canvas/client'
+
+/** Callbacks for edits that the Host accepted. */
+export interface CanvasEditOptions {
+  /** Runs in the serialized edit queue with the document used for the accepted write. */
+  readonly onApplied?: (document: CanvasDocument, operations: readonly CanvasOperation[], result: CanvasEditResult) => void
+}
 
 /** What the tab draws. */
 export interface CanvasState {
@@ -57,16 +63,21 @@ export class CanvasSource {
   /**
    * Apply edits, then read the document the Host settled on.
    * @param operations - edits applied in one write; an empty list does nothing.
+   * @param options - callbacks for edits accepted by the Host.
    */
-  edit = async (operations: readonly CanvasOperation[]): Promise<void> => {
+  edit = async (operations: readonly CanvasOperation[], options?: CanvasEditOptions): Promise<void> => {
     if (operations.length === 0) return
-    const current = this.editQueue.then(async () => { await this.apply(operations) })
+    const current = this.editQueue.then(async () => { await this.apply(operations, options?.onApplied) })
     this.editQueue = current.catch(() => undefined)
     await current
   }
 
-  private apply = async (operations: readonly CanvasOperation[]): Promise<void> => {
-    const baseRevision = this.state.getSnapshot().view?.document.revision ?? 0
+  private apply = async (
+    operations: readonly CanvasOperation[],
+    onApplied?: CanvasEditOptions['onApplied'],
+  ): Promise<void> => {
+    const document = this.state.getSnapshot().view?.document
+    const baseRevision = document?.revision ?? 0
     let result: RemoteResult<CanvasEditResult>
     try {
       result = await this.remote.apply([...operations], baseRevision)
@@ -75,6 +86,7 @@ export class CanvasSource {
       await this.load()
       return
     }
+    if (result.ok && document !== undefined) onApplied?.(document, operations, result.value)
     const notice = result.ok ? result.value.skipped[0]?.reason : result.error.message
     const conflict = !result.ok && result.error.code === 'canvas/conflict'
     this.state.set({ ...this.state.getSnapshot(), notice, conflict })

@@ -1,7 +1,8 @@
 /** Undo and redo for the edits this tab applies, expressed as the operations that restore the previous state. */
-import type { CanvasDocument, CanvasNode, CanvasOperation, Shot } from '@deepseek-ai/dsh-canvas/client'
-import { brandString } from '@deepseek-ai/dsh-brand'
-import type { CanvasNodeId } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasDocument, CanvasEditResult, CanvasNode, CanvasNodeId, CanvasOperation, Shot } from '@deepseek-ai/dsh-canvas/client'
+
+/** Direction of a local history action. */
+export type HistoryDirection = 'undo' | 'redo'
 
 /** One undoable edit: what it did and what reverses it. */
 export interface HistoryEntry {
@@ -25,7 +26,11 @@ function shotsOf(node: CanvasNode | undefined): readonly Shot[] {
 }
 
 /** Inverse operations for one edit, or undefined when the edit cannot be expressed backwards. */
-function inverseOf(document: CanvasDocument, operation: CanvasOperation): CanvasOperation[] | undefined {
+function inverseOf(
+  document: CanvasDocument,
+  operation: CanvasOperation,
+  createdId?: CanvasNodeId,
+): CanvasOperation[] | undefined {
   switch (operation.op) {
     case 'move': {
       const node = nodeOf(document, operation.node)
@@ -93,7 +98,7 @@ function inverseOf(document: CanvasDocument, operation: CanvasOperation): Canvas
       }]
     }
     case 'group':
-      return [{ op: 'ungroup', node: brandString<CanvasNodeId>(`g${String(document.nextId)}`) }]
+      return createdId === undefined ? undefined : [{ op: 'ungroup', node: createdId }]
     case 'ungroup': {
       const group = nodeOf(document, operation.node)
       if (group === undefined || group.type !== 'group') return undefined
@@ -111,7 +116,7 @@ function inverseOf(document: CanvasDocument, operation: CanvasOperation): Canvas
       return [{ op: 'reorder_refs', node: node.id, sources }]
     }
     case 'add':
-      return [{ op: 'remove', node: brandString<CanvasNodeId>(`n${String(document.nextId)}`) }]
+      return createdId === undefined ? undefined : [{ op: 'remove', node: createdId }]
     case 'update':
     case 'remove':
     case 'append_version':
@@ -129,27 +134,66 @@ function inverseOf(document: CanvasDocument, operation: CanvasOperation): Canvas
  * @param operations - edits that were applied.
  * @returns the inverse list, in reverse order; undefined when any edit cannot be reversed.
  */
-export function invertOperations(document: CanvasDocument, operations: readonly CanvasOperation[]): CanvasOperation[] | undefined {
+function createdIdsByOperation(
+  operations: readonly CanvasOperation[],
+  result: CanvasEditResult,
+): ReadonlyMap<number, CanvasNodeId> | undefined {
+  const skipped = new Set(result.skipped.map(entry => entry.index))
+  const createdIds = new Map<number, CanvasNodeId>()
+  let nextCreated = 0
+  for (const [index, operation] of operations.entries()) {
+    if (operation.op !== 'add' && operation.op !== 'group') continue
+    if (skipped.has(index)) continue
+    const id = result.created[nextCreated]
+    nextCreated += 1
+    if (id === undefined) return undefined
+    createdIds.set(index, id)
+  }
+  return createdIds
+}
+
+function operationsApplied(
+  operations: readonly CanvasOperation[],
+  result: CanvasEditResult | undefined,
+): CanvasOperation[] {
+  const skipped = new Set(result?.skipped.map(entry => entry.index) ?? [])
+  return operations.filter((_operation, index) => !skipped.has(index))
+}
+
+export function invertOperations(
+  document: CanvasDocument,
+  operations: readonly CanvasOperation[],
+  result?: CanvasEditResult,
+): CanvasOperation[] | undefined {
+  const createdIds = result === undefined ? new Map<number, CanvasNodeId>() : createdIdsByOperation(operations, result)
+  if (createdIds === undefined) return undefined
   const inverse: CanvasOperation[] = []
   let skipNext = false
-  const reversed = [...operations].reverse()
-  for (const [index, operation] of reversed.entries()) {
+  const skipped = new Set(result?.skipped.map(entry => entry.index) ?? [])
+  const reversed = operations
+    .map((operation, index) => ({ operation, index }))
+    .filter(entry => !skipped.has(entry.index))
+    .reverse()
+  for (const [index, entry] of reversed.entries()) {
+    const { operation, index: originalIndex } = entry
     if (skipNext) {
       skipNext = false
       continue
     }
     const previous = index + 1 < reversed.length ? reversed[index + 1] : undefined
-    if (operation.op === 'move_shot' && previous?.op === 'move_shot'
-      && operation.shot === previous.after && operation.after === previous.shot) {
-      const shots = shotsOf(nodeOf(document, previous.node))
-      const shotIndex = shots.findIndex(shot => shot.id === previous.shot)
+    const previousOperation = previous?.operation
+    if (operation.op === 'move_shot' && previous !== undefined && previousOperation?.op === 'move_shot'
+      && originalIndex === previous.index + 1
+      && operation.shot === previousOperation.after && operation.after === previousOperation.shot) {
+      const shots = shotsOf(nodeOf(document, previousOperation.node))
+      const shotIndex = shots.findIndex(shot => shot.id === previousOperation.shot)
       const predecessor = shotIndex > 0 ? shots[shotIndex - 1] : undefined
-      if (shots[0]?.id !== previous.after || predecessor === undefined) return undefined
-      inverse.push({ op: 'move_shot', node: previous.node, shot: previous.shot, after: predecessor.id })
+      if (shots[0]?.id !== previousOperation.after || predecessor === undefined) return undefined
+      inverse.push({ op: 'move_shot', node: previousOperation.node, shot: previousOperation.shot, after: predecessor.id })
       skipNext = true
       continue
     }
-    const opposite = inverseOf(document, operation)
+    const opposite = inverseOf(document, operation, createdIds.get(originalIndex))
     if (opposite === undefined) return undefined
     inverse.push(...opposite)
   }
@@ -164,20 +208,40 @@ export class EditHistory {
   /**
    * Record one applied edit.
    * @param document - document before the edit.
-   * @param operations - operations the edit applied.
+   * @param operations - operations submitted to the Host.
    * @param label - label the toolbar shows.
+   * @param result - result returned by the Host.
    * @returns whether the edit can be undone.
    */
-  record(document: CanvasDocument, operations: readonly CanvasOperation[], label: string): boolean {
-    if (operations.length === 0) return false
-    const inverse = invertOperations(document, operations)
+  record(
+    document: CanvasDocument,
+    operations: readonly CanvasOperation[],
+    label: string,
+    result?: CanvasEditResult,
+  ): boolean {
+    const applied = operationsApplied(operations, result)
+    if (applied.length === 0) return false
+    const inverse = invertOperations(document, operations, result)
     if (inverse === undefined) {
       this.undoStack.length = 0
       this.redoStack.length = 0
       return false
     }
-    this.undoStack.push({ label, operations, inverse })
+    this.undoStack.push({ label, operations: applied, inverse })
     this.redoStack = []
+    return true
+  }
+
+  /** Refreshes the inverse after a redo creates nodes with new Host-assigned ids. */
+  refreshAfterRedo(document: CanvasDocument, operations: readonly CanvasOperation[], result: CanvasEditResult): boolean {
+    const index = this.undoStack.length - 1
+    const entry = this.undoStack[index]
+    if (entry === undefined) return false
+    const applied = operationsApplied(operations, result)
+    if (applied.length === 0) return false
+    const inverse = invertOperations(document, operations, result)
+    if (inverse === undefined) return false
+    this.undoStack[index] = { ...entry, operations: applied, inverse }
     return true
   }
 

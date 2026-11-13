@@ -21,6 +21,8 @@ export interface InspectorProps {
   readonly placement: InspectorPlacement
   readonly capabilities: (operation: string) => Promise<readonly MediaCapabilityView[]>
   readonly edit: (operations: readonly CanvasOperation[]) => Promise<void>
+  /** Local undo/redo generation state; external document refreshes do not change it. */
+  readonly historyEpoch?: number
   readonly close: () => void
   readonly openTable?: (nodeId: string) => void
   /** Plans and starts generation for this node through the shared budget flow. */
@@ -55,7 +57,7 @@ function ParamField({ control, onChange }: { control: ParamControl; onChange: (n
  * @returns the panel with generation, references, frames, versions, and the table entry for storyboards.
  */
 export function Inspector({
-  document, node, placement, capabilities, edit, close, openTable, generate, t,
+  document, node, placement, capabilities, edit, historyEpoch = 0, close, openTable, generate, t,
 }: InspectorProps): ReactNode {
   const kind = node.gen?.kind
   const [models, setModels] = useState<readonly MediaCapabilityView[]>([])
@@ -66,8 +68,8 @@ export function Inspector({
     setModelId(node.gen?.model ?? '')
     setPrompt(node.gen?.prompt ?? '')
     setParams({ ...node.gen?.params })
-    // A reload after a conflict keeps the user's draft: only switching nodes resets it.
-  }, [node.id])
+    // External reloads keep the user's draft; local history actions reset it.
+  }, [node.id, historyEpoch])
   const operation = kind === undefined ? undefined : operationFor(kind)
   useEffect(() => {
     if (operation === undefined) return
