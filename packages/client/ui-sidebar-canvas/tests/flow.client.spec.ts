@@ -1,6 +1,7 @@
 /** The document maps onto a flow with members inside their group, and gestures map back onto canvas edits. */
 import { expect, it } from 'vitest'
-import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CanvasDocument, CanvasNode, CanvasNodeId, Shot, ShotId, VersionId } from '@deepseek-ai/dsh-canvas/client'
 import { deleteOperations, flowEdges, flowNodes, groupable, keepSelection, moveOperations } from '../src/client/flow.ts'
 
 const face = { readFile: async () => ({ ok: false as const, message: 'unused' }), t: (key: string) => key, edit: async () => {} }
@@ -34,6 +35,42 @@ it('draws groups before their members and positions members inside the group', (
     ['n5', 'video', undefined, { x: 760, y: 0 }, 320, 220],
   ])
   expect(nodes[2]?.data).toEqual({ node: document.nodes[1], ...face })
+})
+
+it('shows a scene-only badge and a segment-only badge when only one source is available', () => {
+  const boardId = brandString<CanvasNodeId>('board')
+  const groupId = brandString<CanvasNodeId>('group')
+  const shotId = brandString<ShotId>('shot')
+  const versionId = brandString<VersionId>('v1')
+  const shot: Shot = {
+    id: shotId, title: 'Shot', shotSize: 'medium', visual: '', motion: '', camera: '', durationSec: 1,
+    characters: [], props: [], dialogue: [], sfx: '', negative: '',
+  }
+  const board: CanvasNode = {
+    id: boardId, type: 'storyboard', title: 'Board', x: 0, y: 0, width: 1, height: 1,
+    activeVersion: versionId, versions: [{ id: versionId, createdAt: 'now', origin: 'user', shots: [shot] }],
+  }
+  const group: CanvasNode = {
+    id: groupId, type: 'group', title: 'Scene', x: 0, y: 0, width: 1, height: 1, versions: [],
+    sceneOrigin: { script: brandString<CanvasNodeId>('script'), scene: 4 },
+  }
+  const video = (id: string, parent?: CanvasNodeId): CanvasNode => ({
+    id: brandString<CanvasNodeId>(id), type: 'video', title: id, x: 0, y: 0, width: 1, height: 1, versions: [],
+    ...parent === undefined ? {} : { group: parent },
+    gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: boardId, shots: [shotId] } },
+  })
+  const sceneOnly = flowNodes({
+    version: 2, revision: 0, nextId: 1, edges: [], nodes: [board, group, video('scene-video', groupId)],
+  }, face, { board: [] })
+  expect(sceneOnly.find(node => node.id === 'scene-video')?.data.segmentBadge).toBe('badge.scene')
+
+  const segment = {
+    index: 0, shots: [shotId], durationSec: 1, kind: 'opening' as const, join: 'strict' as const, needsTailChain: false,
+  }
+  const segmentOnly = flowNodes({
+    version: 2, revision: 0, nextId: 1, edges: [], nodes: [board, video('segment-video')],
+  }, face, { board: [segment] })
+  expect(segmentOnly.find(node => node.id === 'segment-video')?.data.segmentBadge).toBe('badge.segment')
 })
 
 it('draws each role with its own style and label', () => {

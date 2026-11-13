@@ -97,17 +97,19 @@ function Toolbar({ document, nodes, edges, edit, reload, t, undo, redo, canUndo,
  * @param props - document, media reads, copy, and the edit and reload calls.
  * @returns the flow with its toolbar and overview.
  */
-export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, history, segments = {} }: CanvasFlowProps): ReactNode {
-  const [drawn, setDrawn] = useState({ document, readFile, t, edit })
+export function CanvasFlow({
+  document, readFile, t, edit, generate, reload, onSelect, history, segments = {},
+}: CanvasFlowProps): ReactNode {
+  const [drawn, setDrawn] = useState({ document, readFile, t, edit, generate })
   const apply = useCallback(async (operations: readonly CanvasOperation[]) => {
     history?.record(document, operations, t('undo.edit'))
     await edit(operations)
   }, [history, document, edit, t])
-  const face = { readFile, t, edit: apply }
+  const face = { readFile, t, edit: apply, ...generate === undefined ? {} : { generate } }
   const [nodes, setNodes] = useState(() => flowNodes(document, face, segments))
   const [edges, setEdges] = useState(() => flowEdges(document, t))
-  if (drawn.document !== document || drawn.readFile !== readFile || drawn.t !== t || drawn.edit !== edit) {
-    setDrawn({ document, readFile, t, edit })
+  if (drawn.document !== document || drawn.readFile !== readFile || drawn.t !== t || drawn.edit !== edit || drawn.generate !== generate) {
+    setDrawn({ document, readFile, t, edit, generate })
     setNodes(keepSelection(flowNodes(document, face, segments), nodes))
     setEdges(keepSelection(flowEdges(document, t), edges))
   }

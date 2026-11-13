@@ -4,6 +4,8 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { BibleEntryId, CanvasNodeId } from '@deepseek-ai/dsh-canvas/client'
 import { CanvasBody, type CanvasBodyProps } from '../src/client/CanvasBody.tsx'
 import { CanvasTitle } from '../src/client/CanvasTitle.tsx'
 import type { CanvasState } from '../src/client/canvas-source.ts'
@@ -162,6 +164,58 @@ it('opens the storyboard table for the selected node and hides the canvas action
   fireEvent.click(screen.getByRole('button', { name: 'inspector.openTable' }))
   expect(screen.getByRole('button', { name: 'table.addRow' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'canvas.export' })).toBeNull()
+})
+
+it('records storyboard table edits in the CanvasBody-owned history', async () => {
+  mount({ status: 'ready', view: boardView as never })
+  const flow = drawn.mock.calls[0]![0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  act(() => { flow.onSelect('b1') })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.openTable' }))
+  fireEvent.change(screen.getAllByRole('combobox')[0] as HTMLElement, { target: { value: 'wide' } })
+  expect(flow.history?.canUndo()).toBe(true)
+  expect(flow.history?.undo()).toEqual([{ op: 'set_shots', node: 'b1', shots: boardDoc.nodes[0]?.versions?.[0]?.shots }])
+})
+
+it('records inspector parameter edits in the CanvasBody-owned history', async () => {
+  const video: CanvasDocument = {
+    version: 2, revision: 0, nextId: 2, edges: [],
+    nodes: [{
+      id: brandString<CanvasNodeId>('v1'), type: 'video', title: 'Video', x: 0, y: 0, width: 280, height: 200,
+      gen: { kind: 'video', model: 'model', prompt: 'old', params: { seed: 1 } },
+    }],
+  }
+  const mediaView = { ...view, document: video }
+  const capabilities = vi.fn(async () => [{
+    id: 'cap', model: 'model', operation: 'generate_video', params: [],
+  }])
+  mount({ status: 'ready', view: mediaView as never }, { capabilities })
+  const flow = drawn.mock.calls[0]![0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  act(() => { flow.onSelect('v1') })
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.apply' })).toBeTruthy() })
+  fireEvent.change(screen.getByLabelText('inspector.prompt'), { target: { value: 'new' } })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  expect(flow.history?.canUndo()).toBe(true)
+  expect(flow.history?.undo()).toEqual([{
+    op: 'set_gen', node: 'v1', gen: { kind: 'video', model: 'model', prompt: 'old', params: { seed: 1 } },
+  }])
+})
+
+it('records Bible asset creation in the CanvasBody-owned history', async () => {
+  const entryId = brandString<BibleEntryId>('c1')
+  const bible = vi.fn(async () => ({
+    bible: {
+      version: 1, revision: 0, logline: '', style: { visual: '', aspect: '9:16' },
+      entries: [{ id: entryId, kind: 'character' as const, name: 'Ada', description: 'A character' }],
+    },
+    revision: 0,
+  }))
+  mount({ status: 'ready', view: view as never }, { bible })
+  const flow = drawn.mock.calls[0]![0] as CanvasFlowProps
+  fireEvent.click(screen.getByRole('button', { name: 'bible.tab' }))
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'bible.threeView' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'bible.threeView' }))
+  expect(flow.history?.canUndo()).toBe(true)
+  expect(flow.history?.undo()).toEqual([{ op: 'remove', node: 'n2' }])
 })
 
 it('passes generation callbacks to the inspector and dispatches a refit on fullscreen', async () => {

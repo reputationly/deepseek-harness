@@ -75,6 +75,50 @@ it('applies edits in one call, reads the settled document, and reports what did 
   expect(source.state.getSnapshot().notice).toBeUndefined()
 })
 
+it('reports a rejected remote call even when it throws a non-Error value', async () => {
+  const get = vi.fn(async () => ok(view('/project')))
+  const apply = vi.fn(async () => { throw 'remote rejected the edit' })
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  await source.edit([{ op: 'remove', node: 'n1' }])
+  expect(source.state.getSnapshot()).toMatchObject({ status: 'ready', notice: 'remote rejected the edit' })
+})
+
+it('keeps the edit queue usable after a post-edit reload rejects', async () => {
+  const get = vi.fn<() => Promise<RemoteResult<CanvasView>>>()
+    .mockResolvedValueOnce(ok(view('/project')))
+    .mockRejectedValueOnce(new Error('reload failed'))
+    .mockResolvedValue(ok(view('/project')))
+  const apply = vi.fn(async () => ok(applied))
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  await expect(source.edit([{ op: 'remove', node: 'n1' }])).rejects.toThrow('reload failed')
+  await source.edit([{ op: 'remove', node: 'n2' }])
+  expect(apply).toHaveBeenCalledTimes(2)
+})
+
+it('serializes consecutive edits against the revision settled by the prior edit', async () => {
+  let revision = 3
+  const get = vi.fn(async () => ok({
+    ...view('/project'),
+    revisions: { canvas: revision },
+    document: { ...view('/project').document, revision },
+  }))
+  const apply = vi.fn(async (_operations: unknown[], baseRevision: number) => {
+    if (baseRevision !== revision) return failure('stale revision', 'canvas/conflict')
+    revision += 1
+    return ok({ ...applied, revision })
+  })
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  const first = source.edit([{ op: 'move', node: 'n1', x: 1, y: 1 }])
+  const second = source.edit([{ op: 'remove', node: 'n2' }])
+  await Promise.all([first, second])
+  expect(apply.mock.calls.map(call => call[1])).toEqual([3, 4])
+  expect(source.state.getSnapshot().view?.document.revision).toBe(5)
+  expect(source.state.getSnapshot().conflict).toBe(false)
+})
+
 it('reads again when the shown project changes and ignores other projects', async () => {
   const get = vi.fn<() => Promise<RemoteResult<CanvasView>>>().mockResolvedValue(ok(view('/project')))
   const source = new CanvasSource({ get, apply: vi.fn() })

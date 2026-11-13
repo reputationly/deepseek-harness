@@ -7,8 +7,10 @@ import { cardState, currentVersion, durationSeconds, groupScene, scriptPreview, 
 import { frameOf, genOperation, modelChoices, operationFor, orderedRefs, paramControls, reorderOperation } from '../src/client/model/inspector.ts'
 import { movedForward, newNodeIds } from '../src/client/model/changes.ts'
 import { planShotSegments } from '@deepseek-ai/dsh-canvas/client'
+import { applyOperations as applyCanvasOperations } from '../../../media/canvas/src/operations.ts'
+import { resolveConfig } from '../../../media/canvas/src/config.ts'
 import {
-  appendShotOperation, blankShot, cellOperation, moveShotOperation, removeShotOperation, rowsOf, segmentOfShot, segmentTone, summaryOf,
+  appendShotOperation, blankShot, cellOperation, moveShotOperations, removeShotOperation, rowsOf, segmentOfShot, segmentTone, summaryOf,
 } from '../src/client/model/table.ts'
 
 const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
@@ -51,17 +53,44 @@ describe('invertOperations', () => {
 
   it('returns undefined for edits it cannot reverse', () => {
     expect(invertOperations(document([]), [{ op: 'remove', node: 'n1' }])).toBeUndefined()
-    expect(invertOperations(document([]), [{ op: 'add', type: 'text', text: 'x' }])).toBeUndefined()
+    expect(invertOperations(document([]), [{ op: 'add', type: 'text', text: 'x' }])).toEqual([
+      { op: 'remove', node: 'n1' },
+    ])
   })
 
-  it('restores an insert by removing the shot, and a removal by inserting it back', () => {
+  it('undoes an added node and a new group with Host operation semantics', () => {
+    const limits = resolveConfig({})
+    const before = document([node('n1', 'text'), node('n2', 'image')])
+
+    const add = { op: 'add', type: 'text', text: 'new' } as const
+    const added = applyCanvasOperations(before, [add], { limits, now: () => 'now' }).document
+    const addInverse = invertOperations(before, [add])
+    expect(addInverse).toEqual([{ op: 'remove', node: 'n3' }])
+    const addRestored = applyCanvasOperations(added, addInverse ?? [], { limits, now: () => 'now' }).document
+    expect(addRestored.nodes.map(current => current.id)).toEqual(['n1', 'n2'])
+
+    const group = { op: 'group', title: 'Group', nodes: ['n1', 'n2'] } as const
+    const grouped = applyCanvasOperations(before, [group], { limits, now: () => 'now' }).document
+    const groupInverse = invertOperations(before, [group])
+    expect(groupInverse).toEqual([{ op: 'ungroup', node: 'g3' }])
+    const groupRestored = applyCanvasOperations(grouped, groupInverse ?? [], { limits, now: () => 'now' }).document
+    expect(groupRestored.nodes.filter(current => current.type === 'group')).toEqual([])
+    expect(groupRestored.nodes.map(current => [current.id, current.group])).toEqual([
+      ['n1', undefined], ['n2', undefined],
+    ])
+  })
+
+  it('restores shot lists with their original ids and positions', () => {
     const board = node('n1', 'storyboard', {
       versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1'), shot('s2')] }],
       activeVersion: 'v1' as never,
     })
     const doc = document([board])
     expect(invertOperations(doc, [{ op: 'remove_shot', node: 'n1', shot: 's2' as never }])).toEqual([
-      { op: 'insert_shot', node: 'n1', after: 's1', shot: { title: 's2', shotSize: 'medium', visual: '画面 s2', motion: '动作', camera: '固定', durationSec: 3, characters: [], props: [], dialogue: [], sfx: '', negative: '' } },
+      { op: 'set_shots', node: 'n1', shots: [shot('s1'), shot('s2')] },
+    ])
+    expect(invertOperations(doc, [{ op: 'remove_shot', node: 'n1', shot: 's1' as never }])).toEqual([
+      { op: 'set_shots', node: 'n1', shots: [shot('s1'), shot('s2')] },
     ])
     expect(invertOperations(doc, [{ op: 'move_shot', node: 'n1', shot: 's2' as never }])).toEqual([
       { op: 'move_shot', node: 'n1', shot: 's2', after: 's1' },
@@ -177,8 +206,56 @@ describe('storyboard table', () => {
   it('appends, removes, and moves shots', () => {
     expect(appendShotOperation(board, shot('s4', { title: 's4' }))).toMatchObject({ op: 'insert_shot', after: 's3' })
     expect(removeShotOperation(board, 's2' as never)).toEqual({ op: 'remove_shot', node: 'n1', shot: 's2' })
-    expect(moveShotOperation(board, 's3' as never, 's1' as never)).toEqual({ op: 'move_shot', node: 'n1', shot: 's3', after: 's1' })
-    expect(moveShotOperation(board, 's3' as never, undefined)).toEqual({ op: 'move_shot', node: 'n1', shot: 's3' })
+    expect(moveShotOperations(board, shot('s3').id, shot('s1').id)).toEqual([
+      { op: 'move_shot', node: 'n1', shot: 's3', after: 's1' },
+    ])
+    expect(moveShotOperations(board, shot('s3').id, undefined)).toEqual([
+      { op: 'move_shot', node: 'n1', shot: 's3', after: 's1' },
+      { op: 'move_shot', node: 'n1', shot: 's1', after: 's3' },
+    ])
+    expect(moveShotOperations(board, shot('s1').id, undefined)).toEqual([])
+    expect(moveShotOperations(board, shot('missing').id, undefined)).toEqual([])
+    expect(moveShotOperations(board, shot('s2').id, shot('s2').id)).toEqual([])
+  })
+
+  it('moves a row to the front and undoes it with real Host operation semantics', () => {
+    const current = node('n1', 'storyboard', {
+      versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1'), shot('s2'), shot('s3')] }],
+      activeVersion: 'v1' as never,
+    })
+    const before = document([current])
+    const operations = moveShotOperations(current, shot('s3').id, undefined)
+    const limits = resolveConfig({})
+    const after = applyCanvasOperations(before, operations, { limits, now: () => 'now' }).document
+    expect(rowsOf(after.nodes[0])).toEqual([shot('s3'), shot('s1'), shot('s2')])
+    const inverse = invertOperations(before, operations)
+    expect(inverse).toEqual([{ op: 'move_shot', node: 'n1', shot: 's3', after: 's2' }])
+    const restored = applyCanvasOperations(after, inverse ?? [], { limits, now: () => 'now' }).document
+    expect(rowsOf(restored.nodes[0])).toEqual([shot('s1'), shot('s2'), shot('s3')])
+
+    const firstMove = { op: 'move_shot', node: current.id, shot: shot('s1').id, after: shot('s2').id } as const
+    const firstMoved = applyCanvasOperations(before, [firstMove], { limits, now: () => 'now' }).document
+    expect(rowsOf(firstMoved.nodes[0])).toEqual([shot('s2'), shot('s1'), shot('s3')])
+    const firstMoveInverse = invertOperations(before, [firstMove])
+    expect(firstMoveInverse).toEqual([
+      { op: 'move_shot', node: current.id, shot: shot('s1').id, after: shot('s2').id },
+      { op: 'move_shot', node: current.id, shot: shot('s2').id, after: shot('s1').id },
+    ])
+    const firstRestored = applyCanvasOperations(firstMoved, firstMoveInverse ?? [], { limits, now: () => 'now' }).document
+    expect(rowsOf(firstRestored.nodes[0])).toEqual([shot('s1'), shot('s2'), shot('s3')])
+
+    const single = node('single', 'storyboard', {
+      versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1')] }],
+      activeVersion: 'v1' as never,
+    })
+    expect(invertOperations(document([single]), [{
+      op: 'move_shot', node: single.id, shot: shot('s1').id,
+    }])).toEqual([])
+    const removeOperation = { op: 'remove_shot', node: current.id, shot: shot('s1').id } as const
+    const removed = applyCanvasOperations(before, [removeOperation], { limits, now: () => 'now' }).document
+    const removeInverse = invertOperations(before, [removeOperation])
+    const removeRestored = applyCanvasOperations(removed, removeInverse ?? [], { limits, now: () => 'now' }).document
+    expect(rowsOf(removeRestored.nodes[0])).toEqual([shot('s1'), shot('s2'), shot('s3')])
   })
 })
 
@@ -222,10 +299,12 @@ describe('card view models', () => {
     const segment = node('v9', 'video', {
       gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'b1' as never, shots: ['s1' as never, 's2' as never] } },
     })
-    expect(shotBadge(segment, board, 2, planShotSegments(rowsOf(board)).segments)).toBe('场2·段1')
+    expect(shotBadge(segment, board, 2, planShotSegments(rowsOf(board)).segments)).toEqual({ scene: 2, segment: 1 })
+    expect(shotBadge(segment, undefined, 2)).toEqual({ scene: 2 })
+    expect(shotBadge(segment, board, undefined, planShotSegments(rowsOf(board)).segments)).toEqual({ segment: 1 })
     expect(shotBadge(node('x', 'image'))).toBeUndefined()
     expect(storyboardCardView(board).rows).toHaveLength(2)
-    expect(storyboardCardView(board).summary).toContain('2 镜')
+    expect(storyboardCardView(board).summary.shots).toBe(2)
     expect(groupScene(node('g', 'group', { sceneOrigin: { script: 'n1' as never, scene: 3 } }))).toBe(3)
   })
 })
@@ -338,13 +417,14 @@ describe('invertOperations coverage of every operation', () => {
     expect(invertOperations(doc, [{ op: 'update_shot', node: 'b1', shot: 's1' as never, patch: { durationSec: 5 } }]))
       .toEqual([{ op: 'set_shots', node: 'b1', shots: [shot('s1'), shot('s2')] }])
     expect(invertOperations(doc, [{ op: 'insert_shot', node: 'b1', shot: shot('s3') }])).toEqual([
-      { op: 'remove_shot', node: 'b1', shot: '' },
+      { op: 'set_shots', node: 'b1', shots: [shot('s1'), shot('s2')] },
     ])
     expect(invertOperations(doc, [{ op: 'remove_shot', node: 'b1', shot: 's2' as never }])).toEqual([
-      { op: 'insert_shot', node: 'b1', after: 's1', shot: { title: 's2', shotSize: 'medium', visual: '画面 s2', motion: '动作', camera: '固定', durationSec: 3, characters: [], props: [], dialogue: [], sfx: '', negative: '' } },
+      { op: 'set_shots', node: 'b1', shots: [shot('s1'), shot('s2')] },
     ])
     expect(invertOperations(doc, [{ op: 'move_shot', node: 'b1', shot: 's1' as never }])).toEqual([
-      { op: 'move_shot', node: 'b1', shot: 's1' },
+      { op: 'move_shot', node: 'b1', shot: 's1', after: 's2' },
+      { op: 'move_shot', node: 'b1', shot: 's2', after: 's1' },
     ])
     expect(invertOperations(doc, [{ op: 'disconnect', from: 'i1', to: 'b1', role: 'first_frame' }])).toEqual([
       { op: 'connect', from: 'i1', to: 'b1', kind: 'reference', role: 'first_frame' },
@@ -355,7 +435,9 @@ describe('invertOperations coverage of every operation', () => {
     expect(invertOperations(doc, [{ op: 'reorder_refs', node: 'b1', sources: [] }])).toEqual([
       { op: 'reorder_refs', node: 'b1', sources: ['i1'] },
     ])
-    expect(invertOperations(doc, [{ op: 'group', title: '新组', nodes: ['t1', 'i1'] }])).toBeUndefined()
+    expect(invertOperations(doc, [{ op: 'group', title: '新组', nodes: ['t1', 'i1'] }])).toEqual([
+      { op: 'ungroup', node: 'g6' },
+    ])
   })
 
   it('refuses to reverse an operation whose referent the document lacks', () => {
@@ -375,6 +457,9 @@ describe('invertOperations coverage of every operation', () => {
     ] as const) {
       expect(invertOperations(empty, [operation])).toBeUndefined()
     }
+    expect(invertOperations(doc, [{
+      op: 'insert_shot', node: 't1', shot: shot('s3'),
+    }])).toBeUndefined()
     const noVersion = document([node('n', 'text')])
     expect(invertOperations(noVersion, [{ op: 'set_version', node: 'n', version: 'v' }])).toBeUndefined()
     expect(invertOperations(noVersion, [{ op: 'set_text', node: 'n', text: 'x' }])).toBeUndefined()
@@ -384,7 +469,6 @@ describe('invertOperations coverage of every operation', () => {
   it('treats host-owned operations as not reversible and keeps the empty undo entry', () => {
     for (const operation of [
       { op: 'update', node: 't1', patch: { title: 'x' } },
-      { op: 'add', type: 'text', text: 'x' },
       { op: 'remove', node: 't1' },
       { op: 'append_version', node: 't1' },
       { op: 'set_stale', node: 't1', stale: true },
@@ -428,7 +512,7 @@ describe('branch coverage of the view models', () => {
     expect(cellOperation(board, 's1' as never, 'visual', 'v')).toMatchObject({ patch: { visual: 'v' } })
     expect(appendShotOperation(board, blankShot())).toMatchObject({ after: 's1' })
     expect(appendShotOperation(node('b', 'storyboard', { versions: [] }), blankShot())).not.toHaveProperty('after')
-    expect(moveShotOperation(board, 's1' as never, undefined)).not.toHaveProperty('after')
+    expect(moveShotOperations(board, shot('s1').id, undefined)).toEqual([])
   })
 
   it('seeds controls from defaults and keeps empty text values', () => {
@@ -454,6 +538,24 @@ describe('branch coverage of the view models', () => {
     expect(invertOperations(plain, [{ op: 'ungroup', node: 'a' }])).toBeUndefined()
     expect(invertOperations(plain, [{ op: 'move_shot', node: 'a', shot: 's' }])).toBeUndefined()
     expect(invertOperations(plain, [{ op: 'remove_shot', node: 'a', shot: 's' }])).toBeUndefined()
+  })
+
+  it('rejects malformed two-operation moves that cannot be inverted safely', () => {
+    const board = node('b', 'storyboard', {
+      versions: [{
+        id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1'), shot('s2')],
+      }],
+      activeVersion: 'v1' as never,
+    })
+    const documentWithBoard = document([board])
+    expect(invertOperations(documentWithBoard, [
+      { op: 'move_shot', node: board.id, shot: shot('s1').id, after: shot('s2').id },
+      { op: 'move_shot', node: board.id, shot: shot('s2').id, after: shot('s1').id },
+    ])).toBeUndefined()
+    expect(invertOperations(documentWithBoard, [
+      { op: 'move_shot', node: board.id, shot: shot('s1').id, after: shot('s1').id },
+      { op: 'move_shot', node: board.id, shot: shot('s1').id, after: shot('s1').id },
+    ])).toBeUndefined()
   })
 
   it('prefers the last shot list when a storyboard has no active version', () => {

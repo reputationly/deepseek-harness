@@ -3,6 +3,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { ShotId } from '@deepseek-ai/dsh-canvas/client'
 import { CanvasFlow, type CanvasFlowProps } from '../src/client/CanvasFlow.tsx'
 import { EditHistory } from '../src/client/model/history.ts'
 
@@ -42,6 +44,23 @@ it('renders one flow node per document node', async () => {
   expect(globalThis.document.querySelectorAll('.react-flow__node')).toHaveLength(2)
 })
 
+it('passes generation to a card retry action', async () => {
+  const image = doc.nodes.find(node => node.id === 'n2')!
+  const retryDocument: CanvasDocument = {
+    ...doc,
+    nodes: [doc.nodes[0]!, {
+      ...image, gen: { kind: 'image', prompt: 'p', params: {} },
+      status: { state: 'failed', at: 'now', error: 'failed', retryable: true },
+    }],
+  }
+  const generate = vi.fn()
+  render(<CanvasFlow document={retryDocument} readFile={async () => ({ ok: false, message: 'unused' })}
+    t={t} edit={async () => {}} reload={async () => {}} generate={generate} />)
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'status.retry' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'status.retry' }))
+  expect(generate).toHaveBeenCalledWith('n2')
+})
+
 it('reports the clicked node and clears the selection on the pane', async () => {
   const h = mount()
   await waitFor(() => { expect(screen.getByText('Brief')).toBeTruthy() })
@@ -62,6 +81,32 @@ it('undoes and redoes with the keyboard, and groups selected nodes with G', asyn
   fireEvent.click(node)
   fireEvent.keyDown(window, { key: 'g' })
   expect(h.edit).not.toHaveBeenCalled()
+})
+
+it('uses Ctrl+Z to undo a table cell edit stored in the shared history', async () => {
+  const history = new EditHistory()
+  const board: CanvasDocument = {
+    version: 2, revision: 1, nextId: 2, edges: [],
+    nodes: [{
+      id: 'b1' as never, type: 'storyboard', title: 'Board', x: 0, y: 0, width: 320, height: 200,
+      activeVersion: 'v1' as never,
+      versions: [{
+        id: 'v1' as never, createdAt: 'now', origin: 'user',
+        shots: [{
+          id: 's1' as never, title: 's1', shotSize: 'medium', visual: 'visual', motion: 'motion', camera: 'camera',
+          durationSec: 3, characters: [], props: [], dialogue: [], sfx: '', negative: '',
+        }],
+      }],
+    }],
+  }
+  const edit = vi.fn(async () => {})
+  render(<CanvasFlow document={board} readFile={async () => ({ ok: false, message: 'unused' })} t={t}
+    edit={edit} reload={async () => {}} history={history} />)
+  history.record(board, [{ op: 'update_shot', node: 'b1', shot: brandString<ShotId>('s1'), patch: { shotSize: 'wide' } }], 'table edit')
+  fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+  expect(edit).toHaveBeenCalledWith([{
+    op: 'set_shots', node: 'b1', shots: board.nodes[0]?.versions?.[0]?.shots,
+  }])
 })
 
 it('toggles playback only when a media element is selected', async () => {
@@ -149,7 +194,7 @@ it('derives the segment badge of a video from its storyboard and scene group', a
   }
   const nodes = flowNodes(doc2, { readFile: async () => ({ ok: false, message: 'no' }), t, edit: async () => {} },
     { b: [{ shots: ['s1' as never] } as never] })
-  expect(nodes.find(node => node.id === 'v')?.data.segmentBadge).toBe('场1·段1')
+  expect(nodes.find(node => node.id === 'v')?.data.segmentBadge).toBe(t('badge.shot', { scene: 1, segment: 1 }))
   expect(nodes.find(node => node.id === 'x')?.data.segmentBadge).toBeUndefined()
 })
 

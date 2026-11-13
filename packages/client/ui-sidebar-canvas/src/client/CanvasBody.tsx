@@ -1,5 +1,5 @@
 /** The canvas tab: reading, failure, empty, and drawn states of one Session's project canvas. */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button, IconCloseOutlineRegular, IconFullscreenOutlineRegular, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Bible, CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { CanvasInjected } from './face.ts'
 import { CanvasFlow } from './CanvasFlow.tsx'
 import { Inspector } from './Inspector.tsx'
+import { useGenerationControls } from './GenerationControls.tsx'
 import { StoryboardTable } from './StoryboardTable.tsx'
 import { BibleAssetsPanel } from './BibleAssetsPanel.tsx'
 import { inspectorPlacement } from './model/inspector.ts'
@@ -39,6 +40,18 @@ export function CanvasBody({
   const [added, setAdded] = useState<readonly string[]>([])
   const [panel, setPanel] = useState(false)
   const [shared, setShared] = useState<Bible>()
+  const generation = useGenerationControls({
+    document: state.view?.document,
+    ...planNodes === undefined ? {} : { planNodes },
+    ...generateNodes === undefined ? {} : { generateNodes },
+    t,
+  })
+  const generateNode = useCallback((nodeId: string): void => { generation.generate([nodeId]) }, [generation.generate])
+  const viewForEdits = state.view
+  const editWithHistory = viewForEdits === undefined ? edit : async (operations: Parameters<typeof edit>[0]): Promise<void> => {
+    history.record(viewForEdits.document, operations, t('undo.edit'))
+    await edit(operations)
+  }
   useEffect(() => {
     const element = root.current
     if (element === null) return
@@ -111,18 +124,19 @@ export function CanvasBody({
     </div>}
     {document.nodes.length === 0
       ? <div className={css.center}><p className={css.message}>{t('empty')}</p></div>
-      : <><CanvasFlow document={document} segments={state.view.segments} readFile={readFile} t={t} edit={edit} reload={load}
+      : <><CanvasFlow document={document} segments={state.view.segments} readFile={readFile} t={t} edit={edit}
+        {...planNodes === undefined || generateNodes === undefined ? {} : { generate: generateNode }} reload={load}
         onSelect={setSelectedId} history={history} />
       {selected === undefined ? undefined : <Inspector
         document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}
-        edit={edit} close={() => { setSelectedId(undefined) }} openTable={setTableId}
-        {...planNodes === undefined ? {} : { planNodes }}
-        {...generateNodes === undefined ? {} : { generateNodes }} t={t}
+        edit={editWithHistory} close={() => { setSelectedId(undefined) }} openTable={setTableId}
+        {...planNodes === undefined || generateNodes === undefined ? {} : { generate: generateNode }} t={t}
       />}
-      {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t}
+      {table === undefined ? undefined : <StoryboardTable node={table} edit={editWithHistory} close={() => { setTableId(undefined) }} t={t}
         /* v8 ignore next -- older Host views may omit segments; the table then shows no segmentation */
         segments={state.view?.segments[table.id] ?? []} />}
-      {panel ? <BibleAssetsPanel document={document} bible={shared} edit={edit} close={() => { setPanel(false) }}
+      {panel ? <BibleAssetsPanel document={document} bible={shared} edit={editWithHistory} close={() => { setPanel(false) }}
         select={(nodeId) => { setSelectedId(nodeId) }} t={t} /> : undefined}</>}
+    {generation.feedback}
   </section>
 }

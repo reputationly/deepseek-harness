@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, expect, it, vi } from 'vitest'
 import type { CanvasDocument, CanvasNode } from '@deepseek-ai/dsh-canvas/client'
 import { Inspector, type InspectorProps } from '../src/client/Inspector.tsx'
+import { useGenerationControls } from '../src/client/GenerationControls.tsx'
 
 afterEach(() => { cleanup() })
 
@@ -41,12 +42,46 @@ const capabilities = vi.fn(async () => [{
   ],
 }])
 
-function mount(overrides: Partial<InspectorProps> = {}) {
+type GenerationProps = Parameters<typeof useGenerationControls>[0]
+type TestProps = Partial<InspectorProps> & Pick<GenerationProps, 'planNodes' | 'generateNodes'>
+
+function mount(overrides: TestProps = {}) {
   const edit = vi.fn(async () => {})
   const close = vi.fn()
-  render(<Inspector document={document} node={video} placement="sidebar" capabilities={capabilities}
-    edit={edit} close={close} t={t} {...overrides} />)
+  const { planNodes, generateNodes, ...inspectorProps } = overrides
+  const Harness = () => {
+    const { generate: overrideGenerate, ...baseProps } = inspectorProps
+    const generation = useGenerationControls({
+      document: baseProps.document ?? document,
+      ...planNodes === undefined ? {} : { planNodes },
+      ...generateNodes === undefined ? {} : { generateNodes },
+      t: baseProps.t ?? t,
+    })
+    const generate = overrideGenerate ?? (planNodes === undefined || generateNodes === undefined
+      ? undefined
+      : (nodeId: string) => { generation.generate([nodeId]) })
+    return <>
+      <Inspector document={document} node={video} placement="sidebar" capabilities={capabilities}
+        edit={edit} close={close} t={t} {...baseProps}
+        {...generate === undefined ? {} : { generate }} />
+      {generation.feedback}
+    </>
+  }
+  render(<Harness />)
   return { edit, close }
+}
+
+function GenerationProbe({ document, planNodes, generateNodes, t }: GenerationProps) {
+  const generation = useGenerationControls({
+    document,
+    ...planNodes === undefined ? {} : { planNodes },
+    ...generateNodes === undefined ? {} : { generateNodes },
+    t,
+  })
+  return <>
+    <button onClick={() => { generation.generate(['missing']) }}>Generate</button>
+    {generation.feedback}
+  </>
 }
 
 it('lists the model, its catalog parameters, and the node prompt', async () => {
@@ -120,6 +155,50 @@ it('asks for the budget and starts generation once the user confirms', async () 
   fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
   await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['v1'], 'tok') })
   expect(screen.getByRole('status').textContent).toContain('inspector.started')
+})
+
+it('does not plan when either generation endpoint is unavailable', () => {
+  const planNodes = vi.fn(async () => undefined)
+  const generateNodes = vi.fn(async () => undefined)
+  const { rerender } = render(<GenerationProbe document={document} planNodes={planNodes} t={t} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+  expect(planNodes).not.toHaveBeenCalled()
+  rerender(<GenerationProbe document={document} generateNodes={generateNodes} t={t} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+  expect(generateNodes).not.toHaveBeenCalled()
+})
+
+it('falls back to the node id when a budget line has no document title', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 'tok',
+    lines: [{ node: 'missing', kind: 'video', model: 'video-model', calls: 1, seconds: 3 }],
+    totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => undefined)
+  const emptyDocument: CanvasDocument = { ...document, nodes: [] }
+  for (const current of [undefined, emptyDocument]) {
+    const rendered = render(<GenerationProbe document={current} planNodes={planNodes} generateNodes={generateNodes} t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
+    expect(screen.getByText(/"node":"missing"/)).toBeTruthy()
+    rendered.unmount()
+  }
+})
+
+it('does not start from a confirmation after the generation endpoint disappears', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 'tok',
+    lines: [{ node: 'missing', kind: 'video', model: 'video-model', calls: 1, seconds: 3 }],
+    totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => undefined)
+  const { rerender } = render(<GenerationProbe document={document} planNodes={planNodes} generateNodes={generateNodes} t={t} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
+  rerender(<GenerationProbe document={document} planNodes={planNodes} t={t} />)
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
+  expect(generateNodes).not.toHaveBeenCalled()
 })
 
 it('reopens confirmation with the revised budget when the confirmed plan is stale', async () => {

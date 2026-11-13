@@ -45,7 +45,10 @@ export function StoryboardNode({ data, selected }: NodeProps<CanvasFlowNode>): R
         <span className={css.shotSeconds}>{t('badge.duration', { seconds: row.seconds })}</span>
       </div>)}
     </div>
-    <p className={css.summary}>{view.summary}</p>
+    <p className={css.summary}>{t('storyboard.summary', {
+      shots: view.summary.shots, seconds: view.summary.seconds,
+      segments: view.summary.segments.length, calls: view.summary.videoCalls,
+    })}</p>
   </NodeCard>
 }
 

@@ -5,10 +5,11 @@ import { createElement } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { CanvasNode, Shot } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasDocument, CanvasNode, Shot } from '@deepseek-ai/dsh-canvas/client'
 import { AudioNode, ImageNode, VideoNode } from '../src/client/nodes/media.tsx'
 import { ScriptNode, StoryboardNode, TextNode, TimelineNode } from '../src/client/nodes/text.tsx'
 import { GroupNode } from '../src/client/nodes/group.tsx'
+import { useGenerationControls } from '../src/client/GenerationControls.tsx'
 
 afterEach(() => { cleanup() })
 
@@ -89,7 +90,7 @@ it('draws text, script, storyboard, and timeline content', () => {
     node: node('storyboard', { versions: [{ id: 'v1' as never, shots: [shot('s1')], createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never }),
     segments: [{ shots: ['s1'] }, { shots: ['s1'] }],
   })
-  expect(screen.getByText(/2 段 · 2 次生成/)).toBeTruthy()
+  expect(screen.getByText(/storyboard.summary/).textContent).toContain('"segments":2')
   cleanup()
   mount(TimelineNode, { node: node('timeline', { timeline: { file: 't.json', durationMs: 12_000, exports: [] } }) })
   expect(screen.getByText(/timeline.clips/)).toBeTruthy()
@@ -121,6 +122,7 @@ it('shows a queued status and a retryable failure', () => {
   expect(screen.getByText('status.queued')).toBeTruthy()
   cleanup()
   mount(ImageNode, {
+    generate: vi.fn(),
     node: node('image', {
       versions: [{ id: 'v1' as never, path: '/a.png', createdAt: 'now', origin: 'user' }],
       activeVersion: 'v1' as never,
@@ -130,6 +132,40 @@ it('shows a queued status and a retryable failure', () => {
   })
   expect(screen.getByText(/网关拒绝/)).toBeTruthy()
   expect(screen.getByRole('button', { name: 'status.retry' })).toBeTruthy()
+})
+
+it('plans and starts generation from a retry card through the shared budget flow', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 'retry-token',
+    lines: [{ node: 'n1', kind: 'video', model: 'video-model', calls: 1, seconds: 3 }],
+    totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => ({
+    state: 'started' as const, lines: [],
+    totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 },
+    jobs: [{ node: 'n1', jobId: 'j1' }],
+  }))
+  const failedVideo = node('video', {
+    gen: { kind: 'video', prompt: 'prompt', params: {} },
+    status: { state: 'failed', at: 'now', error: 'failed', retryable: true },
+  })
+  const document: CanvasDocument = { version: 2, revision: 0, nextId: 2, nodes: [failedVideo], edges: [] }
+  const RetryCard = () => {
+    const generation = useGenerationControls({ document, planNodes, generateNodes, t })
+    return <>
+      <ReactFlowProvider><CardHost Card={VideoNode} props={{ data: {
+        node: failedVideo, readFile: async () => ({ ok: false, message: 'unused' }), edit: vi.fn(), t,
+        generate: (nodeId: string) => { generation.generate([nodeId]) },
+      }, selected: false }} /></ReactFlowProvider>
+      {generation.feedback}
+    </>
+  }
+  render(<RetryCard />)
+  fireEvent.click(screen.getByRole('button', { name: 'status.retry' }))
+  await waitFor(() => { expect(planNodes).toHaveBeenCalledWith(['n1']) })
+  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['n1'], 'retry-token') })
 })
 
 it('draws a group frame with its scene number and member count', () => {
@@ -257,8 +293,10 @@ it('draws decoded peaks into the waveform canvas and survives an undecodable fil
   await waitFor(() => { expect(globalThis.document.querySelector('canvas')).toBeNull() })
 })
 
-it('shows the running elapsed time and retries a failed generation', async () => {
+it('shows the running elapsed time and starts shared generation when retrying', async () => {
+  const generate = vi.fn()
   mount(VideoNode, {
+    generate,
     readFile: async () => ({ ok: false as const, message: 'no' }),
     node: node('video', {
       versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
@@ -271,6 +309,7 @@ it('shows the running elapsed time and retries a failed generation', async () =>
   expect(screen.getByRole('status').textContent).toContain('status.elapsed')
   cleanup()
   const failed = mount(VideoNode, {
+    generate,
     readFile: async () => ({ ok: false as const, message: 'no' }),
     node: node('video', {
       versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
@@ -280,7 +319,8 @@ it('shows the running elapsed time and retries a failed generation', async () =>
     }),
   })
   fireEvent.click(screen.getByRole('button', { name: 'status.retry' }))
-  expect(failed.edit).toHaveBeenCalledWith([{ op: 'set_gen', node: 'n1', gen: { params: {} } }])
+  expect(generate).toHaveBeenCalledWith('n1')
+  expect(failed.edit).not.toHaveBeenCalled()
 })
 
 it('keeps a media card idle when the version carries no path', async () => {

@@ -37,6 +37,8 @@ export class CanvasSource {
   })
   /** Only the latest read publishes. */
   private generation = 0
+  /** Edits settle in order so each write observes the revision left by the previous one. */
+  private editQueue: Promise<void> = Promise.resolve()
 
   /** @param remote - the Session's canvas calls. */
   constructor(private readonly remote: CanvasRemote) {}
@@ -58,6 +60,12 @@ export class CanvasSource {
    */
   edit = async (operations: readonly CanvasOperation[]): Promise<void> => {
     if (operations.length === 0) return
+    const current = this.editQueue.then(async () => { await this.apply(operations) })
+    this.editQueue = current.catch(() => undefined)
+    await current
+  }
+
+  private apply = async (operations: readonly CanvasOperation[]): Promise<void> => {
     const baseRevision = this.state.getSnapshot().view?.document.revision ?? 0
     let result: RemoteResult<CanvasEditResult>
     try {

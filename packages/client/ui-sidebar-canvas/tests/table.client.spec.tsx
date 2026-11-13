@@ -75,7 +75,10 @@ it('adds, removes, and reorders rows', () => {
   fireEvent.dragStart(rows[2] as HTMLElement)
   fireEvent.dragOver(rows[0] as HTMLElement)
   fireEvent.drop(rows[0] as HTMLElement)
-  expect(h.edit).toHaveBeenCalledWith([{ op: 'move_shot', node: 'b1', shot: 's3' }])
+  expect(h.edit).toHaveBeenCalledWith([
+    { op: 'move_shot', node: 'b1', shot: 's3', after: 's1' },
+    { op: 'move_shot', node: 'b1', shot: 's1', after: 's3' },
+  ])
 })
 
 it('edits the text cells, ignores a drop without a drag, and switches back to the bible tab', () => {
