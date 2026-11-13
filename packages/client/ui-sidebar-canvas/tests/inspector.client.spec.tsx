@@ -198,3 +198,15 @@ it('cancels the budget dialog and reports a failure to start generation', async 
   fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
   await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('gateway down') })
 })
+
+it('does nothing when the deployment declines to plan, and ignores a drop without a drag', async () => {
+  const planNodes = vi.fn(async () => undefined)
+  mount({ planNodes, generateNodes: vi.fn() })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(planNodes).toHaveBeenCalledWith(['v1']) })
+  const first = screen.getAllByRole('listitem').find(row => row.textContent?.includes('林夏')) as HTMLElement
+  fireEvent.drop(first)
+  fireEvent.dragStart(first)
+  fireEvent.drop(first)
+})

@@ -120,7 +120,7 @@ it('draws a group frame with its scene number and member count', () => {
   expect(screen.getByText('group.members:{"count":3}')).toBeTruthy()
 })
 
-const readyFile = async () => ({ ok: true as const, bytes: new Uint8Array([1, 2, 3]) })
+const readyFile = async () => ({ ok: true as const, data: new Uint8Array([1, 2, 3]) })
 
 it('draws a loaded image and a loaded video with its duration and segment badge', async () => {
   Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
@@ -176,4 +176,132 @@ it('draws a loaded audio card with its spoken line and shows the play control wh
     }),
   })
   await waitFor(() => { expect(globalThis.document.querySelector('audio')).toBeTruthy() })
+})
+
+it('plays the video preview on hover and pauses it when the pointer leaves', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  mount(VideoNode, {
+    readFile: readyFile,
+    node: node('video', {
+      versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+    }),
+  })
+  await waitFor(() => { expect(globalThis.document.querySelector('video')).toBeTruthy() })
+  const video = globalThis.document.querySelector('video') as HTMLVideoElement
+  const play = vi.fn(async () => {})
+  const pause = vi.fn()
+  video.play = play
+  video.pause = pause
+  const media = video.parentElement as HTMLElement
+  fireEvent.mouseEnter(media)
+  fireEvent.mouseLeave(media)
+  fireEvent.mouseEnter(video)
+  fireEvent.mouseLeave(video)
+  expect(play).toHaveBeenCalled()
+  expect(pause).toHaveBeenCalled()
+})
+
+it('draws decoded peaks into the waveform canvas and survives an undecodable file', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  const fillRect = vi.fn(), clearRect = vi.fn()
+  const context = { clearRect, fillRect, fillStyle: '' }
+  Object.assign(HTMLCanvasElement.prototype, { getContext: vi.fn(() => context) })
+  class Decoding {
+    decodeAudioData = vi.fn(async () => ({ length: 4096, getChannelData: () => new Float32Array(4096).fill(0.5) }))
+    close = vi.fn(async () => {})
+  }
+  Object.assign(globalThis, { AudioContext: Decoding })
+  mount(AudioNode, {
+    readFile: readyFile,
+    node: node('audio', {
+      versions: [{ id: 'v1' as never, path: '/a.mp3', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+    }),
+  })
+  await waitFor(() => { expect(globalThis.document.querySelector('canvas')).toBeTruthy() })
+  await waitFor(() => { expect(fillRect).toHaveBeenCalled() })
+  expect(clearRect).toHaveBeenCalled()
+  cleanup()
+  class Undecodable {
+    decodeAudioData = vi.fn(async () => { throw new Error('bad bytes') })
+    close = vi.fn(async () => {})
+  }
+  Object.assign(globalThis, { AudioContext: Undecodable })
+  mount(AudioNode, {
+    readFile: readyFile,
+    node: node('audio', {
+      versions: [{ id: 'v1' as never, path: '/b.mp3', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+    }),
+  })
+  await waitFor(() => { expect(globalThis.document.querySelector('audio')).toBeTruthy() })
+  await waitFor(() => { expect(globalThis.document.querySelector('canvas')).toBeNull() })
+})
+
+it('shows the running elapsed time and retries a failed generation', async () => {
+  mount(VideoNode, {
+    readFile: async () => ({ ok: false as const, message: 'no' }),
+    node: node('video', {
+      versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+      status: { state: 'running', startedAt: '2026-01-01T00:00:00.000Z' } as never,
+    }),
+  })
+  await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('status.running') })
+  await new Promise(resolve => setTimeout(resolve, 600))
+  expect(screen.getByRole('status').textContent).toContain('status.elapsed')
+  cleanup()
+  const failed = mount(VideoNode, {
+    readFile: async () => ({ ok: false as const, message: 'no' }),
+    node: node('video', {
+      versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+      gen: { kind: 'video', prompt: 'p', params: {} },
+      status: { state: 'failed', error: 'boom', retryable: true } as never,
+    }),
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'status.retry' }))
+  expect(failed.edit).toHaveBeenCalledWith([{ op: 'set_gen', node: 'n1', gen: { params: {} } }])
+})
+
+it('keeps a media card idle when the version carries no path', async () => {
+  const read = vi.fn(async () => ({ ok: true as const, bytes: new Uint8Array() }))
+  mount(ImageNode, { readFile: read, node: node('image', { versions: [] }) })
+  await new Promise(resolve => setTimeout(resolve, 10))
+  expect(read).not.toHaveBeenCalled()
+})
+
+it('switches version from an inactive chip and ignores the active one', async () => {
+  const { edit } = mount(ImageNode, {
+    readFile: async () => ({ ok: true as const, data: new Uint8Array([1]) }),
+    node: node('image', {
+      versions: [
+        { id: 'v1' as never, path: '/a.png', createdAt: 'now', origin: 'user' },
+        { id: 'v2' as never, path: '/b.png', createdAt: 'now', origin: 'user' },
+      ],
+      activeVersion: 'v2' as never,
+    }),
+  })
+  await waitFor(() => { expect(screen.getByTitle('version.switch:{"label":"v1"}')).toBeTruthy() })
+  fireEvent.click(screen.getByTitle('version.switch:{"label":"v2"}'))
+  expect(edit).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByTitle('version.switch:{"label":"v1"}'))
+  expect(edit).toHaveBeenCalledWith([{ op: 'set_version', node: 'n1', version: 'v1' }])
+})
+
+it('ignores a rejected preview play request', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  mount(VideoNode, {
+    readFile: readyFile,
+    node: node('video', {
+      versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
+      activeVersion: 'v1' as never,
+    }),
+  })
+  await waitFor(() => { expect(globalThis.document.querySelector('video')).toBeTruthy() })
+  const video = globalThis.document.querySelector('video') as HTMLVideoElement
+  video.play = vi.fn(async () => { throw new Error('blocked') })
+  fireEvent.mouseEnter(video)
+  await Promise.resolve()
 })

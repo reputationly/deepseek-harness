@@ -179,3 +179,39 @@ it('returns no plan when the deployment lacks the media namespace', async () => 
     await h.dispose()
   }
 })
+
+it('surfaces remote failures and missing media for capabilities and plans', async () => {
+  const h = await mountPlugin()
+  try {
+    h.media.capabilities.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'cap boom' } } as never)
+    h.media.planNodes.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'plan boom' } } as never)
+    h.media.generateNodes.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'gen boom' } } as never)
+    h.canvas.bible.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'bible boom' } } as never)
+    const face = h.entries[0]!.inject!('s1' as SessionId) as {
+      capabilities: (operation: string) => Promise<unknown>
+      planNodes: (nodes: string[]) => Promise<unknown>
+      generateNodes: (nodes: string[], token?: string) => Promise<unknown>
+      bible: () => Promise<unknown>
+    }
+    await expect(face.capabilities('generate_image')).rejects.toThrow('cap boom')
+    await expect(face.planNodes(['n1'])).rejects.toThrow('plan boom')
+    await expect(face.generateNodes(['n1'])).rejects.toThrow('gen boom')
+    await expect(face.bible()).rejects.toThrow('bible boom')
+    h.ctx.set('remote.media', undefined as never)
+    await expect(face.capabilities('generate_image')).resolves.toEqual([])
+    await expect(face.generateNodes(['n1'])).resolves.toBeUndefined()
+  } finally {
+    await h.dispose()
+  }
+})
+
+it('returns capabilities from the successful namespace', async () => {
+  const h = await mountPlugin()
+  try {
+    h.media.capabilities.mockResolvedValueOnce({ ok: true, value: [{ id: 'c', model: 'm', operation: 'generate_image', params: [] }] } as never)
+    const face = h.entries[0]!.inject!('s1' as SessionId) as { capabilities: (operation: string) => Promise<unknown> }
+    await expect(face.capabilities('generate_image')).resolves.toHaveLength(1)
+  } finally {
+    await h.dispose()
+  }
+})

@@ -136,3 +136,55 @@ it('connects the pending pair with the picked role, and dismisses without editin
   act(() => { h.hook.result.current.dismissMenu() })
   expect(h.hook.result.current.menu).toBeUndefined()
 })
+
+it('dismisses a role pick without a pending menu and skips an empty deletion', async () => {
+  const h = setup()
+  act(() => { h.hook.result.current.pickRole('ref') })
+  expect(h.apply).not.toHaveBeenCalled()
+  await act(async () => { await h.hook.result.current.onBeforeDelete({ nodes: [], edges: [] }) })
+  expect(h.apply).not.toHaveBeenCalled()
+})
+
+it('keeps an edge that receives a non-select change', () => {
+  const updates: unknown[] = []
+  const h = setup({ setEdges: (update) => { updates.push(update) }, nodes: [] })
+  act(() => { h.hook.result.current.onEdgesChange([{ type: 'remove', id: 'e1' }] as never) })
+  expect(typeof updates[0]).toBe('function')
+  expect((updates[0] as (current: unknown[]) => unknown[])([{ id: 'e1' }])).toEqual([{ id: 'e1' }])
+})
+
+it('swallows a rejected play request', async () => {
+  setup({ nodes: [{ id: 'n2', position: { x: 0, y: 0 }, data: {}, selected: true }] })
+  const video = document.createElement('video')
+  Object.defineProperty(video, 'paused', { get: () => true, configurable: true })
+  video.play = vi.fn(async () => { throw new Error('blocked') })
+  const wrapper = document.createElement('div')
+  wrapper.className = 'react-flow__node'
+  wrapper.dataset.id = 'n2'
+  wrapper.append(video)
+  document.body.append(wrapper)
+  act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' })) })
+  await Promise.resolve()
+})
+
+it('applies position and select updates to the flow nodes and edges', () => {
+  let nodesUpdate: ((current: Node[]) => Node[]) | undefined
+  let edgesUpdate: ((current: Edge[]) => Edge[]) | undefined
+  const h = setup({
+    setNodes: (update) => { nodesUpdate = update },
+    setEdges: (update) => { edgesUpdate = update },
+  })
+  act(() => {
+    h.hook.result.current.onNodesChange([
+      { type: 'position', id: 'n1', position: { x: 3, y: 4 } },
+      { type: 'select', id: 'n2', selected: true },
+      { type: 'dimensions', id: 'n1', dimensions: { width: 1, height: 1 } },
+    ] as never)
+    h.hook.result.current.onEdgesChange([{ type: 'select', id: 'e1', selected: true }] as never)
+  })
+  const nodes = nodesUpdate!([{ id: 'n1', position: { x: 0, y: 0 }, data: {} }, { id: 'n2', position: { x: 0, y: 0 }, data: {} }] as Node[])
+  expect(nodes[0]).toMatchObject({ position: { x: 3, y: 4 } })
+  expect(nodes[1]).toMatchObject({ selected: true })
+  const edges = edgesUpdate!([{ id: 'e1' }] as Edge[])
+  expect(edges[0]).toMatchObject({ selected: true })
+})

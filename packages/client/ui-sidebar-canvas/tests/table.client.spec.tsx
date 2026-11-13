@@ -77,3 +77,28 @@ it('adds, removes, and reorders rows', () => {
   fireEvent.drop(rows[0] as HTMLElement)
   expect(h.edit).toHaveBeenCalledWith([{ op: 'move_shot', node: 'b1', shot: 's3' }])
 })
+
+it('edits the text cells, ignores a drop without a drag, and switches back to the bible tab', () => {
+  const h = mount()
+  const rows = screen.getAllByRole('row').slice(1)
+  const cells = within(rows[0] as HTMLElement).getAllByRole('textbox')
+  fireEvent.blur(cells[0] as HTMLElement, { target: { value: '新画面' } })
+  fireEvent.blur(within(rows[0] as HTMLElement).getAllByRole('textbox')[1] as HTMLElement, { target: { value: '新动作' } })
+  const inputs = within(rows[0] as HTMLElement).getAllByRole('textbox')
+  fireEvent.blur(inputs[0] as HTMLElement, { target: { value: '新运镜' } })
+  const sound = within(rows[0] as HTMLElement).getAllByRole('textbox').at(-2) as HTMLElement
+  fireEvent.blur(sound, { target: { value: '新音效' } })
+  const negative = within(rows[0] as HTMLElement).getAllByRole('textbox').at(-1) as HTMLElement
+  fireEvent.blur(negative, { target: { value: '新负向' } })
+  fireEvent.drop(rows[0] as HTMLElement)
+  expect(h.edit).toHaveBeenCalledWith([{ op: 'update_shot', node: 'b1', shot: 's1', patch: { visual: '新画面' } }])
+  expect(h.edit).toHaveBeenCalledWith([{ op: 'update_shot', node: 'b1', shot: 's1', patch: { negative: '新负向' } }])
+})
+
+it('edits the camera cell', () => {
+  const h = mount()
+  const row = screen.getAllByRole('row')[1] as HTMLElement
+  const camera = within(row).getAllByRole('textbox')[2] as HTMLElement
+  fireEvent.blur(camera, { target: { value: '手持跟拍' } })
+  expect(h.edit).toHaveBeenCalledWith([{ op: 'update_shot', node: 'b1', shot: 's1', patch: { camera: '手持跟拍' } }])
+})

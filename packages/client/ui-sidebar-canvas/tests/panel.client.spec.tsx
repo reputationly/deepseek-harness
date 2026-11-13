@@ -48,3 +48,10 @@ it('filters assets by type and selects one', () => {
   fireEvent.click(screen.getByRole('button', { name: '段1' }))
   expect(select).toHaveBeenCalledWith('n2')
 })
+
+it('switches back to the bible tab', () => {
+  render(<BibleAssetsPanel document={document} bible={bible} edit={async () => {}} select={() => {}} close={() => {}} t={t} />)
+  fireEvent.click(screen.getByRole('tab', { name: 'assets.tab' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'bible.tab' }))
+  expect(screen.getByText('林夏')).toBeTruthy()
+})

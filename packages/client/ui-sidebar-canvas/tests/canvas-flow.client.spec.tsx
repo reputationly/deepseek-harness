@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
-import { CanvasFlow } from '../src/client/CanvasFlow.tsx'
+import { CanvasFlow, type CanvasFlowProps } from '../src/client/CanvasFlow.tsx'
 import { EditHistory } from '../src/client/model/history.ts'
 
 beforeAll(() => {
@@ -102,4 +102,18 @@ it('applies a confirmation-backed deletion and redraws when the document changes
   render(<CanvasFlow document={next} readFile={async () => ({ ok: false, message: 'no' })} t={t}
     edit={h.edit} reload={reload} onSelect={() => {}} />)
   await waitFor(() => { expect(screen.getByText('Added')).toBeTruthy() })
+})
+
+it('redraws the same flow when the document object changes', async () => {
+  const h = mount()
+  await waitFor(() => { expect(screen.getByText('Brief')).toBeTruthy() })
+  const next = { ...doc, revision: 2, nodes: [...doc.nodes, {
+    id: 'n9' as never, type: 'text' as const, title: 'Later', x: 0, y: 320, width: 100, height: 60,
+    activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user' as const, text: 'x' }],
+  }] }
+  const props: CanvasFlowProps = { document: next, readFile: async () => ({ ok: false, message: 'no' }), t,
+    edit: h.edit, reload: h.reload, onSelect: () => {} }
+  const { rerender } = render(<CanvasFlow {...props} />)
+  rerender(<CanvasFlow {...props} />)
+  await waitFor(() => { expect(screen.getByText('Later')).toBeTruthy() })
 })

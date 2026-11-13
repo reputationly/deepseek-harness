@@ -2,6 +2,7 @@
 import { expect, it } from 'vitest'
 import type { CanvasDocument, CanvasNode } from '@deepseek-ai/dsh-canvas/client'
 import { connectionIntent, deleteIntent, keyboardIntent } from '../src/client/model/gestures.ts'
+import { scriptScenes } from '../src/client/model/cards.ts'
 
 const node = (id: string, type: CanvasNode['type'], extra: Partial<CanvasNode> = {}): CanvasNode => ({
   id: id as never, type, title: id, x: 0, y: 0, width: 100, height: 100, ...extra,
@@ -51,4 +52,8 @@ it('names the deletion it asks the user to confirm, or reports nothing to delete
   expect(deleteIntent(doc, [], [])).toBeUndefined()
   expect(deleteIntent(doc, ['a'], [])).toMatchObject({ removing: 1 })
   expect(deleteIntent(doc, ['missing'], [])).toBeUndefined()
+})
+
+it('reads full-width scene numbers from a script', () => {
+  expect(scriptScenes('【场１２】雨夜\n普通行\n【场2】清晨')).toEqual([{ number: 12, title: '雨夜' }, { number: 2, title: '清晨' }])
 })

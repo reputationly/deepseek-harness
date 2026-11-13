@@ -198,3 +198,35 @@ it('closes the inspector, the table, and the bible panel through their own contr
   fireEvent.click(screen.getByRole('button', { name: 'bible.close' }))
   expect(screen.queryByRole('button', { name: 'bible.close' })).toBeNull()
 })
+
+it('loads the bible lazily, recovers from a failed read, and selects an asset', async () => {
+  const bible = vi.fn()
+    .mockRejectedValueOnce(new Error('bible down'))
+    .mockResolvedValue({ bible: { version: 1, revision: 0, logline: '', style: { visual: '', aspect: '9:16' }, entries: [] }, revision: 0 })
+  const withImage = { ...boardView, document: { ...boardDoc, nodes: [...boardDoc.nodes, {
+    id: 'im1' as never, type: 'image' as const, title: '参考图', x: 0, y: 0, width: 1, height: 1,
+  }] } }
+  mount({ status: 'ready', view: withImage as never }, { bible })
+  fireEvent.click(screen.getByRole('button', { name: 'bible.tab' }))
+  await waitFor(() => { expect(bible).toHaveBeenCalledOnce() })
+  fireEvent.click(screen.getByRole('button', { name: 'bible.close' }))
+  fireEvent.click(screen.getByRole('button', { name: 'bible.tab' }))
+  await waitFor(() => { expect(bible).toHaveBeenCalledTimes(2) })
+  fireEvent.click(screen.getByRole('tab', { name: 'assets.tab' }))
+  await waitFor(() => { expect(screen.getByRole('button', { name: '参考图' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: '参考图' }))
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.close' })).toBeTruthy() })
+})
+
+it('shows and clears the added-node badge after an external change', async () => {
+  const h = mount({ status: 'ready', view: view as never })
+  const next = { ...view, revisions: { canvas: 1 }, document: { ...filled, revision: 1, nodes: [...filled.nodes, {
+    id: 'n2' as never, type: 'text' as const, title: 'New', x: 0, y: 300, width: 100, height: 60,
+    activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, text: 'new', createdAt: 'now', origin: 'user' as const }],
+  }] } }
+  h.state.set({ ...h.state.getSnapshot(), view: next as never })
+  h.rerender()
+  await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('canvas.added') })
+  await new Promise(resolve => setTimeout(resolve, 1600))
+  expect(screen.queryByRole('status')).toBeNull()
+})
