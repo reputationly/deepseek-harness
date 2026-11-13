@@ -30,3 +30,10 @@ it('closes on Escape and on outside click', () => {
   fireEvent.click(container.firstElementChild as HTMLElement)
   expect(onClose).toHaveBeenCalledTimes(2)
 })
+
+it('stays open for keys other than Escape', () => {
+  const onClose = vi.fn()
+  render(<RoleMenu x={0} y={0} choices={roleMenu('image', 'video', [])} onPick={() => {}} onClose={onClose} t={t} />)
+  fireEvent.keyDown(window, { key: 'Enter' })
+  expect(onClose).not.toHaveBeenCalled()
+})

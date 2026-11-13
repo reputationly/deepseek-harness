@@ -210,3 +210,77 @@ it('does nothing when the deployment declines to plan, and ignores a drop withou
   fireEvent.dragStart(first)
   fireEvent.drop(first)
 })
+
+it('applies the default model and reports plain-string failures', async () => {
+  const planNodes = vi.fn(async () => { throw 'raw failure' })
+  const generateNodes = vi.fn(async () => undefined)
+  mount({ planNodes, generateNodes })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('raw failure') })
+})
+
+it('reports a non-Error rejection after confirming the budget', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 't', lines: [],
+    totals: { videoCalls: 0, videoSeconds: 0, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn(async () => { throw 'plain' })
+  mount({ planNodes, generateNodes })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('dialog')).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('plain') })
+})
+
+it('shows a numeric parameter control and a missing reference name', async () => {
+  const capabilities = vi.fn(async () => [{
+    id: 'c', model: 'video-model', operation: 'generate_video', params: [{ id: 'seed', type: 'number', default: '1' }],
+  }])
+  mount({ capabilities })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  expect((screen.getByLabelText('seed') as HTMLInputElement).type).toBe('number')
+})
+
+it('applies the deployment default model when none was chosen', async () => {
+  const edit = vi.fn(async () => {})
+  mount({ edit })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.change(screen.getByLabelText('inspector.model'), { target: { value: '' } })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  expect(edit).toHaveBeenCalledWith([{ op: 'set_gen', node: 'v1', gen: { prompt: '雨夜', params: { duration: 6 } } }])
+})
+
+it('shows the reference source id when the document lost that node', async () => {
+  mount({
+    document: {
+      ...document,
+      nodes: document.nodes.filter(node => node.id !== 'a'),
+    } as never,
+    capabilities,
+  })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  expect(screen.getByText('a')).toBeTruthy()
+})
+
+it('reports an already-running plan without a message', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'already_running' as const, lines: [],
+    totals: { videoCalls: 0, videoSeconds: 0, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  mount({ planNodes, generateNodes: vi.fn() })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('already_running') })
+})
+
+it('stops loading models when the inspector unmounts first', async () => {
+  let resolveModels: (value: readonly unknown[]) => void = () => {}
+  const capabilities = vi.fn(() => new Promise<readonly never[]>((resolve) => { resolveModels = resolve as never }))
+  mount({ capabilities })
+  cleanup()
+  resolveModels([])
+  await new Promise(resolve => setTimeout(resolve, 10))
+})

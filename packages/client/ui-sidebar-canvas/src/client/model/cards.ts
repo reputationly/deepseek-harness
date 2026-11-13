@@ -84,7 +84,9 @@ export function scriptScenes(text: string): { readonly number: number; readonly 
   for (const line of text.split('\n')) {
     const match = /^[【\s]*场\s*([0-9０-９]+)[】\s]*(.*)$/u.exec(line.trim())
     if (match === null) continue
+    /* v8 ignore next 2 -- the regexp guarantees both capture groups */
     const digits = (match[1] ?? '').replace(/[０-９]/gu, digit => String.fromCharCode(digit.charCodeAt(0) - 0xfee0))
+    /* v8 ignore next -- the regexp guarantees the title capture */
     scenes.push({ number: Number(digits), title: (match[2] ?? '').trim() })
   }
   return scenes

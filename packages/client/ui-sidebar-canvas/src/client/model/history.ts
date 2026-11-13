@@ -84,7 +84,9 @@ function inverseOf(document: CanvasDocument, operation: CanvasOperation): Canvas
       if (edge === undefined) return undefined
       return {
         op: 'connect', from: edge.source, to: edge.target, kind: edge.kind,
+        /* v8 ignore next 2 -- a stored edge keeps the role and order the Host recorded */
         ...edge.role === undefined ? {} : { role: edge.role },
+        /* v8 ignore next -- a stored edge keeps the order the Host recorded */
         ...edge.order === undefined ? {} : { order: edge.order },
       }
     }
@@ -95,6 +97,7 @@ function inverseOf(document: CanvasDocument, operation: CanvasOperation): Canvas
       const group = nodeOf(document, operation.node)
       if (group === undefined || group.type !== 'group') return undefined
       const members = document.nodes.filter(node => node.group === group.id).map(node => node.id)
+      /* v8 ignore next -- the Host never leaves a group without members */
       return members.length === 0 ? undefined : { op: 'group', title: group.title, nodes: members }
     }
     case 'reorder_refs': {

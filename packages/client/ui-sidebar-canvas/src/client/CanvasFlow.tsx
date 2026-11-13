@@ -3,12 +3,12 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Background, MiniMap, ReactFlow, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
-  Button, IconFullscreenOutlineRegular, IconLayersOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular,
+  Button, IconFullscreenOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular,
   IconTrashOutlineRegular, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CanvasDocument, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
 import {
-  deleteOperations, flowEdges, flowNodes, groupable, keepSelection,
+  deleteOperations, flowEdges, flowNodes, keepSelection,
   type CanvasFlowEdge, type CanvasFlowNode, type CanvasNodeFace,
 } from './flow.ts'
 import { NODE_TYPES } from './nodes/index.ts'
@@ -58,7 +58,6 @@ function Toolbar({ document, nodes, edges, edit, reload, t, undo, redo, canUndo,
   /* v8 ignore next -- jsdom measures no node dimensions, so ReactFlow never mounts edge elements;
      selected-edge deletion is covered by the recorded run */
   const selectedEdges = edges.filter(edge => edge.selected === true).map(edge => edge.id)
-  const members = groupable(document, selectedNodes)
   const removal = deleteOperations(document, selectedNodes, selectedEdges)
   const created = document.nextId
   useEffect(() => { void flow.fitView({ duration: 200, padding: 0.15 }) }, [created, flow])
@@ -85,13 +84,9 @@ function Toolbar({ document, nodes, edges, edit, reload, t, undo, redo, canUndo,
       <IconRefreshOutlineRegular />
     </Tool>
     <span className={css.toolSeparator} aria-hidden="true" />
-    <Tool label={t('group')} disabled={members.length < 2} onClick={() => {
-      /* v8 ignore next -- multi-node selection needs pointer gestures jsdom cannot synthesize; covered by the recorded run */
-      void edit([{ op: 'group', title: t('group.new'), nodes: members }])
-    }}>
-      <IconLayersOutlineRegular />
+    <Tool label={t('remove')} disabled={removal.length === 0} onClick={() => { void edit(removal) }}>
+      <IconTrashOutlineRegular />
     </Tool>
-    <Tool label={t('remove')} disabled={removal.length === 0} onClick={() => { void edit(removal) }}><IconTrashOutlineRegular /></Tool>
     <span className={css.toolSeparator} aria-hidden="true" />
     <Tool label={t('refresh')} onClick={() => { void reload() }}><IconRefreshOutlineRegular /></Tool>
   </div>
@@ -135,10 +130,6 @@ export function CanvasFlow({ document, readFile, t, edit, reload, onSelect, hist
       undo={gestures.undo} redo={gestures.redo}
       canUndo={history?.canUndo() ?? false} canRedo={history?.canRedo() ?? false} />
     <CanvasRoleMenu document={document} menu={gestures.menu} t={t}
-      onPick={(_pending, role) => {
-        /* v8 ignore next -- the menu only opens from a xyflow handle drag, exercised in the recorded run */
-        gestures.pickRole(role)
-      }}
-      onClose={gestures.dismissMenu} />
+      onPick={gestures.pickRole} onClose={gestures.dismissMenu} />
   </ReactFlow>
 }

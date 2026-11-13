@@ -7,7 +7,9 @@ import { cardState, currentVersion, durationSeconds, groupScene, scriptPreview, 
 import { frameOf, genOperation, modelChoices, operationFor, orderedRefs, paramControls, reorderOperation } from '../src/client/model/inspector.ts'
 import { movedForward, newNodeIds } from '../src/client/model/changes.ts'
 import { planShotSegments } from '@deepseek-ai/dsh-canvas/client'
-import { appendShotOperation, cellOperation, moveShotOperation, removeShotOperation, rowsOf, segmentOfShot, summaryOf } from '../src/client/model/table.ts'
+import {
+  appendShotOperation, blankShot, cellOperation, moveShotOperation, removeShotOperation, rowsOf, segmentOfShot, segmentTone, summaryOf,
+} from '../src/client/model/table.ts'
 
 const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
   id: id as never, title: id, shotSize: 'medium', visual: `画面 ${id}`, motion: '动作', camera: '固定', durationSec: 3,
@@ -399,5 +401,125 @@ describe('invertOperations coverage of every operation', () => {
     history.record(doc, [{ op: 'move', node: 't1', x: 0, y: 0 }], '移动')
     history.undo()
     expect(history.redo()).toEqual([{ op: 'move', node: 't1', x: 0, y: 0 }])
+  })
+})
+
+describe('branch coverage of the view models', () => {
+  it('reads the current version with and without an active marker', () => {
+    expect(currentVersion(node('n', 'image'))).toBe(0)
+    const withVersions = node('n', 'image', { versions: [
+      { id: 'v1' as never, createdAt: 'now', origin: 'user' },
+      { id: 'v2' as never, createdAt: 'now', origin: 'user' },
+    ] })
+    expect(currentVersion(withVersions)).toBe(1)
+    expect(currentVersion({ ...withVersions, activeVersion: 'v1' as never })).toBe(0)
+    expect(versionChoices(withVersions)).toEqual([
+      { id: 'v1', label: 'v1', active: false }, { id: 'v2', label: 'v2', active: true },
+    ])
+    expect(versionChoices(node('n', 'image'))).toEqual([])
+  })
+
+  it('builds every table cell operation and appends without rows', () => {
+    const board = node('b', 'storyboard', { versions: [{
+      id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1')],
+    }], activeVersion: 'v1' as never })
+    expect(cellOperation(board, 's1' as never, 'characters', ['c1'])).toMatchObject({ patch: { characters: ['c1'] } })
+    expect(cellOperation(board, 's1' as never, 'scene', 2)).toMatchObject({ patch: { scene: 2 } })
+    expect(cellOperation(board, 's1' as never, 'visual', 'v')).toMatchObject({ patch: { visual: 'v' } })
+    expect(appendShotOperation(board, blankShot())).toMatchObject({ after: 's1' })
+    expect(appendShotOperation(node('b', 'storyboard', { versions: [] }), blankShot())).not.toHaveProperty('after')
+    expect(moveShotOperation(board, 's1' as never, undefined)).not.toHaveProperty('after')
+  })
+
+  it('seeds controls from defaults and keeps empty text values', () => {
+    expect(paramControls({ params: [{ id: 'a', default: 'x' }, { id: 'b', options: ['1'] }] }, { b: '' })).toEqual([
+      { id: 'a', title: 'a', kind: 'text', value: 'x' },
+      { id: 'b', title: 'b', kind: 'select', value: '', options: ['1'] },
+    ])
+    expect(modelChoices([{ id: 'a', model: 'm', params: [{ id: 'src_ref_images' }] }], true, true)).toEqual([
+      { id: 'a', model: 'm', disabled: false },
+    ])
+  })
+
+  it('inverts connects without roles and disconnects without role or order', () => {
+    const plain = document([node('a', 'text'), node('b', 'text')], [{
+      id: 'a->b:x', source: 'a' as never, target: 'b' as never, kind: 'reference',
+    }])
+    expect(invertOperations(plain, [{ op: 'connect', from: 'a', to: 'b' }])).toEqual([
+      { op: 'disconnect', from: 'a', to: 'b' },
+    ])
+    expect(invertOperations(plain, [{ op: 'disconnect', from: 'a', to: 'b' }])).toEqual([
+      { op: 'connect', from: 'a', to: 'b', kind: 'reference' },
+    ])
+    expect(invertOperations(plain, [{ op: 'ungroup', node: 'a' }])).toBeUndefined()
+    expect(invertOperations(plain, [{ op: 'move_shot', node: 'a', shot: 's' }])).toBeUndefined()
+    expect(invertOperations(plain, [{ op: 'remove_shot', node: 'a', shot: 's' }])).toBeUndefined()
+  })
+
+  it('prefers the last shot list when a storyboard has no active version', () => {
+    const board = node('b', 'storyboard', { versions: [{
+      id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1')],
+    }] })
+    expect(invertOperations(document([board]), [{ op: 'update_shot', node: 'b', shot: 's1' as never, patch: {} }])).toEqual([
+      { op: 'set_shots', node: 'b', shots: [shot('s1')] },
+    ])
+  })
+
+  it('ignores unknown scene headings and falls back for a missing group scene', () => {
+    expect(scriptScenes('无场次\n【场3】夜')).toEqual([{ number: 3, title: '夜' }])
+    expect(groupScene(node('g', 'group'))).toBeUndefined()
+    expect(shotBadge(node('v', 'video', { gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'b' as never, shots: ['s1' as never] } } }), undefined)).toBeUndefined()
+  })
+})
+
+describe('ordering and tone fallbacks', () => {
+  it('orders references without an order and ignores empty rows', () => {
+    const board = node('b', 'storyboard', { versions: [{
+      id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1')],
+    }], activeVersion: 'v1' as never })
+    const doc = document([board, node('a', 'image'), node('c', 'image')], [{
+      id: 'a->b:ref', source: 'a' as never, target: 'b' as never, kind: 'reference', role: 'ref',
+    }, { id: 'c->b:ref', source: 'c' as never, target: 'b' as never, kind: 'reference', role: 'ref' }])
+    expect(invertOperations(doc, [{ op: 'reorder_refs', node: 'b', sources: [] }])).toEqual([
+      { op: 'reorder_refs', node: 'b', sources: ['a', 'c'] },
+    ])
+    expect(rowsOf(undefined)).toEqual([])
+    expect(segmentTone([], 's1' as never)).toBe(0)
+    expect(segmentTone([{ shots: ['s1' as never] } as never], 's1' as never)).toBe(0)
+  })
+})
+
+describe('generation update fields', () => {
+  it('keeps only the fields a caller changed', () => {
+    expect(genOperation({ id: 'n' }, { model: 'm' })).toEqual({ op: 'set_gen', node: 'n', gen: { model: 'm' } })
+    expect(genOperation({ id: 'n' }, { params: { a: 1 } })).toEqual({ op: 'set_gen', node: 'n', gen: { params: { a: 1 } } })
+    expect(genOperation({ id: 'n' }, {})).toEqual({ op: 'set_gen', node: 'n', gen: {} })
+  })
+})
+
+describe('reference order defaults', () => {
+  it('orders references that carry no order value', () => {
+    const doc = document([node('a', 'image'), node('b', 'video')], [{
+      id: 'a->b:ref', source: 'a' as never, target: 'b' as never, kind: 'reference', role: 'ref',
+    }])
+    expect(orderedRefs(doc, 'b')).toEqual([{ source: 'a', order: 0 }])
+  })
+})
+
+describe('reference order with an explicit order', () => {
+  it('keeps the stored order value', () => {
+    const doc = document([node('a', 'image'), node('b', 'video')], [{
+      id: 'a->b:ref', source: 'a' as never, target: 'b' as never, kind: 'reference', role: 'ref', order: 3,
+    }])
+    expect(orderedRefs(doc, 'b')).toEqual([{ source: 'a', order: 3 }])
+  })
+})
+
+describe('reference ordering of several unordered refs', () => {
+  it('uses zero for both comparands when no edge carries an order', () => {
+    const doc = document([node('a', 'image'), node('b', 'image'), node('v', 'video')], [{
+      id: 'a->v:ref', source: 'a' as never, target: 'v' as never, kind: 'reference', role: 'ref',
+    }, { id: 'b->v:ref', source: 'b' as never, target: 'v' as never, kind: 'reference', role: 'ref' }])
+    expect(orderedRefs(doc, 'v').map(item => item.source)).toEqual(['a', 'b'])
   })
 })

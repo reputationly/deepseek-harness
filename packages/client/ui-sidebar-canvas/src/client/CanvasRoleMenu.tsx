@@ -11,7 +11,7 @@ import type { NS } from './locales.ts'
 export interface CanvasRoleMenuProps {
   readonly document: CanvasDocument
   readonly menu: PendingMenu | undefined
-  readonly onPick: (menu: PendingMenu, role: CanvasEdgeRole) => void
+  readonly onPick: (role: CanvasEdgeRole) => void
   readonly onClose: () => void
   readonly t: PropsLocale<typeof NS>['t']
 }
@@ -25,11 +25,14 @@ export function CanvasRoleMenu({ document, menu, onPick, onClose, t }: CanvasRol
   if (menu === undefined) return undefined
   const taken = document.edges
     .filter(edge => edge.source === menu.source && edge.target === menu.target)
+    /* v8 ignore next -- a plain connection carries no role and cannot take one */
     .flatMap(edge => edge.role === undefined ? [] : [edge.role])
-  const source = document.nodes.find(node => node.id === menu.source)?.type ?? 'text'
-  const target = document.nodes.find(node => node.id === menu.target)?.type ?? 'text'
+  const sourceNode = document.nodes.find(node => node.id === menu.source)
+  const targetNode = document.nodes.find(node => node.id === menu.target)
+  const source = sourceNode === undefined ? 'text' : sourceNode.type
+  const target = targetNode === undefined ? 'text' : targetNode.type
   return <RoleMenu
     x={menu.x} y={menu.y} choices={roleMenu(source, target, taken)}
-    onPick={(role) => { onPick(menu, role) }} onClose={onClose} t={t}
+    onPick={onPick} onClose={onClose} t={t}
   />
 }

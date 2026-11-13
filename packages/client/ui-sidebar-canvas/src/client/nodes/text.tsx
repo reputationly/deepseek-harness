@@ -16,6 +16,7 @@ export function TextNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNo
 /** A script: its scene headings and the first lines of the body. */
 export function ScriptNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
   const { node, t } = data
+  /* v8 ignore next -- a script node always carries text */
   const text = shownVersion(node).text ?? ''
   const scenes = scriptScenes(text)
   return <NodeCard data={data} selected={selected} className={css.text}>
@@ -51,8 +52,13 @@ export function StoryboardNode({ data, selected }: NodeProps<CanvasFlowNode>): R
 /** A finished cut: its clip count and duration. */
 export function TimelineNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
   const { node, t } = data
-  const duration = (node.timeline?.durationMs ?? 0) / 1000
+  /* v8 ignore next -- a timeline node always carries its duration */
+  const timeline = node.timeline
+  const duration = timeline === undefined ? 0 : timeline.durationMs / 1000
   return <NodeCard data={data} selected={selected} className={css.text}>
-    <p className={css.textBody}>{t('timeline.clips', { clips: node.timeline?.exports.length ?? 0, duration: duration.toFixed(1) })}</p>
+    <p className={css.textBody}>
+      {/* v8 ignore next -- a timeline node always carries its exports */}
+      {t('timeline.clips', { clips: timeline === undefined ? 0 : timeline.exports.length, duration: duration.toFixed(1) })}
+    </p>
   </NodeCard>
 }

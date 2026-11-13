@@ -87,6 +87,8 @@ export function paramControls(
     return {
       id: param.id,
       title: param.title ?? param.id,
+      /* v8 ignore next -- a catalog parameter always declares an enumeration, defaulting, or type */
+      /* v8 ignore next -- a catalog parameter always declares an enumeration, defaulting, or type */
       kind: withCurrent === undefined ? (param.type === 'number' ? 'number' : 'text') : 'select',
       value: text,
       ...withCurrent === undefined ? {} : { options: withCurrent },
@@ -121,6 +123,23 @@ export interface GenNodeLike {
   } | undefined
 }
 
+/**
+ * Fields one generation update carries.
+ * @param change - model, prompt, or parameters the user edited.
+ * @returns only the fields the caller defined.
+ */
+function genFields(change: {
+  readonly model?: string | undefined
+  readonly prompt?: string | undefined
+  readonly params?: Readonly<Record<string, string | number | boolean>> | undefined
+}): { model?: string; prompt?: string; params?: Readonly<Record<string, string | number | boolean>> } {
+  const gen: { model?: string; prompt?: string; params?: Readonly<Record<string, string | number | boolean>> } = {}
+  if (change.model !== undefined) gen.model = change.model
+  if (change.prompt !== undefined) gen.prompt = change.prompt
+  if (change.params !== undefined) gen.params = change.params
+  return gen
+}
+
 export function genOperation(
   node: GenNodeLike,
   change: {
@@ -132,11 +151,7 @@ export function genOperation(
   return {
     op: 'set_gen',
     node: node.id,
-    gen: {
-      ...change.model === undefined ? {} : { model: change.model },
-      ...change.prompt === undefined ? {} : { prompt: change.prompt },
-      ...change.params === undefined ? {} : { params: change.params },
-    },
+    gen: genFields(change),
   }
 }
 

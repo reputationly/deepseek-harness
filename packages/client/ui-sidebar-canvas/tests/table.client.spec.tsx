@@ -102,3 +102,12 @@ it('edits the camera cell', () => {
   fireEvent.blur(camera, { target: { value: '手持跟拍' } })
   expect(h.edit).toHaveBeenCalledWith([{ op: 'update_shot', node: 'b1', shot: 's1', patch: { camera: '手持跟拍' } }])
 })
+
+it('drops a later row onto an earlier one after the first row', () => {
+  const h = mount()
+  const rows = screen.getAllByRole('row').slice(1)
+  fireEvent.dragStart(rows[2] as HTMLElement)
+  fireEvent.dragOver(rows[1] as HTMLElement)
+  fireEvent.drop(rows[1] as HTMLElement)
+  expect(h.edit).toHaveBeenCalledWith([{ op: 'move_shot', node: 'b1', shot: 's3', after: 's1' }])
+})

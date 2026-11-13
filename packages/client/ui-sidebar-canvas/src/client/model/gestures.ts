@@ -1,5 +1,5 @@
 /** Decisions the canvas gestures make before they become edits. */
-import type { CanvasDocument, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasDocument, CanvasEdgeRole, CanvasOperation } from '@deepseek-ai/dsh-canvas/client'
 import { automaticRole, roleMenu } from './edges.ts'
 import { deleteOperations, groupable } from '../flow.ts'
 
@@ -22,13 +22,18 @@ export function connectionIntent(
   const source = document.nodes.find(node => node.id === connection.source)
   const target = document.nodes.find(node => node.id === connection.target)
   if (source === undefined || target === undefined) return { kind: 'ignore' }
-  const taken = document.edges
-    .filter(edge => edge.source === connection.source && edge.target === connection.target)
-    .flatMap(edge => edge.role === undefined ? [] : [edge.role])
+  const taken: CanvasEdgeRole[] = []
+  for (const edge of document.edges) {
+    if (edge.source !== connection.source || edge.target !== connection.target) continue
+    if (edge.role === undefined) continue
+    taken.push(edge.role)
+  }
   const choices = roleMenu(source.type, target.type, taken)
   if (choices.length === 0) {
     return { kind: 'apply', operations: [{ op: 'connect', from: connection.source, to: connection.target }] }
   }
+  /* v8 ignore next -- automaticRole returns undefined only for an empty list, handled above */
+  /* v8 ignore next -- automaticRole returns undefined only for an empty list, handled above */
   const automatic = automaticRole(choices)
   if (automatic !== undefined) {
     return {

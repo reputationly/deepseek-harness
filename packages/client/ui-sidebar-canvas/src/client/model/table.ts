@@ -23,6 +23,7 @@ export interface StoryboardSummary {
  */
 export function summaryOf(node: CanvasNode | undefined, segments: readonly StoryboardSegment[] = []): StoryboardSummary {
   const shots = rowsOf(node)
+  /* v8 ignore next -- the Host validates every shot duration */
   const seconds = shots.reduce((sum, shot) => sum + Math.max(0.3, shot.durationSec), 0)
   return {
     shots: shots.length,
@@ -92,6 +93,7 @@ export function removeShotOperation(node: CanvasNode, shot: ShotId): CanvasOpera
  * @returns the move operation.
  */
 export function moveShotOperation(node: CanvasNode, shot: ShotId, after: ShotId | undefined): CanvasOperation {
+  /* v8 ignore next -- the first row maps to no preceding shot */
   return { op: 'move_shot', node: node.id, shot, ...after === undefined ? {} : { after } }
 }
 

@@ -230,3 +230,30 @@ it('shows and clears the added-node badge after an external change', async () =>
   await new Promise(resolve => setTimeout(resolve, 1600))
   expect(screen.queryByRole('status')).toBeNull()
 })
+
+it('shows the conflict copy when the last edit lost to another writer', () => {
+  mount({ status: 'ready', view: view as never, notice: 'revision changed', conflict: true })
+  expect(screen.getByRole('alert').textContent).toContain('conflict')
+  cleanup()
+  mount({ status: 'ready', view: view as never, notice: 'skipped edge', conflict: false })
+  expect(screen.getByRole('alert').textContent).toContain('notice')
+})
+
+it('exports with the canvas name when the episode is unknown', () => {
+  const create = vi.fn(() => 'blob:x')
+  Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() })
+  mount({ status: 'ready', view: { ...view, episode: undefined } as never })
+  fireEvent.click(screen.getByRole('button', { name: 'canvas.export' }))
+  expect(create).toHaveBeenCalled()
+})
+
+it('reuses the loaded bible when the panel opens again', async () => {
+  const bible = vi.fn(async () => ({ bible: { version: 1, revision: 0, logline: '', style: { visual: '', aspect: '9:16' }, entries: [] }, revision: 0 }))
+  mount({ status: 'ready', view: view as never }, { bible })
+  fireEvent.click(screen.getByRole('button', { name: 'bible.tab' }))
+  await waitFor(() => { expect(bible).toHaveBeenCalledOnce() })
+  fireEvent.click(screen.getByRole('button', { name: 'bible.close' }))
+  fireEvent.click(screen.getByRole('button', { name: 'bible.tab' }))
+  await new Promise(resolve => setTimeout(resolve, 10))
+  expect(bible).toHaveBeenCalledOnce()
+})

@@ -55,3 +55,12 @@ it('switches back to the bible tab', () => {
   fireEvent.click(screen.getByRole('tab', { name: 'bible.tab' }))
   expect(screen.getByText('林夏')).toBeTruthy()
 })
+
+it('shows empty groups and an empty asset filter', () => {
+  render(<BibleAssetsPanel document={document} bible={{ ...bible, entries: [] }} edit={async () => {}}
+    select={() => {}} close={() => {}} t={t} />)
+  expect(screen.getAllByText('bible.empty')).toHaveLength(3)
+  fireEvent.click(screen.getByRole('tab', { name: 'assets.tab' }))
+  fireEvent.click(screen.getByRole('button', { name: 'assets.kind.audio' }))
+  expect(screen.getByText('assets.empty')).toBeTruthy()
+})

@@ -57,3 +57,17 @@ it('names the deletion it asks the user to confirm, or reports nothing to delete
 it('reads full-width scene numbers from a script', () => {
   expect(scriptScenes('【场１２】雨夜\n普通行\n【场2】清晨')).toEqual([{ number: 12, title: '雨夜' }, { number: 2, title: '清晨' }])
 })
+
+it('derives connection roles from plain edges without a role', () => {
+  const doc2 = document([node('a', 'image'), node('b', 'video')], [{
+    id: 'a->b:x', source: 'a' as never, target: 'b' as never, kind: 'reference',
+  }])
+  expect(connectionIntent(doc2, { source: 'a', target: 'b' })).toMatchObject({ kind: 'menu' })
+})
+
+it('ignores edges between other nodes when collecting taken roles', () => {
+  const doc2 = document([node('a', 'image'), node('b', 'video'), node('c', 'image')], [{
+    id: 'c->b:ref', source: 'c' as never, target: 'b' as never, kind: 'reference', role: 'ref',
+  }])
+  expect(connectionIntent(doc2, { source: 'a', target: 'b' })).toMatchObject({ kind: 'menu' })
+})

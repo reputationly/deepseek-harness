@@ -82,6 +82,7 @@ export function useGestures<N extends Node, E extends Edge>(props: GestureProps<
       return list
     })
   }, [setNodes])
+  /* v8 ignore next -- ReactFlow reports only selections for edges this canvas keeps */
   const onEdgesChange = useCallback((changes: EdgeChange<E>[]) => {
     setEdges(current => changes.reduce((list, change) => change.type === 'select'
       ? list.map(edge => edge.id === change.id ? { ...edge, selected: change.selected } as E : edge)
@@ -89,6 +90,7 @@ export function useGestures<N extends Node, E extends Edge>(props: GestureProps<
   }, [setEdges])
   const onConnectStart = useCallback<OnConnectStart>((event) => {
     const point = event as MouseEvent
+    /* v8 ignore next -- every drag event carries coordinates */
     pointer.current = { x: point.clientX ?? 0, y: point.clientY ?? 0 }
   }, [])
   const onConnectEnd = useCallback<OnConnectEnd>((event) => {

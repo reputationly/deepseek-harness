@@ -2,6 +2,7 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { CanvasDocument, CanvasNode, CanvasNodeId, CanvasOperation, StoryboardSegment } from '@deepseek-ai/dsh-canvas/client'
+import { shotBadge } from './model/cards.ts'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { edgeLabel, edgeStyle } from './model/edges.ts'
 import type { ReadCanvasFile } from './face.ts'
@@ -20,6 +21,7 @@ export type CanvasFlowNode = Node<{
   node: CanvasNode
   members?: number
   segments?: readonly StoryboardSegment[]
+  segmentBadge?: string
 } & CanvasNodeFace>
 
 /** One drawn edge. */
@@ -31,6 +33,19 @@ export type CanvasFlowEdge = Edge
  * @param face - media reads and copy handed to every card.
  * @returns groups first, then content nodes, as the flow requires parents before children.
  */
+/** Segment badge of a video node, using the storyboard the view computed and the node's scene group. */
+function segmentBadgeOf(
+  document: CanvasDocument,
+  node: CanvasNode,
+  segments: Readonly<Record<string, readonly StoryboardSegment[]>>,
+): string | undefined {
+  const shot = node.gen?.shot
+  if (shot === undefined) return undefined
+  const board = document.nodes.find(candidate => candidate.id === shot.storyboard)
+  const group = document.nodes.find(candidate => candidate.id === node.group)
+  return shotBadge(node, board, group?.sceneOrigin?.scene, board === undefined ? [] : segments[board.id] ?? [])
+}
+
 export function flowNodes(
   document: CanvasDocument,
   face: CanvasNodeFace,
@@ -39,6 +54,7 @@ export function flowNodes(
   const groups = new Map(document.nodes.filter(node => node.type === 'group').map(node => [node.id, node]))
   return [...groups.values(), ...document.nodes.filter(node => node.type !== 'group')].map((node) => {
     const parent = node.group === undefined ? undefined : groups.get(node.group)
+    const badge = segmentBadgeOf(document, node, segments)
     return {
       id: node.id,
       // `group` is a built-in flow type with its own styling; the frame card draws groups instead.
@@ -50,6 +66,7 @@ export function flowNodes(
         node,
         ...node.type === 'group' ? { members: document.nodes.filter(child => child.group === node.id).length } : {},
         ...node.type === 'storyboard' && segments[node.id] !== undefined ? { segments: segments[node.id] } : {},
+        ...badge === undefined ? {} : { segmentBadge: badge },
         ...face,
       },
       ...parent === undefined ? {} : { parentId: parent.id },

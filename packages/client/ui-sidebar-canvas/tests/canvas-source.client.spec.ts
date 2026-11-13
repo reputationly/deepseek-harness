@@ -113,3 +113,21 @@ it('flags a conflict so the form keeps its draft', async () => {
   source.dismiss()
   expect(source.state.getSnapshot()).toMatchObject({ conflict: false, notice: undefined })
 })
+
+it('clears the notice after a successful edit', async () => {
+  const get = vi.fn(async () => ok(view('/project')))
+  const apply = vi.fn(async () => ok({ revision: 3, refs: {}, created: [], skipped: [{ reason: 'skipped edge' }] } as never))
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  await source.edit([{ op: 'move', node: 'n1', x: 1, y: 1 }])
+  expect(source.state.getSnapshot().notice).toBe('skipped edge')
+  source.dismiss()
+  expect(source.state.getSnapshot().notice).toBeUndefined()
+})
+
+it('edits before the first read with base revision zero', async () => {
+  const apply = vi.fn(async () => ok({ revision: 1, refs: {}, created: [], skipped: [] } as never))
+  const source = new CanvasSource({ get: vi.fn(async () => ok(view('/project'))), apply })
+  await source.edit([{ op: 'move', node: 'n1', x: 1, y: 1 }])
+  expect(apply).toHaveBeenCalledWith([{ op: 'move', node: 'n1', x: 1, y: 1 }], 0)
+})

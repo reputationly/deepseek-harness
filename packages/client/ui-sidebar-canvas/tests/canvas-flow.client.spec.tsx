@@ -71,7 +71,7 @@ it('toggles playback only when a media element is selected', async () => {
   expect(h.edit).not.toHaveBeenCalled()
 })
 
-it('drives zoom, fit, refresh, group, and remove from the toolbar', async () => {
+it('drives zoom, fit, refresh, and remove from the toolbar', async () => {
   const h = mount()
   await waitFor(() => { expect(screen.getByText('Brief')).toBeTruthy() })
   fireEvent.click(screen.getByRole('button', { name: 'zoomOut' }))
@@ -80,9 +80,6 @@ it('drives zoom, fit, refresh, group, and remove from the toolbar', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'refresh' }))
   expect(h.reload).toHaveBeenCalled()
   fireEvent.click(screen.getByText('Brief'))
-  fireEvent.click(screen.getByText('a.png'), { ctrlKey: true })
-  const group = screen.getByRole('button', { name: 'group' }) as HTMLButtonElement
-  if (!group.disabled) fireEvent.click(group)
   const remove = screen.getByRole('button', { name: 'remove' }) as HTMLButtonElement
   if (!remove.disabled) fireEvent.click(remove)
   expect(h.edit.mock.calls.length).toBeGreaterThan(0)
@@ -124,4 +121,52 @@ it('refits when the studio asks it to', async () => {
   await waitFor(() => { expect(screen.getByText('Brief')).toBeTruthy() })
   fireEvent(window, new Event('canvas:fit'))
   fireEvent.click(screen.getByRole('button', { name: 'fit' }))
+})
+
+it('passes host segments into a storyboard node', async () => {
+  const { flowNodes } = await import('../src/client/flow.ts')
+  const board = {
+    id: 'b' as never, type: 'storyboard' as const, title: 'b', x: 0, y: 0, width: 1, height: 1,
+    versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user' as const, shots: [] }], activeVersion: 'v1' as never,
+  }
+  const nodes = flowNodes({ version: 2, revision: 1, nextId: 2, edges: [], nodes: [board] },
+    { readFile: async () => ({ ok: false, message: 'no' }), t, edit: async () => {} }, { b: [{ shots: [] } as never] })
+  expect(nodes[0]?.data.segments).toHaveLength(1)
+})
+
+it('derives the segment badge of a video from its storyboard and scene group', async () => {
+  const { flowNodes } = await import('../src/client/flow.ts')
+  const doc2: CanvasDocument = {
+    version: 2, revision: 1, nextId: 5, edges: [],
+    nodes: [
+      { id: 'g' as never, type: 'group', title: '场1', x: 0, y: 0, width: 1, height: 1, sceneOrigin: { script: 's' as never, scene: 1 } },
+      { id: 'b' as never, type: 'storyboard', title: 'b', x: 0, y: 0, width: 1, height: 1, activeVersion: 'v1' as never,
+        versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [] }] },
+      { id: 'v' as never, type: 'video', title: 'v', x: 0, y: 0, width: 1, height: 1, group: 'g' as never,
+        activeVersion: undefined as never, versions: [], gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'b' as never, shots: ['s1' as never] } } },
+      { id: 'x' as never, type: 'video', title: 'x', x: 0, y: 0, width: 1, height: 1, activeVersion: undefined as never, versions: [] },
+    ],
+  }
+  const nodes = flowNodes(doc2, { readFile: async () => ({ ok: false, message: 'no' }), t, edit: async () => {} },
+    { b: [{ shots: ['s1' as never] } as never] })
+  expect(nodes.find(node => node.id === 'v')?.data.segmentBadge).toBe('场1·段1')
+  expect(nodes.find(node => node.id === 'x')?.data.segmentBadge).toBeUndefined()
+})
+
+it('leaves the badge empty when the storyboard or its segments are missing', async () => {
+  const { flowNodes } = await import('../src/client/flow.ts')
+  const doc3: CanvasDocument = {
+    version: 2, revision: 1, nextId: 4, edges: [],
+    nodes: [
+      { id: 'b' as never, type: 'storyboard', title: 'b', x: 0, y: 0, width: 1, height: 1, activeVersion: 'v1' as never,
+        versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [] }] },
+      { id: 'v1' as never, type: 'video', title: 'v1', x: 0, y: 0, width: 1, height: 1, activeVersion: undefined as never,
+        versions: [], gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'missing' as never, shots: ['s1' as never] } } },
+      { id: 'v2' as never, type: 'video', title: 'v2', x: 0, y: 0, width: 1, height: 1, activeVersion: undefined as never,
+        versions: [], gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'b' as never, shots: ['s1' as never] } } },
+    ],
+  }
+  const nodes = flowNodes(doc3, { readFile: async () => ({ ok: false, message: 'no' }), t, edit: async () => {} }, {})
+  expect(nodes.find(node => node.id === 'v1')?.data.segmentBadge).toBeUndefined()
+  expect(nodes.find(node => node.id === 'v2')?.data.segmentBadge).toBeUndefined()
 })

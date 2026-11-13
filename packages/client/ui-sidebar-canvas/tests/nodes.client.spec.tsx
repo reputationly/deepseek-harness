@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** Every node card renders its own content, version bar, and status layer. */
 import type { ReactNode } from 'react'
+import { createElement } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -328,4 +329,111 @@ it('stops decoding when the card unmounts mid-decode', async () => {
   cleanup()
   resolveBuffer({ length: 4096, getChannelData: () => new Float32Array(4096) })
   await new Promise(resolve => setTimeout(resolve, 20))
+})
+
+it('draws a group without scene or members and hides the version bar for a single version', () => {
+  mount(GroupNode, { node: node('group', { title: '组' }), members: 0 })
+  expect(screen.queryByText(/group.members/)).toBeNull()
+  cleanup()
+  mount(GroupNode, { node: node('group', { title: '组', sceneOrigin: { script: 's' as never, scene: 7 } }), members: 2 })
+  expect(screen.getByText('7')).toBeTruthy()
+  expect(screen.getByText(/group.members/)).toBeTruthy()
+  cleanup()
+  mount(ImageNode, { readFile: async () => ({ ok: false, message: 'no' }),
+    node: node('image', { versions: [{ id: 'v1' as never, path: '/a.png', createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never }) })
+  expect(screen.queryByRole('button', { name: /version.switch/ })).toBeNull()
+})
+
+it('draws a script without scene headings and a timeline without exports', () => {
+  mount(ScriptNode, { node: node('script', { versions: [{ id: 'v1' as never, text: '只是一段文字', createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never }) })
+  expect(screen.getAllByText('只是一段文字').length).toBeGreaterThan(0)
+  cleanup()
+  mount(TimelineNode, { node: node('timeline', { timeline: { file: 'x.json', durationMs: 1500, exports: [] } }) })
+  expect(screen.getByText(/timeline.clips/)).toBeTruthy()
+})
+
+it('shows queued and non-retryable failed status without a retry button', () => {
+  mount(ImageNode, { readFile: async () => ({ ok: false, message: 'no' }),
+    node: node('image', { versions: [], status: { state: 'queued' } as never }) })
+  expect(screen.getAllByRole('status').map(node => node.textContent).join('')).toContain('status.queued')
+  cleanup()
+  mount(ImageNode, { readFile: async () => ({ ok: false, message: 'no' }),
+    node: node('image', { versions: [], gen: { kind: 'image', prompt: 'p', params: {} }, status: { state: 'failed', error: 'x', retryable: false } as never }) })
+  expect(screen.queryByRole('button', { name: 'status.retry' })).toBeNull()
+})
+
+it('draws an audio card without a spoken line', () => {
+  mount(AudioNode, { readFile: async () => ({ ok: false, message: 'no' }),
+    node: node('audio', { versions: [], gen: { kind: 'music', prompt: 'p', params: {} } }) })
+  expect(screen.queryByText('林夏：欢迎光临')).toBeNull()
+})
+
+it('reads a missing active version and an unknown media extension', async () => {
+  const { shownVersion, mediaType } = await import('../src/client/nodes/shared.tsx')
+  expect(shownVersion(node('image'))).toEqual({})
+  expect(mediaType('clip.bin')).toBe('')
+  expect(mediaType('clip.MP4')).toBe('video/mp4')
+  mount(ImageNode, { selected: true, readFile: async () => ({ ok: false, message: 'no' }), node: node('image') })
+})
+
+it('marks a selected group card', () => {
+  const props = { data: { node: node('group', { title: '组' }), readFile: async () => ({ ok: false, message: 'no' }), t, edit: vi.fn(), members: 1 }, selected: true }
+  render(<ReactFlowProvider>{createElement(GroupNode as never, props)}</ReactFlowProvider>)
+  expect((globalThis.document.querySelector('[data-canvas-group]') as HTMLElement).className).toMatch(/_selected_/)
+})
+
+it('survives an undecodable audio file and a video without a segment badge', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  class Undecodable {
+    decodeAudioData = vi.fn(async () => { throw new Error('bad bytes') })
+    close = vi.fn(async () => {})
+  }
+  Object.assign(globalThis, { AudioContext: Undecodable })
+  mount(AudioNode, { readFile: readyFile, node: node('audio', {
+    versions: [{ id: 'v1' as never, path: '/a.mp3', createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never,
+  }) })
+  await waitFor(() => { expect(globalThis.document.querySelector('audio')).toBeTruthy() })
+  cleanup()
+  mount(VideoNode, { readFile: readyFile, node: node('video', {
+    versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never,
+  }) })
+  await waitFor(() => { expect(globalThis.document.querySelector('video')).toBeTruthy() })
+  expect(screen.queryByText(/badge.segment/)).toBeNull()
+})
+
+it('draws a timeline without a timeline body and a video with a segment badge', async () => {
+  mount(TimelineNode, { node: node('timeline') })
+  expect(screen.getByText(/timeline.clips/)).toBeTruthy()
+  cleanup()
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  mount(VideoNode, { readFile: readyFile, node: node('video', {
+    versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never,
+    gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'b' as never, shots: ['s1' as never] } },
+  }) })
+  await waitFor(() => { expect(globalThis.document.querySelector('video')).toBeTruthy() })
+})
+
+it('ignores a decode rejection after unmount', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  let rejectDecode: (error: Error) => void = () => {}
+  class SlowFail {
+    decodeAudioData = vi.fn(() => new Promise<never>((_resolve, reject) => { rejectDecode = reject }))
+    close = vi.fn(async () => {})
+  }
+  Object.assign(globalThis, { AudioContext: SlowFail })
+  mount(AudioNode, { readFile: readyFile, node: node('audio', {
+    versions: [{ id: 'v1' as never, path: '/a.mp3', createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never,
+  }) })
+  await waitFor(() => { expect(globalThis.document.querySelector('audio')).toBeTruthy() })
+  cleanup()
+  rejectDecode(new Error('bad'))
+  await new Promise(resolve => setTimeout(resolve, 10))
+})
+
+it('shows a host-computed segment badge on the video card', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
+  mount(VideoNode, { readFile: readyFile, segmentBadge: '场1·段1', node: node('video', {
+    versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never,
+  }) })
+  await waitFor(() => { expect(screen.getByText('场1·段1')).toBeTruthy() })
 })

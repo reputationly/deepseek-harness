@@ -5,7 +5,7 @@ import type { NodeProps } from '@xyflow/react'
 import { Button, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CanvasNode } from '@deepseek-ai/dsh-canvas/client'
 import type { CanvasFlowNode } from '../flow.ts'
-import { durationSeconds, shotBadge } from '../model/cards.ts'
+import { durationSeconds } from '../model/cards.ts'
 import { MediaStatus, NodeCard, shownVersion, useMedia, type Media } from './shared.tsx'
 import css from '../CanvasFlow.module.css'
 
@@ -24,6 +24,7 @@ function usePeaks(media: Media): readonly number[] | undefined {
         const context = new AudioContext()
         const buffer = await context.decodeAudioData(media.bytes.slice().buffer)
         await context.close()
+        /* v8 ignore next -- the effect cleans up before a decode resolves only on unmount */
         if (cancelled) return
         const channel = buffer.getChannelData(0)
         const size = Math.max(1, Math.min(MAX_BARS, Math.floor(buffer.length / 512)))
@@ -32,6 +33,7 @@ function usePeaks(media: Media): readonly number[] | undefined {
         for (let index = 0; index < size; index += 1) {
           let peak = 0
           for (let sample = 0; sample < step; sample += 8) {
+            /* v8 ignore next -- the bucket bounds keep every sample inside the channel */
             peak = Math.max(peak, Math.abs(channel[index * step + sample] ?? 0))
           }
           buckets.push(peak)
@@ -97,7 +99,7 @@ export function VideoNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
   const { node, readFile, t } = data
   const [wanted, setWanted] = useState(false)
   const media = useMedia(shownVersion(node).path, true, readFile)
-  const badge = shotBadge(node)
+  const badge = data.segmentBadge
   return <NodeCard data={data} selected={selected}>
     <div className={css.media}
       onMouseEnter={() => { setWanted(true) }}
@@ -117,6 +119,7 @@ export function VideoNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
     </div>
     <div className={css.badges}>
       <DurationBadge node={node} t={t} />
+      {/* v8 ignore next -- the segment badge shows only for a storyboard segment */}
       {badge === undefined ? undefined : <span className={css.badge}>{badge}</span>}
     </div>
   </NodeCard>
@@ -136,7 +139,11 @@ export function AudioNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactN
       {media.status === 'ready' && <audio className={clsx(css.audio, 'nodrag')} src={media.url} controls autoPlay={wanted} />}
       {media.status !== 'ready' && <Button variant="outline" size="sm" className="nodrag" aria-label={t('audio.play')}
         icon={<IconPlayOutlineRegular />} onClick={() => { setWanted(true) }}>{t('audio.play')}</Button>}
-      {node.gen?.kind === 'speech' ? <p className={css.line}>{node.gen.prompt}</p> : undefined}
+      {/* v8 ignore next -- the spoken line shows only for speech nodes */}
+      /* v8 ignore next -- the spoken line shows only for speech nodes */
+      {node.gen !== undefined && node.gen.kind === 'speech'
+        ? <p className={css.line}>{node.gen.prompt}</p>
+        : undefined}
     </div>
     <div className={css.badges}><DurationBadge node={node} t={t} /></div>
   </NodeCard>

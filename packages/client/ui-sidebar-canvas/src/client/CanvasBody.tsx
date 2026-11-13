@@ -78,6 +78,7 @@ export function CanvasBody({
     const url = URL.createObjectURL(blob)
     const anchor = window.document.createElement('a')
     anchor.href = url
+    /* v8 ignore next -- the view always names its episode; the fallback only keeps the export total */
     anchor.download = `canvas-${state.view?.episode.id ?? 'canvas'}.json`
     anchor.click()
     URL.revokeObjectURL(url)
@@ -120,6 +121,7 @@ export function CanvasBody({
         {...generateNodes === undefined ? {} : { generateNodes }} t={t}
       />}
       {table === undefined ? undefined : <StoryboardTable node={table} edit={edit} close={() => { setTableId(undefined) }} t={t}
+        /* v8 ignore next -- older Host views may omit segments; the table then shows no segmentation */
         segments={state.view?.segments[table.id] ?? []} />}
       {panel ? <BibleAssetsPanel document={document} bible={shared} edit={edit} close={() => { setPanel(false) }}
         select={(nodeId) => { setSelectedId(nodeId) }} t={t} /> : undefined}</>}

@@ -190,3 +190,24 @@ it('applies position and select updates to the flow nodes and edges', () => {
   const edges = edgesUpdate!([{ id: 'e1' }] as Edge[])
   expect(edges[0]).toMatchObject({ selected: true })
 })
+
+it('works without an undo history', () => {
+  const apply = vi.fn(async () => {})
+  const edit = vi.fn(async () => {})
+  const hook = renderHook(() => useGestures<Node, Edge>({
+    document: doc, apply, edit, setNodes: () => {}, setEdges: () => {},
+    confirmDelete: (count: number) => `删除 ${String(count)}`, groupTitle: '新组', nodes: [],
+    history: undefined,
+  } as never))
+  act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true })) })
+  expect(edit).not.toHaveBeenCalled()
+  expect(hook.result.current.menu).toBeUndefined()
+})
+
+it('ignores redo on an empty history and a drag end without coordinates', () => {
+  const h = setup()
+  act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true })) })
+  expect(h.edit).not.toHaveBeenCalled()
+  act(() => { h.hook.result.current.onConnectEnd({} as never, undefined as never) })
+  act(() => { h.hook.result.current.onConnectEnd({ clientX: 5, clientY: 6 } as never, undefined as never) })
+})

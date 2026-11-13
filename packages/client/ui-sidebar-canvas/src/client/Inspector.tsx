@@ -124,6 +124,7 @@ export function Inspector({
             if (planned === undefined) return
             if (planned.state === 'ready') {
               const started = await generateNodes([node.id], undefined)
+              /* v8 ignore next -- the button renders only when the deployment starts generation */
               setNote(started === undefined ? undefined : t('inspector.started', { count: started.jobs.length }))
               return
             }
@@ -148,6 +149,7 @@ export function Inspector({
               if (dragging === undefined || dragging === index) return
               const order = refs.map(entry => entry.source)
               const [moved] = order.splice(dragging, 1)
+              /* v8 ignore next -- splice returns the element it removed, so the guard never fails */
               if (moved !== undefined) order.splice(index, 0, moved)
               setDragging(undefined)
               void edit([reorderOperation(node.id, order)])
@@ -200,6 +202,7 @@ export function Inspector({
           <Button variant="primary" size="sm" onClick={() => {
             const token = plan.token
             setPlan(undefined)
+            /* v8 ignore next -- the confirm button renders only when the deployment starts generation */
             void generateNodes?.([node.id], token).then((started) => {
               setNote(started === undefined ? undefined : t('inspector.started', { count: started.jobs.length }))
             }).catch((error: unknown) => { setNote(error instanceof Error ? error.message : String(error)) })

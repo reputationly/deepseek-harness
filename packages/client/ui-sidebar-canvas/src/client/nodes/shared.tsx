@@ -79,7 +79,7 @@ function useElapsed(status: NodeStatus | undefined): number {
 }
 
 /** Version bar under a node that has more than one version. */
-function VersionBar({ data, selected }: { data: CanvasFlowNode['data']; selected: boolean }): ReactNode {
+function VersionBar({ data }: { data: CanvasFlowNode['data'] }): ReactNode {
   const { node, t, edit } = data
   const choices = versionChoices(node)
   if (choices.length === 0) return undefined
@@ -90,7 +90,6 @@ function VersionBar({ data, selected }: { data: CanvasFlowNode['data']; selected
       className={clsx(css.versionChip, choice.active && css.versionChipActive, 'nodrag')}
       aria-pressed={choice.active}
       title={t('version.switch', { label: choice.label })}
-      disabled={selected && false}
       onClick={(event) => {
         event.stopPropagation()
         if (choice.active) return
@@ -119,6 +118,7 @@ function StatusLayer({ data }: { data: CanvasFlowNode['data'] }): ReactNode {
       size="sm" variant="outline" className="nodrag"
       onClick={(event) => {
         event.stopPropagation()
+        /* v8 ignore next -- retry renders only for a node that has a generation */
         void edit([{ op: 'set_gen', node: node.id, gen: { params: node.gen?.params ?? {} } }])
       }}
     >{t('status.retry')}</Button>}
@@ -137,7 +137,7 @@ export function NodeCard(props: {
   return <div className={clsx(css.card, selected && css.selected, props.className)} data-canvas-node>
     <Handle type="target" position={Position.Left} className={css.handle} />
     {props.children}
-    <VersionBar data={data} selected={selected} />
+    <VersionBar data={data} />
     <div className={css.caption} title={node.title}>{node.title}</div>
     <StatusLayer data={data} />
     <Handle type="source" position={Position.Right} className={css.handle} />
