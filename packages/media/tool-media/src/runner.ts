@@ -253,6 +253,7 @@ export async function startPlan(
 
   const edits: CanvasOperation[] = [
     ...plan.create,
+    ...(plan.edits ?? []),
     ...plan.stale.map(node => ({ op: 'set_stale' as const, node, stale: true })),
   ]
   const refs = edits.length === 0 ? {} : (await editLatest(services, edits)).refs
@@ -294,14 +295,19 @@ export async function startPlan(
     /* v8 ignore next -- the plan created or found this node in the same run */
     if (current === undefined) throw new Error(`node ${String(node)} disappeared before it could generate`)
     const inputs = collectInputs(document, current, bible)
-    const tail = entry.tailChain === undefined
+    const plannedTail = entry.tailChain === undefined
       ? undefined
       : document.nodes.find(candidate => candidate.id === entry.tailChain?.node)
         ?.versions?.find(version => version.id === entry.tailChain?.version)
-    let firstFramePath = entry.tailChain === undefined ? inputs.firstFrame?.path : tail?.path
-    if (entry.chain === true && firstFramePath === undefined && previousTail !== undefined) {
-      await editLatest(services, [{ op: 'connect', from: previousTail.node, to: node, kind: 'reference', role: 'first_frame' }])
-      firstFramePath = previousTail.path
+    const chainedTail = entry.chain !== true
+      ? undefined
+      : previousTail ?? (entry.tailChain === undefined || plannedTail?.path === undefined
+        ? undefined
+        : { node: entry.tailChain.node, path: plannedTail.path })
+    const firstFramePath = chainedTail?.path ?? inputs.firstFrame?.path
+    if (chainedTail !== undefined && !document.edges.some(edge => edge.source === chainedTail.node
+      && edge.target === node && edge.kind === 'reference' && edge.role === 'first_frame')) {
+      await editLatest(services, [{ op: 'connect', from: chainedTail.node, to: node, kind: 'reference', role: 'first_frame' }])
     }
     const missingRefs = inputs.refs.filter(ref => !document.edges.some(edge => edge.source === ref.node
       && edge.target === node && edge.role === 'ref'))
@@ -346,6 +352,7 @@ export async function startPlan(
               createdAt: services.now(),
             }),
           },
+          { op: 'set_input_changed', node, changed: false },
           { op: 'set_status', node, status: null },
         ])
         if (current.type !== 'video') {

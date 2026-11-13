@@ -204,6 +204,11 @@ export function Inspector({
             setPlan(undefined)
             /* v8 ignore next -- the confirm button renders only when the deployment starts generation */
             void generateNodes?.([node.id], token).then((started) => {
+              if (started?.state === 'needs_confirmation') {
+                setNote(t('budget.changed'))
+                setPlan(started)
+                return
+              }
               setNote(started === undefined ? undefined : t('inspector.started', { count: started.jobs.length }))
             }).catch((error: unknown) => { setNote(error instanceof Error ? error.message : String(error)) })
           }}>{t('budget.confirm')}</Button>

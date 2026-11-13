@@ -52,6 +52,16 @@ it('draws a video card with its duration and segment badge', () => {
   expect(screen.getByText(/badge.duration/)).toBeTruthy()
 })
 
+it('shows updated-input and changed-storyboard badges on media cards', () => {
+  const types = [[ImageNode, 'image'], [VideoNode, 'video'], [AudioNode, 'audio']] as const
+  for (const [Card, type] of types) {
+    mount(Card, { node: node(type, { inputChanged: true, stale: true }) })
+    expect(screen.getByText('badge.inputChanged')).toBeTruthy()
+    expect(screen.getByText('badge.stale')).toBeTruthy()
+    cleanup()
+  }
+})
+
 it('draws an audio card with the line a voice node speaks', () => {
   mount(AudioNode, {
     node: node('audio', {
@@ -61,6 +71,7 @@ it('draws an audio card with the line a voice node speaks', () => {
     }),
   })
   expect(screen.getByText('欢迎光临')).toBeTruthy()
+  expect(document.body.textContent).not.toContain('v8 ignore next')
 })
 
 it('draws text, script, storyboard, and timeline content', () => {
@@ -73,6 +84,12 @@ it('draws text, script, storyboard, and timeline content', () => {
   cleanup()
   mount(StoryboardNode, { node: node('storyboard', { versions: [{ id: 'v1' as never, shots: [shot('s1')], createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never }) })
   expect(screen.getByRole('table').textContent).toContain('s1')
+  cleanup()
+  mount(StoryboardNode, {
+    node: node('storyboard', { versions: [{ id: 'v1' as never, shots: [shot('s1')], createdAt: 'now', origin: 'user' }], activeVersion: 'v1' as never }),
+    segments: [{ shots: ['s1'] }, { shots: ['s1'] }],
+  })
+  expect(screen.getByText(/2 段 · 2 次生成/)).toBeTruthy()
   cleanup()
   mount(TimelineNode, { node: node('timeline', { timeline: { file: 't.json', durationMs: 12_000, exports: [] } }) })
   expect(screen.getByText(/timeline.clips/)).toBeTruthy()

@@ -141,7 +141,7 @@ const boardDoc: CanvasDocument = {
     }],
   }],
 }
-const boardView = { ...view, document: boardDoc, segments: { b1: [] } }
+const boardView = { ...view, document: boardDoc, segments: { b1: [{ shots: ['s1'] }, { shots: ['s2'] }] } }
 
 it('exports the canvas as a JSON download', () => {
   const create = vi.fn(() => 'blob:canvas')
@@ -156,6 +156,7 @@ it('exports the canvas as a JSON download', () => {
 it('opens the storyboard table for the selected node and hides the canvas actions', async () => {
   mount({ status: 'ready', view: boardView as never })
   const flow = drawn.mock.calls[0]![0] as CanvasFlowProps & { onSelect: (id: string) => void }
+  expect(flow.segments).toEqual(boardView.segments)
   act(() => { flow.onSelect('b1') })
   await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.openTable' })).toBeTruthy() })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.openTable' }))

@@ -122,6 +122,35 @@ it('asks for the budget and starts generation once the user confirms', async () 
   expect(screen.getByRole('status').textContent).toContain('inspector.started')
 })
 
+it('reopens confirmation with the revised budget when the confirmed plan is stale', async () => {
+  const planNodes = vi.fn(async () => ({
+    state: 'needs_confirmation' as const, token: 'tok-old',
+    lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 1, seconds: 5 }],
+    totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+  }))
+  const generateNodes = vi.fn()
+    .mockResolvedValueOnce({
+      state: 'needs_confirmation' as const, token: 'tok-new',
+      lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 3, seconds: 18 }],
+      totals: { videoCalls: 3, videoSeconds: 18, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+    })
+    .mockResolvedValueOnce({
+      state: 'started' as const, lines: [], totals: { videoCalls: 3, videoSeconds: 18, imageCalls: 0, speechLines: 0, musicCalls: 0 },
+      jobs: [{ node: 'v1', jobId: 'j1' }],
+    })
+  mount({ planNodes, generateNodes })
+  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
+  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(screen.getByText('budget.changed')).toBeTruthy() })
+  expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy()
+  expect(screen.getByText(/"calls":3/)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
+  await waitFor(() => { expect(generateNodes).toHaveBeenNthCalledWith(2, ['v1'], 'tok-new') })
+  expect(screen.getByRole('status').textContent).toContain('inspector.started')
+})
+
 it('starts a plan that needs no confirmation directly', async () => {
   const planNodes = vi.fn(async () => ({
     state: 'ready' as const, lines: [], totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],

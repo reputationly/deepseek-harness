@@ -78,8 +78,7 @@ export function CanvasBody({
     const url = URL.createObjectURL(blob)
     const anchor = window.document.createElement('a')
     anchor.href = url
-    /* v8 ignore next -- the view always names its episode; the fallback only keeps the export total */
-    anchor.download = `canvas-${state.view?.episode.id ?? 'canvas'}.json`
+    anchor.download = `canvas-${state.view?.episode?.id ?? 'canvas'}.json`
     anchor.click()
     URL.revokeObjectURL(url)
   }
@@ -112,7 +111,7 @@ export function CanvasBody({
     </div>}
     {document.nodes.length === 0
       ? <div className={css.center}><p className={css.message}>{t('empty')}</p></div>
-      : <><CanvasFlow document={document} readFile={readFile} t={t} edit={edit} reload={load}
+      : <><CanvasFlow document={document} segments={state.view.segments} readFile={readFile} t={t} edit={edit} reload={load}
         onSelect={setSelectedId} history={history} />
       {selected === undefined ? undefined : <Inspector
         document={document} node={selected} placement={inspectorPlacement(width)} capabilities={capabilities}

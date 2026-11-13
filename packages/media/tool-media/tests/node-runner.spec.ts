@@ -190,6 +190,18 @@ describe('planNodes', () => {
     expect(plan.stale).toEqual(['v2'])
   })
 
+  it('plans a prompt update for a reused segment without mutating the canvas', () => {
+    const board = boardNode('n2', [shot('s1', { shotSize: 'medium' })])
+    const oldPrompt = '0–3s [close] 画面 s1。动作：动作。运镜：固定。避免：水印'
+    const original = videoNode('v1', 'n2', ['s1'])
+    if (original.gen === undefined) throw new Error('video fixture has no generation spec')
+    const existing = { ...original, gen: { ...original.gen, prompt: oldPrompt } }
+    const plan = planNodes(documentOf([board, existing]), bible, ['n2'], limits)
+    const prompt = segmentPrompt([shot('s1')], bible)
+    expect(plan.edits).toEqual([{ op: 'set_gen', node: 'v1', gen: { prompt } }])
+    expect(existing.gen?.prompt).toBe(oldPrompt)
+  })
+
   it('blocks a later segment until the segment before it has a tail frame', () => {
     const board = node('n2', 'storyboard', {
       versions: [{

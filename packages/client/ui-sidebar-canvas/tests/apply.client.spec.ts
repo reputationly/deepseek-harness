@@ -110,7 +110,7 @@ it('gives each Session one stable face that reads, edits, and follows Host chang
     await second.load()
 
     await first.edit([{ op: 'remove', node: 'n1' }])
-    expect(h.canvas.apply).toHaveBeenLastCalledWith('s1', [{ op: 'remove', node: 'n1' }], 0)
+    expect(h.canvas.apply).toHaveBeenLastCalledWith('s1', [{ op: 'remove', node: 'n1' }], 0, undefined)
 
     h.canvas.get.mockClear()
     h.emitChange('/projects/s2')
@@ -162,6 +162,7 @@ it('reads the bible and drives media planning through the optional namespace', a
     await expect(face.bible()).resolves.toMatchObject({ revision: 0 })
     await expect(face.planNodes(['n1'])).resolves.toMatchObject({ state: 'ready' })
     await expect(face.generateNodes(['n1'], 'tok')).resolves.toMatchObject({ state: 'ready' })
+    expect(h.canvas.bible).toHaveBeenCalledWith('s1')
     expect(h.media.planNodes).toHaveBeenCalledWith('s1', ['n1'])
     expect(h.media.generateNodes).toHaveBeenCalledWith('s1', ['n1'], 'tok')
   } finally {
@@ -211,6 +212,21 @@ it('returns capabilities from the successful namespace', async () => {
     h.media.capabilities.mockResolvedValueOnce({ ok: true, value: [{ id: 'c', model: 'm', operation: 'generate_image', params: [] }] } as never)
     const face = h.entries[0]!.inject!('s1' as SessionId) as { capabilities: (operation: string) => Promise<unknown> }
     await expect(face.capabilities('generate_image')).resolves.toHaveLength(1)
+    expect(h.media.capabilities).toHaveBeenCalledWith('s1', 'generate_image')
+  } finally {
+    await h.dispose()
+  }
+})
+
+it('passes the Host apply arity and reports a rejected edit through the canvas notice', async () => {
+  const h = await mountPlugin()
+  try {
+    const face = h.entries[0]!.inject!('s1' as SessionId) as CanvasInjected
+    await face.load()
+    h.canvas.apply.mockRejectedValueOnce(new Error('apply boom'))
+    await face.edit([{ op: 'remove', node: 'n1' }])
+    expect(h.canvas.apply).toHaveBeenCalledWith('s1', [{ op: 'remove', node: 'n1' }], 0, undefined)
+    expect(face.hooks.canvas.getSnapshot().notice).toBe('apply boom')
   } finally {
     await h.dispose()
   }

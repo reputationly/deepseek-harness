@@ -59,7 +59,14 @@ export class CanvasSource {
   edit = async (operations: readonly CanvasOperation[]): Promise<void> => {
     if (operations.length === 0) return
     const baseRevision = this.state.getSnapshot().view?.document.revision ?? 0
-    const result = await this.remote.apply([...operations], baseRevision)
+    let result: RemoteResult<CanvasEditResult>
+    try {
+      result = await this.remote.apply([...operations], baseRevision)
+    } catch (error: unknown) {
+      this.state.set({ ...this.state.getSnapshot(), notice: error instanceof Error ? error.message : String(error), conflict: false })
+      await this.load()
+      return
+    }
     const notice = result.ok ? result.value.skipped[0]?.reason : result.error.message
     const conflict = !result.ok && result.error.code === 'canvas/conflict'
     this.state.set({ ...this.state.getSnapshot(), notice, conflict })

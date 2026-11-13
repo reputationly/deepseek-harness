@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { CanvasConflictError, type Bible, type CanvasDocument, type CanvasEditResult, type CanvasNode, type CanvasOperation, type Shot } from '@deepseek-ai/dsh-canvas'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import { CanvasConflictError, type Bible, type CanvasDocument, type CanvasEditResult, type CanvasNode, type CanvasNodeId, type CanvasOperation, type Shot, type ShotId } from '@deepseek-ai/dsh-canvas'
 import { EMPTY_CANVAS } from '@deepseek-ai/dsh-canvas/src/document.ts'
 import { resolveConfig } from '@deepseek-ai/dsh-canvas/src/config.ts'
 import { applyOperations } from '@deepseek-ai/dsh-canvas/src/operations.ts'
@@ -121,6 +122,53 @@ describe('runPlan', () => {
     }
     const second = videos.find(video => video.gen?.shot?.shots.length === 5) as CanvasNode
     expect(document.edges.some(edge => edge.target === second.id && edge.role === 'first_frame')).toBe(true)
+  })
+
+  it('confirms a reused segment prompt update before applying it and generates with the new prompt', async () => {
+    const close: Shot = { ...shot('s1'), shotSize: 'close' }
+    const storyboardId = brandString<CanvasNodeId>('n1')
+    const shotId = brandString<ShotId>('s1')
+    await edit([
+      {
+        op: 'add', type: 'storyboard', title: '场1 分镜', gen: { kind: 'video', prompt: '', params: {} }, shots: [close],
+      },
+      {
+        op: 'add', type: 'video', title: '场1 · 段1',
+        gen: {
+          kind: 'video', prompt: '0–3s [close] 画面 s1。动作：动作。运镜：固定。避免：',
+          params: { duration: 3 }, shot: { storyboard: storyboardId, shots: [shotId] },
+        },
+      },
+    ])
+    const oldPrompt = (document.nodes.find(node => node.id === 'n2') as CanvasNode).gen?.prompt
+    const calls: string[] = []
+    const base = services()
+    const strict = services({
+      confirmLimits: { ...confirmLimits, confirmVideoCalls: 1 },
+      generate: {
+        ...base.generate,
+        video: async (call) => {
+          calls.push(call.prompt)
+          return { path: join(directory, 'updated.mp4'), model: 'video-model' }
+        },
+      },
+    })
+
+    const initial = await startPlan(strict, ['n1'], undefined)
+    if (initial.status !== 'needs_confirmation') throw new Error('expected initial confirmation')
+    await edit([{ op: 'update_shot', node: 'n1', shot: 's1', patch: { shotSize: 'medium' } }])
+    const outdated = await startPlan(strict, ['n1'], initial.budget.token)
+    if (outdated.status !== 'needs_confirmation') throw new Error('expected updated confirmation')
+    expect(outdated.budget.token).not.toBe(initial.budget.token)
+    expect((document.nodes.find(node => node.id === 'n2') as CanvasNode).gen?.prompt).toBe(oldPrompt)
+
+    const started = await startPlan(strict, ['n1'], outdated.budget.token)
+    if (started.status !== 'started') throw new Error('expected generation to start')
+    await started.settle
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toContain('[medium]')
+    expect(calls[0]).not.toContain('[close]')
+    expect((document.nodes.find(node => node.id === 'n2') as CanvasNode).gen?.prompt).toBe(calls[0])
   })
 
   it('marks a node failed with a retryable status and keeps its earlier version', async () => {
@@ -410,7 +458,7 @@ describe('runPlan', () => {
 })
 
 describe('segment regeneration', () => {
-  it('updates the tail version and marks the next segment input-changed', async () => {
+  it('regenerates both segments from the latest tail, reconnects the frame, and clears input changes', async () => {
     const directory = '/tmp/media-runner'
     const limitsLocal = {
       maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
@@ -423,6 +471,8 @@ describe('segment regeneration', () => {
     let document: CanvasDocument = EMPTY_CANVAS
     let revision = 0
     let jobs = 0
+    let videoNumber = 0
+    const videoCalls: { readonly node: string; readonly firstFramePath: string | undefined }[] = []
     const edit = (operations: readonly CanvasOperation[], origin: 'user' | 'agent' = 'user'): CanvasEditResult => {
       const outcome = applyOperations(document, operations, { limits: canvasLimits, origin, now: () => '2026-11-12T00:00:00.000Z' })
       document = outcome.document
@@ -447,7 +497,11 @@ describe('segment regeneration', () => {
       concurrency: 1,
       generate: {
         image: async () => ({ path: `${directory}/tail.png`, model: 'image-model' }),
-        video: async () => ({ path: `${directory}/video.mp4`, model: 'video-model' }),
+        video: async (call) => {
+          videoNumber += 1
+          videoCalls.push({ node: String(call.node.id), firstFramePath: call.firstFramePath })
+          return { path: `${directory}/video-${String(videoNumber)}.mp4`, model: 'video-model' }
+        },
         speech: async () => ({ path: `${directory}/speech.mp3`, model: 'speech-model' }),
         music: async () => ({ path: `${directory}/music.mp3`, model: 'music-model' }),
       },
@@ -460,16 +514,28 @@ describe('segment regeneration', () => {
         live: () => [],
       },
       probe: async () => ({ durationMs: 3000, width: 720, height: 1280 }),
-      tailFrame: async () => `${directory}/tail.png`,
+      tailFrame: async path => `${path}.tail.png`,
       now: () => '2026-11-12T00:00:00.000Z',
     }
     expect((await runPlan(services, ['n1'], undefined)).status).toBe('done')
     const first = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 1) as CanvasNode
     const second = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 5) as CanvasNode
     expect(first.tailOf?.version).toBe('v1')
-    expect((await runPlan(services, [String(first.id)], undefined)).status).toBe('done')
+    expect(videoCalls[1]?.firstFramePath).toBe(`${directory}/video-1.mp4.tail.png`)
+    const tailNode = first.tailOf?.node
+    if (tailNode === undefined) throw new Error('expected the first segment tail')
+    edit([
+      { op: 'set_input_changed', node: first.id, changed: true },
+      { op: 'set_input_changed', node: second.id, changed: true },
+      { op: 'disconnect', from: tailNode, to: second.id, role: 'first_frame' },
+    ])
+    expect((await runPlan(services, ['n1'], undefined)).status).toBe('done')
     const refreshed = document.nodes.find(node => node.id === first.id) as CanvasNode
     expect(refreshed.tailOf?.version).toBe('v2')
-    expect((document.nodes.find(node => node.id === second.id) as CanvasNode).inputChanged).toBe(true)
+    expect(videoCalls[3]?.firstFramePath).toBe(`${directory}/video-3.mp4.tail.png`)
+    expect(document.edges.some(edge => edge.source === tailNode && edge.target === second.id
+      && edge.kind === 'reference' && edge.role === 'first_frame')).toBe(true)
+    expect(refreshed.inputChanged).toBeUndefined()
+    expect((document.nodes.find(node => node.id === second.id) as CanvasNode).inputChanged).toBeUndefined()
   })
 })

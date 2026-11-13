@@ -43,6 +43,8 @@ export interface GenerationPlan {
   readonly nodes: readonly PlannedNode[]
   /** Canvas operations that create the nodes the plan needs, applied before generation. */
   readonly create: readonly CanvasOperation[]
+  /** Canvas operations that update reused nodes, applied after the budget is confirmed. */
+  readonly edits?: readonly CanvasOperation[]
   /** Video nodes whose shots no longer exist in their storyboard. */
   readonly stale: readonly CanvasNodeId[]
   /** Storyboard segments this plan turns into video nodes. */
