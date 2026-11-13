@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CatalogSource, capabilitiesFor, catalogURL, keyDigest } from '../src/catalog.ts'
+import { CatalogSource, capabilitiesFor, catalogURL, keyDigest, parseCatalog } from '../src/catalog.ts'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -59,4 +59,41 @@ describe('capability catalog', () => {
     expect((await offline.load('sk-one')).source).toBe('cache')
     await expect(offline.load('sk-two')).rejects.toThrow(/catalog unavailable/u)
   })
+})
+
+describe('catalog parsing and mirrors', () => {
+  it('rejects malformed bodies and keeps a non-string version empty', () => {
+    expect(parseCatalog(null)).toBeUndefined()
+    expect(parseCatalog({})).toBeUndefined()
+    expect(parseCatalog({ version: 7, capabilities: [] })).toEqual({ version: '', capabilities: [] })
+  })
+
+  it('reports an unusable live body and a thrown non-Error as unavailable', async () => {
+    const { catalog } = source(vi.fn<typeof fetch>(async () => json({ version: 'v1' })))
+    await expect(catalog.load('sk')).rejects.toThrow('response has no capability list')
+    const failing = source(vi.fn<typeof fetch>(async () => { throw 'offline' }))
+    await expect(failing.catalog.load('sk')).rejects.toThrow('capability catalog unavailable: offline')
+  })
+
+  it('ignores a corrupt or foreign mirror file', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-media-catalog-bad-'))
+    roots.push(root)
+    const cacheFile = join(root, 'cache.json')
+    writeFileSync(cacheFile, 'not json')
+    const bad = new CatalogSource({ baseURL: 'https://gateway.example/v1', cacheFile, fetch: vi.fn<typeof fetch>(async () => { throw new Error('offline') }) })
+    await expect(bad.load('sk')).rejects.toThrow('unavailable')
+    writeFileSync(cacheFile, JSON.stringify({ entries: 3 }))
+    const foreign = new CatalogSource({ baseURL: 'https://gateway.example/v1', cacheFile, fetch: vi.fn<typeof fetch>(async () => { throw new Error('offline') }) })
+    await expect(foreign.load('sk')).rejects.toThrow('unavailable')
+  })
+})
+
+it('drops a mirror entry that no longer parses', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tool-media-catalog-entry-'))
+  roots.push(root)
+  const cacheFile = join(root, 'cache.json')
+  const digest = keyDigest('sk')
+  writeFileSync(cacheFile, JSON.stringify({ version: 'v1', entries: { [digest]: { version: 1 } } }))
+  const catalog = new CatalogSource({ baseURL: 'https://gateway.example/v1', cacheFile, fetch: vi.fn<typeof fetch>(async () => { throw new Error('offline') }) })
+  await expect(catalog.load('sk')).rejects.toThrow('unavailable')
 })
