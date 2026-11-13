@@ -9,6 +9,7 @@ import {
   type TableField,
 } from './model/table.ts'
 import type { NS } from './locales.ts'
+import { formatStoryboardSummary } from './storyboard-summary.ts'
 import css from './StoryboardTable.module.css'
 
 /** Inputs of the table editor. */
@@ -114,11 +115,7 @@ export function StoryboardTable({ node, edit, close, t, segments = [] }: Storybo
       <Button variant="outline" size="sm" onClick={() => { void edit([appendShotOperation(node, blankShot())]) }}>
         {t('table.addRow')}
       </Button>
-      <span className={css.summary}>
-        {t('storyboard.summary', {
-          shots: summary.shots, seconds: summary.seconds, segments: summary.segments.length, calls: summary.videoCalls,
-        })}
-      </span>
+      <span className={css.summary}>{formatStoryboardSummary(summary, t)}</span>
     </footer>
   </section>
 }

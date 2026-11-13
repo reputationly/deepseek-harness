@@ -3,10 +3,9 @@ import type { ReactNode } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { scriptPreview, scriptScenes, storyboardCardView } from '../model/cards.ts'
 import type { CanvasFlowNode } from '../flow.ts'
+import { formatStoryboardSummary } from '../storyboard-summary.ts'
 import { NodeCard, shownVersion } from './shared.tsx'
 import css from '../CanvasFlow.module.css'
-
-const pluralKey = (count: number): 'one' | 'other' => count === 1 ? 'one' : 'other'
 
 /** A plain note. */
 export function TextNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
@@ -47,12 +46,7 @@ export function StoryboardNode({ data, selected }: NodeProps<CanvasFlowNode>): R
         <span className={css.shotSeconds}>{t('badge.duration', { seconds: row.seconds })}</span>
       </div>)}
     </div>
-    <p className={css.summary}>{t('storyboard.summary', {
-      shots: t(`storyboard.shots.${pluralKey(view.summary.shots)}`, { count: view.summary.shots }),
-      seconds: t(`storyboard.seconds.${pluralKey(view.summary.seconds)}`, { count: view.summary.seconds }),
-      segments: t(`storyboard.segments.${pluralKey(view.summary.segments.length)}`, { count: view.summary.segments.length }),
-      calls: t(`storyboard.calls.${pluralKey(view.summary.videoCalls)}`, { count: view.summary.videoCalls }),
-    })}</p>
+    <p className={css.summary}>{formatStoryboardSummary(view.summary, t)}</p>
   </NodeCard>
 }
 
