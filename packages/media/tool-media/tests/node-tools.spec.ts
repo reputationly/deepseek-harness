@@ -20,10 +20,6 @@ const limits = {
   imageModel: 'image-model', speechModel: 'speech-model', musicModel: 'music-model',
 }
 
-const confirmLimits = {
-  confirmVideoCalls: 5, confirmVideoSeconds: 60, confirmSpeechLines: 50, confirmImageCalls: 50, confirmMusicCalls: 5,
-}
-
 const shot = (id: string, dialogue: Shot['dialogue'] = []): Shot => ({
   id: id as never, title: id, shotSize: 'medium', visual: `画面 ${id}`, motion: '动作', camera: '固定', durationSec: 3,
   characters: [], props: [], dialogue, sfx: '', negative: '',
@@ -68,7 +64,6 @@ describe('generation tools', () => {
       state: createRunnerState(),
       canvas: () => ctx.get('canvas'),
       limits,
-      confirmLimits,
       concurrency: 1,
       generate: generator,
       jobs: () => ({
@@ -121,64 +116,22 @@ describe('generation tools', () => {
     expect(node.versions?.[0]?.path).toBe(join(directory, 'image.png'))
   })
 
-  it('asks for confirmation through the tool when the plan crosses a threshold', async () => {
+  it('starts generation directly without a confirmation step', async () => {
     await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
-    const ctxStrict = new Context()
-    await ctxStrict.plugin(SystemPrompt)
-    await ctxStrict.plugin(ToolRuntime)
-    await ctxStrict.plugin(NativeToolExecutor)
-    provideWorkingDirectoryFixture(ctxStrict, directory)
-    await ctxStrict.plugin(CanvasService)
-    registerNodeTools(ctxStrict, {
-      state: createRunnerState(),
-      canvas: () => ctxStrict.get('canvas'),
-      limits,
-      confirmLimits: { ...confirmLimits, confirmImageCalls: 1, confirmSpeechLines: 1 },
-      concurrency: 1,
-      generate: {
-        image: async () => ({ path: join(directory, 'image.png'), model: 'image-model' }),
-        video: async () => ({ path: join(directory, 'video.mp4'), model: 'video-model' }),
-        speech: async () => ({ path: join(directory, 'speech.mp3'), model: 'speech-model' }),
-        music: async () => ({ path: join(directory, 'music.mp3'), model: 'music-model' }),
-      },
-      jobs: () => ({
-        start: (spec) => {
-          const controller = new AbortController()
-          return { id: 'media-1' as never, done: spec.run(controller.signal), signal: controller.signal }
-        },
-        live: () => [],
-      }),
-      probe: async () => ({ durationMs: 3000, width: 720, height: 1280 }),
-      tailFrame: async () => join(directory, 'tail.png'),
-    })
-    const service = ctxStrict.get('canvas') as CanvasService
-    service.edit(session, [{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never, { baseRevision: 0 })
-      .catch(() => undefined)
-    const result = await executeToolFixture(ctxStrict, {
-      signal: new AbortController().signal,
-      callId: ToolCallId('call-confirm'),
-      name: 'canvas_generate',
-      arguments: { nodes: ['n1'] },
-      agent: { id: session.id, session } as never,
-    })
-    const text = result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
-    expect(text).toContain('needs confirmation')
-    expect(text).toContain('confirmToken ')
+    const result = await call('canvas_generate', { nodes: ['n1'] })
+    expect(result.isError).toBe(false)
+    expect(result.text).toContain('Started')
+    expect(result.text).not.toContain('confirmToken')
+    await Promise.all(runningJobs)
 
-    const board = await service.edit(session, [{
+    await edit([{
       op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
       shots: [shot('s1', [{ id: 'd1' as never, speaker: { kind: 'narrator' }, line: '你好' }])],
-    }] as never, { baseRevision: (await service.read(session)).revision })
-    void board
-    const voice = await executeToolFixture(ctxStrict, {
-      signal: new AbortController().signal,
-      callId: ToolCallId('call-voice-confirm'),
-      name: 'storyboard_voice',
-      arguments: { storyboards: ['n2'] },
-      agent: { id: session.id, session } as never,
-    })
-    const voiceText = voice.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
-    expect(voiceText).toContain('needs confirmation')
+    }] as never)
+    const voice = await call('storyboard_voice', { storyboards: ['n2'] })
+    expect(voice.isError).toBe(false)
+    expect(voice.text).toContain('Started')
+    await Promise.all(runningJobs)
   })
 
   it('reports a storyboard gate as blocked', async () => {

@@ -17,11 +17,6 @@ const config = {
   imageModel: 'im',
   speechModel: 'sm',
   musicModel: 'mm',
-  confirmVideoCalls: 2,
-  confirmVideoSeconds: 20,
-  confirmSpeechLines: 5,
-  confirmImageCalls: 2,
-  confirmMusicCalls: 1,
   generateConcurrency: 1,
   outputDir: '/tmp/out',
 }

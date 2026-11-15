@@ -24,7 +24,7 @@ Canvas documents and media task records use shared atomic writes with bounded re
 ## Migration
 
 1. Custom profiles need `@deepseek-ai/dsh-subprocess-local`; Canvas generation also needs `@deepseek-ai/dsh-jobs-local` and `@deepseek-ai/dsh-tool-jobs`. Desktop already includes these providers.
-2. Populate the project bible before visual generation. For budget-confirmation refusals, show the totals to the user and use the returned node id and token with `canvas_generate` after approval.
+2. Populate the project bible before visual generation. Generation starts directly; there is no budget-confirmation step.
 3. Back up `.canvas/` and `outputDir`; retain checkpoints until recovery completes. Remote queries require the original gateway configuration. Completed files need no provider submission. Verify provider history before resolving `recoveryRequired`; prompt changes do not clear it.
 4. Open the canvas and confirm recovered results appear as active versions and nodes leave queued/running state. Resolve active tasks before downgrading. Videos that fail to decode or play only audio without video frames use local compatibility previews under `.canvas/previews/`. These caches can be rebuilt with FFmpeg; original media remains unchanged.
-5. Configure gateway, credentials, and confirmation thresholds on the Host `tool-media` instance; Canvas UI uses its `media` Remote namespace. Desktop startup regenerates `cordis.patch.yml`, so edit the deployment's configuration source and restart. Verify both Agent and UI routes. Controlled tests must use credentials that cannot authorize production.
+5. Configure gateway and credentials on the Host `tool-media` instance; Canvas UI uses its `media` Remote namespace. Desktop startup regenerates `cordis.patch.yml`, so edit the deployment's configuration source and restart. Verify both Agent and UI routes. Controlled tests must use credentials that cannot authorize production.

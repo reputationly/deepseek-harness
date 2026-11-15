@@ -66,13 +66,13 @@ describe('media Remote namespace', () => {
 })
 
 describe('media generation endpoints', () => {
-  it('delegates planning, starting with a token, and cancellation to the runtime', async () => {
+  it('delegates planning, starting, and cancellation to the runtime', async () => {
     const service = new MediaService(new Context(), () => Promise.resolve(undefined), runtime)
     await expect(service.planNodes({} as never, ['n1'])).resolves.toMatchObject({ state: 'ready' })
-    await expect(service.generateNodes({} as never, ['n1'], 'tok')).resolves.toMatchObject({ state: 'started' })
+    await expect(service.generateNodes({} as never, ['n1'])).resolves.toMatchObject({ state: 'started' })
     expect(service.cancelMediaJob({} as never, 'j1')).toBe(true)
     expect(runtime.plan).toHaveBeenCalledWith(expect.anything(), ['n1'], undefined)
-    expect(runtime.generate).toHaveBeenCalledWith(expect.anything(), ['n1'], 'tok', undefined)
+    expect(runtime.generate).toHaveBeenCalledWith(expect.anything(), ['n1'], undefined)
     expect(runtime.cancel).toHaveBeenCalledWith(expect.anything(), 'j1')
   })
 })

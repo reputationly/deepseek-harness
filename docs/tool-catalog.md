@@ -4394,7 +4394,7 @@ The canvas belongs to the project directory of the calling Session; Web ui-sideb
 
 ### `canvas_generate`
 
-Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one video node per segment. A large plan returns needs_confirmation with a token; show the totals to the user and call again with that token once they agree.
+Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one video node per segment.
 
 ```json
 {
@@ -4406,10 +4406,6 @@ Generate the media of the given canvas nodes and add a new version to each. One 
       "items": {
         "type": "string"
       }
-    },
-    "confirmToken": {
-      "type": "string",
-      "description": "Token from a previous needs_confirmation result, after the user agreed."
     }
   },
   "required": [
@@ -4766,7 +4762,7 @@ Source: [`packages/media/tool-media/src/edit-tools.ts`](../packages/media/tool-m
 
 ### `storyboard_voice`
 
-Create one audio node per spoken line of the given storyboards and synthesize them, reusing nodes that already voice a line. Returns needs_confirmation with a token when the line count crosses the deployment limit.
+Create one audio node per spoken line of the given storyboards and synthesize them, reusing nodes that already voice a line.
 
 ```json
 {
@@ -4778,10 +4774,6 @@ Create one audio node per spoken line of the given storyboards and synthesize th
       "items": {
         "type": "string"
       }
-    },
-    "confirmToken": {
-      "type": "string",
-      "description": "Token from a previous needs_confirmation result, after the user agreed."
     }
   },
   "required": [

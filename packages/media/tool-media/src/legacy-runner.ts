@@ -83,11 +83,8 @@ export function createLegacyRunner(deps: NodeToolDeps, jobs: {
       }
     }
     if (nodeId === undefined) throw new Error('Media output node was not created')
-    const started = await startPlan(services, [nodeId], undefined)
+    const started = await startPlan(services, [nodeId])
     if (started.status === 'blocked') throw new Error(`${started.plan.blocked?.gate}: ${started.plan.blocked?.missing.join(', ')}`)
-    if (started.status === 'needs_confirmation') {
-      throw new Error(`No media was generated. Ask the user to confirm ${JSON.stringify(started.budget.totals)}, then call canvas_generate with nodes ["${nodeId}"] and confirmToken "${started.budget.token}"`)
-    }
     if (started.status === 'already_running') throw new Error(`Media node ${nodeId} already has a running task`)
     const cancel = (): void => { for (const job of started.jobs) jobs.kill(job.jobId, session.id, 'Media tool cancelled') }
     exec.signal.addEventListener('abort', cancel, { once: true })

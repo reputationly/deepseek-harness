@@ -11,13 +11,13 @@ English | [中文](guide.zh.md)
 
 The media tools can now generate a node's media without the agent driving each call by hand:
 
-- `canvas_generate` plans a run over the nodes it is given, quotes its video calls, video seconds, image calls, spoken lines, and music calls, and starts it only after the user agrees to the quote. One storyboard becomes one video node per segment. A started run returns immediately with its job ids; completion arrives as a job notice, and a node whose previous job is still queued or running is refused with `already_running`.
+- `canvas_generate` plans a run over the nodes it is given and starts it directly. One storyboard becomes one video node per segment. A started run returns immediately with its job ids; completion arrives as a job notice, and a node whose previous job is still queued or running is refused with `already_running`.
 - `storyboard_voice` creates one audio node per spoken line and keeps them matched to their line across storyboard rewrites.
 - `studio_stage` records and advances the production stage of the current episode.
 
 Two deployment-facing details changed:
 
-- `tool-media` accepts five new keys: `videoRefModel`, `maxSegmentSeconds`, `generateConcurrency`, and the `confirm*` thresholds that decide when a run needs the user's agreement.
+- `tool-media` accepts three new keys: `videoRefModel`, `maxSegmentSeconds`, and `generateConcurrency`.
 - `studio_expand_script` deduplicates by the scene group's recorded origin (`sceneOrigin: { script, scene }`) instead of its title. A group a user renamed no longer causes a second copy of the scene, and a group that merely happens to be titled `场1` is no longer mistaken for one.
 
 `studio_bible_update` now replaces an entry with the same id, as its description always said, instead of appending a second entry with that id.

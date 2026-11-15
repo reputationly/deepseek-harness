@@ -394,7 +394,7 @@ it('passes generation callbacks to the inspector and escapes sidebar clipping in
   await waitFor(() => { expect(screen.getByRole('button', { name: 'inspector.generateNow' })).toBeTruthy() })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
   await waitFor(() => { expect(planNodes).toHaveBeenCalledWith(['b1'], { directory: '/project', episode: 'e1' }) })
-  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['b1'], undefined, { directory: '/project', episode: 'e1' }) })
+  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['b1'], { directory: '/project', episode: 'e1' }) })
   const studio = document.querySelector('[data-sidebar-canvas]')
   fireEvent.click(screen.getByRole('button', { name: 'canvas.fullscreen' }))
   expect(studio?.parentElement?.parentElement).toBe(document.body)

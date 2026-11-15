@@ -264,9 +264,9 @@ it('closes through its header button and opens the table editor for a storyboard
   expect(openTable).toHaveBeenCalledWith('v1')
 })
 
-it('asks for the budget and starts generation once the user confirms', async () => {
+it('starts generation directly once the plan is ready', async () => {
   const planNodes = vi.fn(async () => ({
-    state: 'needs_confirmation' as const, token: 'tok', lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 2, seconds: 12 }],
+    state: 'ready' as const, lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 2, seconds: 12 }],
     totals: { videoCalls: 2, videoSeconds: 12, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
   }))
   const generateNodes = vi.fn(async () => ({
@@ -276,10 +276,8 @@ it('asks for the budget and starts generation once the user confirms', async () 
   mount({ planNodes, generateNodes })
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
-  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
-  expect(screen.getByText(/budget.totals/)).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
-  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['v1'], 'tok') })
+  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['v1']) })
+  expect(screen.queryByRole('dialog')).toBeNull()
   expect(screen.getByRole('status').textContent).toContain('inspector.started')
 })
 
@@ -294,90 +292,13 @@ it('does not plan when either generation endpoint is unavailable', () => {
   expect(generateNodes).not.toHaveBeenCalled()
 })
 
-it('falls back to the node id when a budget line has no document title', async () => {
+it('reports a blocked plan without starting work', async () => {
   const planNodes = vi.fn(async () => ({
-    state: 'needs_confirmation' as const, token: 'tok',
-    lines: [{ node: 'missing', kind: 'video', model: 'video-model', calls: 1, seconds: 3 }],
-    totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
-  }))
-  const generateNodes = vi.fn(async () => undefined)
-  const emptyDocument: CanvasDocument = { ...document, nodes: [] }
-  for (const current of [undefined, emptyDocument]) {
-    const rendered = render(<GenerationProbe document={current} planNodes={planNodes} generateNodes={generateNodes} t={t} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
-    await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
-    expect(screen.getByText(/"node":"missing"/)).toBeTruthy()
-    rendered.unmount()
-  }
-})
-
-it('does not start from a confirmation after the generation endpoint disappears', async () => {
-  const planNodes = vi.fn(async () => ({
-    state: 'needs_confirmation' as const, token: 'tok',
-    lines: [{ node: 'missing', kind: 'video', model: 'video-model', calls: 1, seconds: 3 }],
-    totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
-  }))
-  const generateNodes = vi.fn(async () => undefined)
-  const { rerender } = render(<GenerationProbe document={document} planNodes={planNodes} generateNodes={generateNodes} t={t} />)
-  fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
-  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
-  rerender(<GenerationProbe document={document} planNodes={planNodes} t={t} />)
-  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
-  await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
-  expect(generateNodes).not.toHaveBeenCalled()
-})
-
-it('reopens confirmation with the revised budget when the confirmed plan is stale', async () => {
-  const planNodes = vi.fn(async () => ({
-    state: 'needs_confirmation' as const, token: 'tok-old',
-    lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 1, seconds: 5 }],
-    totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
-  }))
-  const generateNodes = vi.fn()
-    .mockResolvedValueOnce({
-      state: 'needs_confirmation' as const, token: 'tok-new',
-      lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 3, seconds: 18 }],
-      totals: { videoCalls: 3, videoSeconds: 18, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
-    })
-    .mockResolvedValueOnce({
-      state: 'started' as const, lines: [], totals: { videoCalls: 3, videoSeconds: 18, imageCalls: 0, speechLines: 0, musicCalls: 0 },
-      jobs: [{ node: 'v1', jobId: 'j1' }],
-    })
-  mount({ planNodes, generateNodes })
-  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
-  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
-  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
-  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
-  await waitFor(() => { expect(screen.getByText('budget.changed')).toBeTruthy() })
-  expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy()
-  expect(screen.getByText(/"calls":3/)).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
-  await waitFor(() => { expect(generateNodes).toHaveBeenNthCalledWith(2, ['v1'], 'tok-new') })
-  expect(screen.getByRole('status').textContent).toContain('inspector.started')
-})
-
-it('starts a plan that needs no confirmation directly', async () => {
-  const planNodes = vi.fn(async () => ({
-    state: 'ready' as const, lines: [], totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
-  }))
-  const generateNodes = vi.fn(async () => ({
-    state: 'started' as const, lines: [], totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 },
-    jobs: [{ node: 'v1', jobId: 'j1' }],
-  }))
-  mount({ planNodes, generateNodes })
-  await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
-  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
-  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['v1'], undefined) })
-  expect(screen.queryByRole('dialog')).toBeNull()
-})
-
-it('reports a blocked or running plan without starting work', async () => {
-  const blocked = vi.fn(async () => ({
     state: 'blocked' as const, message: 'G1_stage_order: 先完成设定集',
     lines: [], totals: { videoCalls: 0, videoSeconds: 0, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
   }))
   const generateNodes = vi.fn()
-  mount({ planNodes: blocked, generateNodes })
+  mount({ planNodes, generateNodes })
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
   await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('G1_stage_order') })
@@ -414,22 +335,14 @@ it('edits a free-text parameter and switches the model choice', async () => {
   }], expect.objectContaining({ baseRevision: 1 }))
 })
 
-it('cancels the budget dialog and reports a failure to start generation', async () => {
+it('reports a failure to start generation', async () => {
   const planNodes = vi.fn(async () => ({
-    state: 'needs_confirmation' as const, token: 'tok',
-    lines: [{ node: 'v1', kind: 'video', model: 'video-model', calls: 1, seconds: 5 }],
-    totals: { videoCalls: 1, videoSeconds: 5, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
+    state: 'ready' as const, lines: [], totals: { videoCalls: 0, videoSeconds: 0, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
   }))
   const generateNodes = vi.fn(async () => { throw new Error('gateway down') })
   mount({ planNodes, generateNodes })
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
-  await waitFor(() => { expect(screen.getByRole('dialog')).toBeTruthy() })
-  fireEvent.click(screen.getByRole('button', { name: 'budget.cancel' }))
-  expect(screen.queryByRole('dialog')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
-  await waitFor(() => { expect(screen.getByRole('dialog')).toBeTruthy() })
-  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
   await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('gateway down') })
 })
 
@@ -455,17 +368,15 @@ it('applies the default model and reports plain-string failures', async () => {
   await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('raw failure') })
 })
 
-it('reports a non-Error rejection after confirming the budget', async () => {
+it('reports a non-Error rejection when starting generation', async () => {
   const planNodes = vi.fn(async () => ({
-    state: 'needs_confirmation' as const, token: 't', lines: [],
+    state: 'ready' as const, lines: [],
     totals: { videoCalls: 0, videoSeconds: 0, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
   }))
   const generateNodes = vi.fn(async () => { throw 'plain' })
   mount({ planNodes, generateNodes })
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.generateNow' }))
-  await waitFor(() => { expect(screen.getByRole('dialog')).toBeTruthy() })
-  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
   await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('plain') })
 })
 

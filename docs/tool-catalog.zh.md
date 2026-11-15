@@ -4402,7 +4402,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `canvas_generate`
 
-生成指定画布节点的媒体，并为每个节点添加新版本。一张分镜表会按分段生成多个视频节点。大型方案返回 needs_confirmation 和令牌；向用户展示总量，获得同意后带该令牌再次调用。
+生成指定画布节点的媒体，并为每个节点添加新版本。一张分镜表会按分段生成多个视频节点。
 
 ```json
 {
@@ -4414,10 +4414,6 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
       "items": {
         "type": "string"
       }
-    },
-    "confirmToken": {
-      "type": "string",
-      "description": "Token from a previous needs_confirmation result, after the user agreed."
     }
   },
   "required": [
@@ -4776,7 +4772,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `storyboard_voice`
 
-为指定分镜表中的每句台词创建音频节点并合成语音；已有对应台词的节点会复用。台词数超过部署限制时，返回 needs_confirmation 和令牌。
+为指定分镜表中的每句台词创建音频节点并合成语音；已有对应台词的节点会复用。
 
 ```json
 {
@@ -4788,10 +4784,6 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
       "items": {
         "type": "string"
       }
-    },
-    "confirmToken": {
-      "type": "string",
-      "description": "Token from a previous needs_confirmation result, after the user agreed."
     }
   },
   "required": [

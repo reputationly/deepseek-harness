@@ -88,9 +88,6 @@ function fixture() {
       },
     },
     limits: { maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'm', videoRefModel: 'm', imageModel: 'm', speechModel: 'm', musicModel: 'm' },
-    confirmLimits: {
-      confirmVideoCalls: 10, confirmVideoSeconds: 100, confirmSpeechLines: 100, confirmImageCalls: 100, confirmMusicCalls: 10,
-    },
     concurrency: 1,
     generate: generator,
     jobs: {
@@ -159,7 +156,7 @@ it('does not let another owner\'s live job hide an interrupted status', async ()
     await release.promise
     return image(call)
   }
-  const started = await startPlan(first.services, ['n1'], undefined)
+  const started = await startPlan(first.services, ['n1'])
   if (started.status !== 'started') throw new Error('expected a running first owner')
   try {
     await entered.promise
@@ -197,7 +194,7 @@ it('recovers an already attached candidate after another version was adopted and
   await seed()
   const h = fixture()
   failAppend = 'after'
-  await runPlan(h.services, ['n1'], undefined)
+  await runPlan(h.services, ['n1'])
   const manual = join(directory, 'manual.png')
   await writeFile(manual, 'manual image')
   await edit([
@@ -235,7 +232,7 @@ it('keeps a published queued attempt live across owners sharing the Host registr
         await release.promise
       }
     },
-  } }, ['n1'], undefined)
+  } }, ['n1'])
   try {
     await entered.promise
     expect(firstSaved?.jobId).toBeDefined()
@@ -285,7 +282,7 @@ it('finishes an existing produced attempt instead of billing again when recovery
     } },
   }
   try {
-    const result = await runPlan(services, ['n1'], undefined)
+    const result = await runPlan(services, ['n1'])
     expect(result.status).toBe('done')
     if (result.status !== 'done') throw new Error('expected reconciled result')
     expect(result.results).toMatchObject([{ node, ok: true, path: media.path }])
@@ -350,7 +347,7 @@ it('reconciles a retained result before admitting the remaining requested batch'
   await writeFile(media.path, 'already paid image')
   await journal.write(checkpoint({ state: 'produced', media }))
   const h = fixture()
-  const result = await startPlan(h.services, ['n1', 'n2'], undefined)
+  const result = await startPlan(h.services, ['n1', 'n2'])
   expect(result).toMatchObject({ status: 'already_running', nodes: [node] })
   if (result.status !== 'already_running') throw new Error('expected recovery before remaining generation')
   expect(result.jobs).toHaveLength(1)
@@ -368,7 +365,7 @@ it('does not mark an artifact intent produced when publishing the file fails', a
     await call.onArtifact?.({ path: join(directory, 'never-published.png'), model: 'm' })
     throw Object.assign(new Error('disk is full'), { code: 'ENOSPC' })
   }
-  const result = await runPlan(h.services, ['n1'], undefined)
+  const result = await runPlan(h.services, ['n1'])
   expect(result.status).toBe('done')
   expect((await journal.read())[0]).toMatchObject({ state: 'running', recoveryRequired: true })
   expect((await store.readCanvas(directory)).nodes[0]?.versions ?? []).toEqual([])
@@ -378,7 +375,7 @@ it.each(['before', 'after'] as const)('recovers a generated file after a canvas 
   await seed()
   const h = fixture()
   failAppend = failure
-  const outcome = await runPlan(h.services, ['n1'], undefined)
+  const outcome = await runPlan(h.services, ['n1'])
   expect(outcome.status).toBe('done')
   if (outcome.status !== 'done') throw new Error('expected completed run')
   expect(outcome.results[0]?.ok).toBe(false)
@@ -447,9 +444,9 @@ it('does not mistake a live task for a restart or start the same node twice', as
     await release.promise
     return h.image(call)
   }
-  const first = await startPlan(h.services, ['n1'], undefined)
+  const first = await startPlan(h.services, ['n1'])
   await begun.promise
-  const second = await startPlan(h.services, ['n1'], undefined)
+  const second = await startPlan(h.services, ['n1'])
   expect(second).toMatchObject({ status: 'already_running', nodes: ['n1'] })
   expect((await store.readCanvas(directory)).nodes[0]?.status?.state).toBe('running')
   release.resolve(undefined)
@@ -465,7 +462,7 @@ it.each([false, true])('distinguishes preparation failures from uncertain paid s
     if (submitted) await call.onSubmitting?.()
     throw new Error('connection interrupted')
   }
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected started job')
   await outcome.settle
   const status = (await store.readCanvas(directory)).nodes[0]?.status
@@ -476,7 +473,7 @@ it.each([false, true])('distinguishes preparation failures from uncertain paid s
       .toBe('Remote submission outcome is unknown (connection interrupted); verify provider history before starting another generation')
   }
   expect((await journal.read())[0]?.submissionStarted).toBe(submitted)
-  if (submitted) expect((await startPlan(h.services, ['n1'], undefined)).status).toBe('blocked')
+  if (submitted) expect((await startPlan(h.services, ['n1'])).status).toBe('blocked')
 })
 
 it.each([500, 503])('retries a submission the gateway answered with HTTP %s', async (status) => {
@@ -486,13 +483,13 @@ it.each([500, 503])('retries a submission the gateway answered with HTTP %s', as
     await call.onSubmitting?.()
     throw new MediaSubmissionRejectedError('upstream failed', status)
   }
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected started job')
   await outcome.settle
   const nodeStatus = (await store.readCanvas(directory)).nodes[0]?.status
   expect(nodeStatus).toMatchObject({ state: 'failed', error: 'upstream failed', retryable: true })
   expect(nodeStatus?.state === 'failed' ? nodeStatus.recoveryRequired : undefined).toBeUndefined()
-  const retry = await startPlan(h.services, ['n1'], undefined)
+  const retry = await startPlan(h.services, ['n1'])
   expect(retry.status).toBe('started')
   if (retry.status === 'started') await retry.settle
 })
@@ -504,13 +501,13 @@ it('does not mark a 4xx submission refusal as recoverable or retryable', async (
     await call.onSubmitting?.()
     throw new MediaSubmissionRejectedError('bad request', 400)
   }
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected started job')
   await outcome.settle
   const nodeStatus = (await store.readCanvas(directory)).nodes[0]?.status
   expect(nodeStatus).toMatchObject({ state: 'failed', error: 'bad request', retryable: false })
   expect(nodeStatus?.state === 'failed' ? nodeStatus.recoveryRequired : undefined).toBeUndefined()
-  const retry = await startPlan(h.services, ['n1'], undefined)
+  const retry = await startPlan(h.services, ['n1'])
   expect(retry.status).toBe('started')
   if (retry.status === 'started') await retry.settle
 })
@@ -522,14 +519,14 @@ it('keeps a post-acceptance gateway failure uncertain and blocked', async () => 
     await call.onSubmitting?.()
     throw new MediaGatewayError('download failed', 500)
   }
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected started job')
   await outcome.settle
   const nodeStatus = (await store.readCanvas(directory)).nodes[0]?.status
   expect(nodeStatus).toMatchObject({ state: 'failed', retryable: false, recoveryRequired: true })
   expect(nodeStatus?.state === 'failed' ? nodeStatus.error : undefined)
     .toBe('Remote submission outcome is unknown (download failed); verify provider history before starting another generation')
-  expect((await startPlan(h.services, ['n1'], undefined)).status).toBe('blocked')
+  expect((await startPlan(h.services, ['n1'])).status).toBe('blocked')
 })
 
 it('keeps a non-Error submission reason in the unknown-outcome message', async () => {
@@ -539,7 +536,7 @@ it('keeps a non-Error submission reason in the unknown-outcome message', async (
     await call.onSubmitting?.()
     throw 'connection reset'
   }
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected started job')
   await outcome.settle
   const status = (await store.readCanvas(directory)).nodes[0]?.status
@@ -559,14 +556,14 @@ it('reports a remote cancellation as local and prevents an accidental second pai
     await release.promise
     throw new Error('aborted')
   }
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected started job')
   await begun.promise
   for (const controller of controllers.values()) controller.abort('user cancelled')
   release.resolve(undefined)
   expect(await outcome.settle).toMatchObject([{ ok: false, retryable: false, recoveryRequired: true }])
   expect((await store.readCanvas(directory)).nodes[0]?.status).toMatchObject({ state: 'failed', recoveryRequired: true })
-  expect((await startPlan(h.services, ['n1'], undefined)).status).toBe('blocked')
+  expect((await startPlan(h.services, ['n1'])).status).toBe('blocked')
 })
 
 it.each(['kill', 'teardown'] as const)('reconciles known remote tasks according to their %s cancellation source', async (cause) => {
@@ -590,7 +587,7 @@ it.each(['kill', 'teardown'] as const)('reconciles known remote tasks according 
     return media
   })
   h.generator.resume = resume
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected a started job')
   await begun.promise
   for (const controller of controllers.values()) {
@@ -628,7 +625,7 @@ it.each([false, true])('keeps shutdown retry policy safe when submission intent 
     throw new Error('expected shutdown')
   })
   h.generator.image = generate
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected a started job')
   await begun.promise
   for (const controller of controllers.values()) controller.abort(new MediaInterruptedError('service disposed'))
@@ -663,7 +660,7 @@ it.each(['artifact', 'produced'] as const)('recovers an image after shutdown at 
     },
   }
   const services = { ...h.services, canvas }
-  const outcome = await runPlan(services, ['n1'], undefined)
+  const outcome = await runPlan(services, ['n1'])
   expect(outcome.status).toBe('done')
   expect((await journal.read())[0]).toMatchObject({ state: phase === 'produced' ? 'produced' : 'running', retryable: false, recoveryRequired: true })
   const beforeRecovery = pending.length
@@ -686,7 +683,7 @@ it('keeps cancellation terminal even when a producer returns a late media result
     await release.promise
     return h.image(call)
   }
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   await begun.promise
   for (const controller of controllers.values()) controller.abort('user cancelled')
   release.resolve(undefined)
@@ -710,7 +707,7 @@ it('retains an old result without clearing a newer task status', async () => {
     await release.promise
     return h.image(call)
   }
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   await begun.promise
   const newer = brandString<JobId>('newer-task')
   await edit([{ op: 'set_status', node, status: { state: 'running', jobId: newer, at: 'later' } }])
@@ -730,7 +727,7 @@ it('refuses a malformed checkpoint and leaves canvas bytes intact before any gen
   await writeFile(file, '{broken')
   const before = await readFile(canvasFile(directory), 'utf8')
   const h = fixture()
-  await expect(startPlan(h.services, ['n1'], undefined)).rejects.toThrow('Cannot recover media checkpoint')
+  await expect(startPlan(h.services, ['n1'])).rejects.toThrow('Cannot recover media checkpoint')
   expect(await readFile(file, 'utf8')).toBe('{broken')
   expect(await readFile(canvasFile(directory), 'utf8')).toBe(before)
   expect(h.image).not.toHaveBeenCalled()
@@ -761,7 +758,7 @@ it.each(['music', 'speech'] as const)('recovers %s through its durable task id w
     return media
   })
   h.generator.resume = resume
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected started audio job')
   await begun.promise
   expect((await journal.read())[0]?.versionBody).toMatchObject({ prompt: '实际提交文字', params: { seed: 0, lyrics: '原始歌词', cot: 'full' } })
@@ -794,7 +791,7 @@ it('retains a rendered score through a crash after the artifact checkpoint', asy
     return media
   })
   h.generator.music = generate
-  const outcome = await startPlan(h.services, ['n1'], undefined)
+  const outcome = await startPlan(h.services, ['n1'])
   if (outcome.status !== 'started') throw new Error('expected a song job')
   await outcome.settle
   expect((await journal.read())[0]?.media?.params?.abc).toBe(score)

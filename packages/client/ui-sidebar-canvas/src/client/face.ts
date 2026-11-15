@@ -91,10 +91,9 @@ export interface CanvasInjected {
   readonly bible: () => Promise<{ readonly bible: Bible; readonly revision: number }>
   /** Plans generation for the given nodes, or undefined when the deployment has no media namespace. */
   readonly planNodes?: (nodes: readonly string[], scope?: CanvasScope) => Promise<MediaPlanView | undefined>
-  /** Starts generation for the given nodes, presenting a confirmation token when one is needed. */
+  /** Starts generation for the given nodes. */
   readonly generateNodes?: (
     nodes: readonly string[],
-    token: string | undefined,
     scope?: CanvasScope,
   ) => Promise<MediaPlanView | undefined>
 }

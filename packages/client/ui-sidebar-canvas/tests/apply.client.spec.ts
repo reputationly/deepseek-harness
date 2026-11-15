@@ -173,14 +173,14 @@ it('reads the bible and drives media planning through the optional namespace', a
     const face = h.entries[0]!.inject!('s1' as SessionId) as {
       bible: () => Promise<unknown>
       planNodes: (nodes: string[]) => Promise<unknown>
-      generateNodes: (nodes: string[], token?: string) => Promise<unknown>
+      generateNodes: (nodes: string[]) => Promise<unknown>
     }
     await expect(face.bible()).resolves.toMatchObject({ revision: 0 })
     await expect(face.planNodes(['n1'])).resolves.toMatchObject({ state: 'ready' })
-    await expect(face.generateNodes(['n1'], 'tok')).resolves.toMatchObject({ state: 'ready' })
+    await expect(face.generateNodes(['n1'])).resolves.toMatchObject({ state: 'ready' })
     expect(h.canvas.bible).toHaveBeenCalledWith('s1')
     expect(h.media.planNodes).toHaveBeenCalledWith('s1', ['n1'], undefined)
-    expect(h.media.generateNodes).toHaveBeenCalledWith('s1', ['n1'], 'tok', undefined)
+    expect(h.media.generateNodes).toHaveBeenCalledWith('s1', ['n1'], undefined)
   } finally {
     await h.dispose()
   }
@@ -194,7 +194,7 @@ it('keeps the canvas usable without any media namespace', async () => {
     expect(face.hooks.canvas.getSnapshot().status).toBe('ready')
     await expect(face.capabilities('generate_image')).resolves.toEqual([])
     await expect(face.planNodes?.(['n1'])).resolves.toBeUndefined()
-    await expect(face.generateNodes?.(['n1'], undefined)).resolves.toBeUndefined()
+    await expect(face.generateNodes?.(['n1'])).resolves.toBeUndefined()
     await expect(face.previewVideo?.(brandString<CanvasNodeId>('n1'), brandString<VersionId>('v1'), { directory: '/projects/s1', episode: brandString<EpisodeId>('e1') }, new AbortController().signal))
       .resolves.toEqual({ ok: false, message: 'Video previews are unavailable' })
   } finally {
@@ -233,7 +233,7 @@ it('surfaces remote failures for capabilities and plans', async () => {
     const face = h.entries[0]!.inject!('s1' as SessionId) as {
       capabilities: (operation: string) => Promise<unknown>
       planNodes: (nodes: string[]) => Promise<unknown>
-      generateNodes: (nodes: string[], token?: string) => Promise<unknown>
+      generateNodes: (nodes: string[]) => Promise<unknown>
       bible: () => Promise<unknown>
     }
     await expect(face.capabilities('generate_image')).rejects.toThrow('cap boom')

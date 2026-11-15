@@ -24,7 +24,7 @@ Canvas Session 中的四个 `generate_*` 工具会在提交前建节点，并与
 ## 迁移
 
 1. 自定义组合需要 `@deepseek-ai/dsh-subprocess-local`；画布生成还需要 `@deepseek-ai/dsh-jobs-local` 和 `@deepseek-ai/dsh-tool-jobs`。内置桌面组合已包含这些提供方。
-2. 视觉生成前先填写项目设定集。遇到预算确认拒绝时，先向用户展示总量，取得同意后，将返回的节点 id 和令牌传给 `canvas_generate`。
+2. 视觉生成前先填写项目设定集。生成直接开始；不存在预算确认步骤。
 3. 备份 `.canvas/` 和 `outputDir`，恢复完成前保留检查点。远端查询需要原网关配置。已完成文件无需向供应商提交。解除 `recoveryRequired` 前先核实供应商历史；修改提示词不会清除此标记。
 4. 打开画布，确认恢复结果成为活动版本，节点不再停留在排队或运行状态。降级前先处理活动任务。视频解码失败或只有音轨可播而没有视频帧时，会使用 `.canvas/previews/` 下的本地兼容预览。这些缓存可用 FFmpeg 重建；原始媒体保持不变。
-5. 在 Host `tool-media` 实例上配置网关、凭据和确认阈值；画布 UI 使用其 `media` Remote 命名空间。桌面启动会重新生成 `cordis.patch.yml`，因此应修改部署的配置来源并重启，核实 Agent 和 UI 两条路由。受控测试必须使用无法授权生产供应商的凭据。
+5. 在 Host `tool-media` 实例上配置网关和凭据；画布 UI 使用其 `media` Remote 命名空间。桌面启动会重新生成 `cordis.patch.yml`，因此应修改部署的配置来源并重启，核实 Agent 和 UI 两条路由。受控测试必须使用无法授权生产供应商的凭据。

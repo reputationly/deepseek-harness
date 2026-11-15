@@ -21,7 +21,6 @@ import {
   type VersionId,
 } from '@deepseek-ai/dsh-canvas'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
-import { budgetOf, type Budget, type ConfirmLimits } from './budget.ts'
 import { collectInputs, planNodes, type NodePlan, type PlanLimits, type PlannedGeneration } from './node-runner.ts'
 import type { MediaAttemptId, MediaCheckpoint, MediaJournal, RemoteMediaTask } from './journal.ts'
 import { MediaGatewayError, MediaSubmissionRejectedError, MediaTaskFailedError } from './gateway.ts'
@@ -140,7 +139,6 @@ export interface RunnerServices {
   /** Project spec every generation follows. */
   readonly spec?: { readonly aspect?: string; readonly resolution?: string }
   readonly limits: PlanLimits
-  readonly confirmLimits: ConfirmLimits
   /** Media jobs this call may run at once. */
   readonly concurrency: number
   readonly generate: MediaGenerator
@@ -172,7 +170,6 @@ export interface NodeRunResult {
 /** Outcome of one run. */
 export type RunOutcome =
   | { readonly status: 'blocked'; readonly plan: NodePlan }
-  | { readonly status: 'needs_confirmation'; readonly plan: NodePlan; readonly budget: Budget }
   | {
     readonly status: 'already_running'
     readonly nodes: readonly CanvasNodeId[]
@@ -568,15 +565,11 @@ function stateAfterFailure(checkpoint: MediaCheckpoint, error: unknown, signal: 
  * Start one generation plan, returning as soon as every job is registered.
  * @param services - canvas access, generators, jobs, and deployment bounds.
  * @param requested - node ids to generate.
- * @param token - budget token the caller confirmed, when it confirmed one.
- * @param options - `skipConfirmation` lets a caller that already confirmed a wider plan start this one.
- * @returns the refusal, the budget the caller must confirm, or the started jobs and their settlement.
+ * @returns the refusal or the started jobs and their settlement.
  */
 export async function startPlan(
   services: RunnerServices,
   requested: readonly string[],
-  token: string | undefined,
-  options: { readonly skipConfirmation?: boolean } = {},
 ): Promise<Exclude<RunOutcome, { readonly status: 'done' }>> {
   const recovered = await recoverInterrupted(services)
   const loaded = await services.canvas.read()
@@ -612,15 +605,6 @@ export async function startPlan(
       return status?.state === 'running' || status?.state === 'queued'
     })
   if (running.length > 0) return { status: 'already_running', nodes: running }
-  const budget = budgetOf(plan, services.confirmLimits)
-  if (
-    plan.nodes.length > 0 &&
-    budget.needsConfirmation &&
-    budget.token !== token &&
-    options.skipConfirmation !== true
-  ) {
-    return { status: 'needs_confirmation', plan, budget }
-  }
 
   const edits: CanvasOperation[] = [
     ...plan.create,
@@ -899,17 +883,13 @@ export async function startPlan(
  * Run one generation plan and wait for every job to settle.
  * @param services - canvas access, generators, jobs, and deployment bounds.
  * @param requested - node ids to generate.
- * @param token - budget token the caller confirmed, when it confirmed one.
- * @param options - `skipConfirmation` lets a caller that already confirmed a wider plan start this one.
- * @returns the refusal, the budget the caller must confirm, or what each node produced.
+ * @returns the refusal or what each node produced.
  */
 export async function runPlan(
   services: RunnerServices,
   requested: readonly string[],
-  token: string | undefined,
-  options: { readonly skipConfirmation?: boolean } = {},
 ): Promise<RunOutcome> {
-  const started = await startPlan(services, requested, token, options)
+  const started = await startPlan(services, requested)
   if (started.status !== 'started') return started
   const results = await started.settle
   return { status: 'done', plan: started.plan, results }

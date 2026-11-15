@@ -32,7 +32,7 @@
 两条路径改的是**同一份数据**，走**同一套校验**。
 
 ### 0.2 范围内
-画布节点扩展（剧本、分镜表、时间线）、设定集、项目与分集、节点多版本、生成状态、按节点生成、切段规划、尾帧接首帧、预算确认、阶段闸门、逐句配音、音乐节拍、静帧运镜（漫剧）、剪辑台、ffmpeg 导出、Skill、媒体创作预设。
+画布节点扩展（剧本、分镜表、时间线）、设定集、项目与分集、节点多版本、生成状态、按节点生成、切段规划、尾帧接首帧、阶段闸门、逐句配音、音乐节拍、静帧运镜（漫剧）、剪辑台、ffmpeg 导出、Skill、媒体创作预设。
 
 ### 0.3 范围外（不要做）
 - 语音识别和自动字幕（用户原话：「字幕这个先不做了」）。时间线的文字轨只支持手动输入的文字。
@@ -85,7 +85,7 @@
 | I3 | 剧本分场 | `assets/canvas-craft/SKILL.md`（每场以【场N】开头） | 解析规则移植 | `storyboard.ts` 的 `parseScenes()` | P1 |
 | I4 | 切段算法 | `shot-segments.js`（`planShotSegments`，seg 类型 opening/continuation/scene_change/new_character/closeup，join strict/loose/cut） | **逐函数移植成 TS**，保留算法和注释出处；预算和实际生成用同一个函数 | `canvas/src/segments.ts` | P2 |
 | I5 | 制作阶段和闸门 | `production.js`（PRODUCTION_STAGES、G1 设定集先行、G2 分镜质量、G3 一表一视频、破坏性确认、越序；越过要记录） | 阶段裁剪为 9 个，闸门用 TS 重写 | `canvas/src/production.ts` | P2 |
-| I6 | 预算后再付费 | `canvas_auto_budget` → `canvas_auto_generate` 两步 | 两步确认：先出预算单和确认令牌，再带令牌执行 | `canvas_generate` 的 `confirmToken`（第 5.3 节） | P2 |
+| I6 | ~~预算后再付费~~ | `canvas_auto_budget` → `canvas_auto_generate` 两步 | 预算确认已移除：`canvas_generate` 直接开始 | — | P2 |
 | I7 | 媒体历史 8 次 | client 媒体历史 | 版本上限做成 Config，默认 8 | `Config.versionLimit` | P1 |
 | I8 | 尾帧接力 | video 输出 `last`、`tailpick` | 生成后自动抽取尾帧，作为下一段首帧 | `node-runner.ts` 用 ffmpeg 抽尾帧（第 4.5 节） | P2 |
 | I9 | 四层创作配置 | `assets/canvas-director/`（导演透镜、题材、规格、影调） | 技能文本移植，按需加载切片 | `assets/studio-director/`（第 6 节） | P5 |
@@ -100,7 +100,7 @@
 
 ### 2.1 原则
 - **一套操作，两个入口**：Agent 用 `canvas_edit`，界面用 Remote `canvas.apply`，最终都进入 `operations.ts` 的 `applyOperations(document, ops)`，用同一个校验器，报同样的错误。
-- **一套生成，两个入口**：Agent 用 `canvas_generate`，界面点「生成」走 Remote `media.generateNodes`，最终都进入 `tool-media/src/node-runner.ts` 的 `runNodes(nodeIds, confirmToken)`。`planNodes` 只做计算、不改画布；预算确认、建节点、标 stale、并发上限、落版本、状态更新都在 `runNodes` 里。
+- **一套生成，两个入口**：Agent 用 `canvas_generate`，界面点「生成」走 Remote `media.generateNodes`，最终都进入 `tool-media/src/node-runner.ts` 的 `runNodes(nodeIds)`。`planNodes` 只做计算、不改画布；建节点、标 stale、并发上限、落版本、状态更新都在 `runNodes` 里。
 - **节点自己描述生成方式**：生成参数存在节点的 `gen` 里，输入关系存在边上（`role`/`order`）。Agent 的工作就是把这些写好，再调一次「按节点生成」，和用户手动在检查器里填完点「生成」是同一回事。因此用户可以随时接手 Agent 做到一半的画布，Agent 也能接着用户手动设好的节点继续。
 - **Agent 能看到用户的改动**：用户手动改动不推送给模型，Agent 下一轮调 `canvas_get` 时就能读到。`canvas_get` 返回 `revision`，`canvas_edit` 和 Remote `canvas.apply` **必须**带 `baseRevision`（schema 必填），revision 不一致时整批被拒，调用方重新读一遍再改。这样两个会话写同一集、或 Agent 和用户同时改，都不会静默覆盖。
 
@@ -274,7 +274,7 @@ export interface StoryboardSegment {   // 由 planShotSegments 算出，不手�
 - 没有完全相同的：新建视频节点；
 - 旧节点的镜头集合不再对应任何一段：标 `stale: true`，卡片显示「分镜已改」，不删除，由用户或 Agent 决定删掉还是保留；
 - 闸门 G3 的判定条件因此是「同一张表、同一组镜头 id 只对应一个非 stale 的视频节点」。
-- 对账分两步：tool-media 的 `planNodes` 是纯计算，返回切出的段、匹配到的已有节点 id、拟新建的节点、拟标 stale 的节点和预算，不改画布；`runNodes` 在令牌校验通过后，用一次 `canvas_edit`（带 `baseRevision`）把新建节点和 stale 标记写进去，再开始生成。所以检查器里弹预算对话框时画布不变；令牌对不上时什么都不写。
+- 对账分两步：tool-media 的 `planNodes` 是纯计算，返回切出的段、匹配到的已有节点 id、拟新建的节点、拟标 stale 的节点和预算，不改画布；`runNodes` 用一次 `canvas_edit`（带 `baseRevision`）把新建节点和 stale 标记写进去，再开始生成。所以检查器里点生成时画布在写入前不变。
 - `storyboard_voice` 的计划只包含台词配音节点，不建也不标视频节点。
 - 之后重新切段时，stale 节点的镜头集合如果又和某一段完全相同，就复用它并清除 `stale`。
 - `set_shots` 本身是 canvas 的纯操作，只改分镜表，不建也不标视频节点。
@@ -404,8 +404,8 @@ type CanvasEditOperation =
 ### 4.4 `tool-media/src/` 新增文件
 | 文件 | 内容 |
 |:--|:--|
-| `node-runner.ts` | `planNodes(nodeIds)` → `GenerationPlan`（纯计算：段、复用/新建/标 stale 的节点、预算，不改画布）；`runNodes(nodeIds, token)`：执行前按当前画布重新 `planNodes`、重算令牌，和传入的不一致就不执行，返回新的预算单和令牌；一致时先用一次带 `baseRevision` 的 canvas 编辑落下新建节点和 stale 标记，然后一致时每个节点用 `ctx.jobs.start()` 注册一个 kind 为 `media` 的任务（带 `toolCall`）并发执行；按节点收集输入（第 4.5 节）；调用现有的 `generate_*` 实现函数；结果追加成新版本；更新 `status` |
-| `budget.ts` | `GenerationPlan` → 预算单：每个节点的类型、调用次数、模型，视频总秒数、配音句数、图片张数、音乐次数；`confirmToken = sha256(canonicalJson(plan))` 取前 16 位 |
+| `node-runner.ts` | `planNodes(nodeIds)` → `GenerationPlan`（纯计算：段、复用/新建/标 stale 的节点，不改画布）；`runNodes(nodeIds)`：先用一次带 `baseRevision` 的 canvas 编辑落下新建节点和 stale 标记，然后每个节点用 `ctx.jobs.start()` 注册一个 kind 为 `media` 的任务（带 `toolCall`）并发执行；按节点收集输入（第 4.5 节）；调用现有的 `generate_*` 实现函数；结果追加成新版本；更新 `status` |
+| `budget.ts` | `GenerationPlan` 的节点清单类型（`PlannedNode`、`PlanChoice`、`PlanBlock`）；预算确认已移除 |
 | `voice.ts` | `planDialogue(storyboard, bible)`：每句台词对应一个音频节点 `gen.kind='speech'`、`gen.dialogue`；音色取设定条目的 `voice` |
 | `beats.ts` | `detectBeats(file)`：ffmpeg 解码成单声道 22050 Hz s16le PCM，计算能量通量，取峰值，估算 BPM 和节拍网格；返回 `{bpm, beatsMs[], sections[]}`（段落按能量变化切分） |
 | `timeline-render.ts` | `buildRenderPlan(timeline, probes, preset)` → ffmpeg 参数（纯函数）；`renderTimeline()` 执行，复用 PR #6 的 runner |
@@ -413,7 +413,7 @@ type CanvasEditOperation =
 | `node-tools.ts` | `canvas_generate`、`storyboard_voice`、`audio_beats` 工具 |
 | `skills.ts` | 把 `index.ts` 里只认 `media-editing` 的 skill provider 改成枚举 `skillsRoot` 下的每个子目录（第 6.1 节） |
 | `timeline-tools.ts` | `timeline_*` 工具 |
-| `remote.ts` | Remote `media`：`capabilities()`、`planNodes(nodeIds)`、`generateNodes(nodeIds, confirmToken)`、`cancel(jobId)`（调 `ctx.jobs.kill()`）、`timelineRender(nodeId, preset)` |
+| `remote.ts` | Remote `media`：`capabilities()`、`planNodes(nodeIds)`、`generateNodes(nodeIds)`、`cancel(jobId)`（调 `ctx.jobs.kill()`）、`timelineRender(nodeId, preset)` |
 
 ### 4.5 按节点收集生成输入（`node-runner.ts`）
 对节点 N：
@@ -450,8 +450,6 @@ type CanvasEditOperation =
 | tool-media | `skillsRoot`（替换 `skillAssetRoot`） | `../assets/` | 桌面 `brand-gateway.ts` 写成 `resources/runtime/skills` |
 | tool-media | `generateConcurrency` | 3 | 默认 |
 | tool-media | `videoRefModel` | `minimax-h3-ref2va` | 默认 |
-| tool-media | `confirmVideoCalls` / `confirmVideoSeconds` | 2 / 20 | 默认 |
-| tool-media | `confirmSpeechLines` / `confirmImageCalls` / `confirmMusicCalls` | 20 / 8 / 2 | 默认 |
 | tool-media | `exportPresets` | 第 8.4 节的 4 个 | 默认 |
 | tool-media | `exportConfirmSec` | 300 | 默认 |
 
@@ -477,14 +475,12 @@ type CanvasEditOperation =
 - `studio_stage({ action: 'status' | 'advance', to?, override?: { gate, reason } })`
 
 ### 5.3 生成
-- `canvas_generate({ nodes: string[], confirmToken?: string })`
+- `canvas_generate({ nodes: string[] })`
   - 所有生成节点都走它（image、video、speech、music）。传入分镜表时，自动为每一段建或复用一个视频节点（闸门 G3：同一张表、同一组镜头 id 只对应一个非 stale 的视频节点），然后生成这些节点。
   - 返回值：
-    - `{ status: 'needs_confirmation', plan: BudgetLine[], totals, confirmToken }`：整份计划满足任一条件时返回：视频调用次数 ≥ `Config.confirmVideoCalls`（默认 2）、视频总秒数 ≥ `confirmVideoSeconds`（默认 20）、配音句数 ≥ `confirmSpeechLines`（默认 20）、图片张数 ≥ `confirmImageCalls`（默认 8）、音乐次数 ≥ `confirmMusicCalls`（默认 2）。Agent 必须把预算转述给用户，用户同意后带上 `confirmToken` 再调一次。执行前按当前画布重算计划，令牌对不上（比如用户在确认期间改了画布）就不花钱，重新返回 `needs_confirmation`。
-    - `{ status: 'needs_choice', choices: ParamChoice[] }`：与现有生图工具的约定相同。
-    - `{ status: 'started', jobs: [{ node, jobId }] }`：立即返回，不等生成完成。完成后收到 jobs 通知，再调 `canvas_get` 看结果。
+    - `{ status: 'started', jobs: [{ node, jobId }] }`：立即返回，不等生成完成，不询问预算确认。完成后收到 jobs 通知，再调 `canvas_get` 看结果。
   - 闸门检查不通过时返回 `{ status: 'blocked', gate, missing: string[] }`。
-- `storyboard_voice({ storyboard, shots?: ShotId[], confirmToken? })`：为每句台词建或复用一个音频节点（按 `DialogueLine.id` 复用），然后和 `canvas_generate` 走同一份计划和预算确认。旁白用设定集的 `narrator` 音色。
+- `storyboard_voice({ storyboard, shots?: ShotId[] })`：为每句台词建或复用一个音频节点（按 `DialogueLine.id` 复用），然后和 `canvas_generate` 走同一份计划。旁白用设定集的 `narrator` 音色。
 - `audio_beats({ node })`：返回节拍和段落，并写入 audio 节点当前版本的 `beats`。
 
 ### 5.4 剪辑（照 ovaijisuandesign editor-v3 的分层）
@@ -519,7 +515,7 @@ type CanvasEditOperation =
 | `media-editing` | 已有（PR #6）。去掉里面的「字幕」字样，或者写明「不包含语音识别和字幕生成」 | 改 |
 
 ### 6.2 媒体创作预设
-- 新增一个 `media-studio` 预设：系统提示前缀只写三句：「先读 studio-pipeline」「按项目 format 读对应的 production skill」「花钱和删除前必须确认」。预设不在 `brand-gateway.ts` 里（它只产出 profile 补丁）。按现有写法在 `packages/bundle/web-app/presets/` 下新增 `media-studio.patch.yml`，参照同目录的 `standard.patch.yml`，并加进该包 `package.json` 的 `dsh.bundle.patch` 列表；只在蒜狸桌面品牌启用（和 canvas 一样，在 `brand-gateway.ts` 的补丁里打开）。
+- 新增一个 `media-studio` 预设：系统提示前缀只写三句：「先读 studio-pipeline」「按项目 format 读对应的 production skill」「删除前必须确认」。预设不在 `brand-gateway.ts` 里（它只产出 profile 补丁）。按现有写法在 `packages/bundle/web-app/presets/` 下新增 `media-studio.patch.yml`，参照同目录的 `standard.patch.yml`，并加进该包 `package.json` 的 `dsh.bundle.patch` 列表；只在蒜狸桌面品牌启用（和 canvas 一样，在 `brand-gateway.ts` 的补丁里打开）。
 - 用户在新建会话时选择这个模式；微信新建的会话仍用默认预设，但同样能用上这些工具和 skill。
 
 ---
@@ -564,7 +560,7 @@ type CanvasEditOperation =
   - 参考图：可拖动排序的缩略图列表，可删除、可从资产面板拖入；超过模型上限时，超出的部分标红；
   - 首帧/尾帧槽（video）：可拖入图片、选择节点、清空；
   - 台词和音色（speech）：音色下拉框，默认取角色设定；
-  - 「生成」按钮：调用 `media.planNodes` 后，需要确认时先弹出预算对话框，再调用 `generateNodes`。
+  - 「生成」按钮：调用 `media.planNodes` 后直接调用 `generateNodes`。
 - **分镜表**：打开时用全宽表格编辑器（覆盖画布区域）。列：序号、景别、画面、动作、运镜、时长、角色（多选，来自设定集）、场景、台词（可增删行）、音效、负向词、静帧运镜。行可拖动排序；右侧实时显示切段结果，不同段用不同底色标出。
 - **版本区**：列出全部版本（缩略图、模型、时间、来源 agent/user），可设为当前版本，可展开查看完整提示词和参数。
 - 所有修改都调用 Remote `canvas.apply`，带 `baseRevision`。被拒时提示「画布已被更新」，自动重新读取，用户的输入保留在表单里。
@@ -687,7 +683,6 @@ export interface Clip {
 - `segments.spec.ts`：用 dsh-infinite_canvas `docs/storyboard-segmentation.md` 里的例子做输入，输出和原实现一致（在测试里写明原实现跑出的期望值）；每种 seg 类型、每种 join 都有用例；预算的调用次数 = 实际生成的段数（同一个函数）。
 - `production.spec.ts`：G1 没有设定集时，拒绝生成参考图；G2 镜头缺少景别时，拒绝生成视频，并列出缺什么；G3 同一张表、同一组镜头 id，第二次不会新建视频节点，镜头组合变了时旧节点标 stale；越过闸门时有记录；阶段不能倒退，除非 override。
 - `node-runner.spec.ts`（用假的生成函数、假的 ffmpeg 和测试用 jobs 注册表）：输入收集（第 4.5 节第 1–4 步各一个用例）、上一段未生成时返回 `tail_chain` 阻塞、`tailChain: false` 时跳过、分镜改写后按镜头集合复用节点和标 stale、参考图顺序、@展开后补上的参考图、超出上限时返回 needs_choice、模型选择（第 6 步）、尾帧建节点并连到下一段、手动首帧不被覆盖、并发上限、同节点重复提交、取消、失败保留旧版本、retryable 判定、重启后 running 改成 failed。
-- `budget.spec.ts`：令牌稳定（同一份计划得到同一个令牌）；计划变化后令牌失效、执行前重算发现不一致时不调用生成函数；五种阈值各自的边界值（刚好等于、刚好小于）。
 - `voice.spec.ts`：每句台词一个节点，按 `DialogueLine.id` 复用（换版本后也复用）；音色取设定；旁白取 `narrator`。
 
 **真实 MAAS 对话：** 在 P1 的项目上接着说：
@@ -695,7 +690,7 @@ export interface Clip {
 
 **验收条件：**
 - [ ] 3 个参考图节点，`bible` 字段指向对应的设定条目，设定条目的 `imageNodes` 已回填；
-- [ ] Agent 先给出预算（调用次数、秒数），用户回答「同意」后才开始生成视频；会话日志里能看到 `needs_confirmation` 和第二次带令牌的调用；
+- [ ] Agent 直接开始生成视频（不询问预算确认）；会话日志里能看到 `started`；
 - [ ] 场 1 每段 1 个视频节点，入边里有 ref（角色和场景主图，order 正确）；第 2 段起有来自上一段尾帧节点的 `first_frame` 边；
 - [ ] 每个视频节点的当前版本都有 `durationMs`、`width`、`height`；
 - [ ] 场 1 每句台词 1 个音频节点，有 `gen.dialogue`；
@@ -709,7 +704,7 @@ export interface Clip {
 **真实界面流程（GIF）：**
 1. 打开 P2 的项目，切到第 1 集，画布显示参考图、剧本、3 个场景组和场 1 的视频；
 2. 选中场 2 分镜表，在表格里把第 2 镜改成近景、4 秒，右侧切段结果实时变化；
-3. 选中场 2 第 1 段视频节点，在检查器里改为 9:16、5 秒，拖动参考图换顺序，把场 1 尾帧拖进首帧槽，点生成，弹出预算对话框，确认；
+3. 选中场 2 第 1 段视频节点，在检查器里改为 9:16、5 秒，拖动参考图换顺序，把场 1 尾帧拖进首帧槽，点生成；
 4. 生成中节点有进度，完成后出现新版本，切换版本；
 5. 撤销最后一次参数修改；
 6. 在对话里让 Agent「把场 2 第 1 段的参考图去掉道具」，画布实时更新，视口不跳动。
@@ -742,7 +737,7 @@ export interface Clip {
 
 ### 10.6 P5 品类 skill 与预设
 **验收条件：**
-- [ ] 三个品类各跑一条完整的真实 MAAS 对话，从一句话创意到导出 MP4，中间只在预算确认时回答「同意」：
+- [ ] 三个品类各跑一条完整的真实 MAAS 对话，从一句话创意到导出 MP4：
   - 短剧：「做一集 60 秒左右的都市悬疑短剧，竖屏。」
   - 漫剧：「把这段小说做成 6 格竖屏漫剧，带配音。」（附 300 字文本；至少 4 格用 still 运镜）
   - MV：「用这首歌做一个 30 秒的 MV。」（附一个音频文件；镜头切换点和节拍点的误差 ≤ 1 帧）
@@ -763,7 +758,7 @@ export interface Clip {
 | 预览和导出不一致 | 浏览器预览只是近似效果 | 界面注明以导出为准；P4 验收要求截图对比 |
 | 旧版本打开新格式 | v2 的 canvas.json 旧版本读不了 | 旧版本遇到不认识的版本会拒绝读取并且不覆盖（现有行为，P1 要测）；写升级指南 |
 | 画布性能 | 一集几十到上百个媒体节点 | 缩略图懒加载；视频只在悬停时加载；P3 有性能验收 |
-| 花费失控 | 批量生成视频 | 预算令牌由代码强制；`confirmVideoCalls` 可配置 |
+| 花费失控 | 批量生成视频 | 生成直接开始、不再预算确认；由方案授权范围和 Skill 规矩约束，必要时由部署在 `tool-media` 之外设限 |
 | 文档位置 | 仓库约定未实现的设计放 `.agents/notes/proposed/`，但那里要求中英双语和固定格式 | 这份规格保留在 `docs/`，已作为单语开发文档登记在 `scripts/translation-pairing.manifest.json` 的 `excluded` 里；全部五期合并后删掉本文，把仍有价值的决定写进对应包的 README 或 Agent Note |
 
 ---
@@ -785,9 +780,9 @@ export interface Clip {
 | 9 | 右栏最宽 600 px，侧栏检查器不可达 | 右栏里检查器总是抽屉；正式制作进全屏工作室 | 7.1、10.4 |
 | 10 | 分镜改写后视频节点怎么算 | 按镜头 id 集合匹配复用，不匹配的标 stale | 3.3、3.4 |
 | 11 | 自建队列还是 `dsh-jobs` | 用 `dsh-jobs`，删掉 `canvas_wait` | 4.1、4.6、5.3 |
-| 12 | 确认期间画布变了 | 执行前重算计划和令牌，不一致不花钱、重新出预算 | 4.4、5.3 |
+| 12 | ~~确认期间画布变了~~ | 预算确认已移除；执行前仍按当前画布重算计划，不一致不落地 | 4.4、5.3 |
 | 13 | 两个会话写同一集 | `baseRevision` 必填 | 2.1、5.2 |
-| 14 | 语音、图片、音乐没有预算确认 | 一份计划，五种阈值任一触发都要确认 | 5.3 |
+| 14 | ~~语音、图片、音乐没有预算确认~~ | 预算确认已整体移除，所有生成直接开始 | 5.3 |
 | 15 | 下一段还不存在时的尾帧接力 | 尾帧节点先建，生成下一段时再连；上一段没生成就阻塞；可用 `tailChain: false` 跳过 | 4.5 |
 | 16 | 旁白和台词下标 | 台词带 id，speaker 可为 narrator，设定集加 `narrator` 音色 | 3.3、3.4、3.5 |
 | 17 | 微信回传怎么判定 | 沿用微信插件按工具名单回传，P4 加 `timeline_export` | 8.4 |

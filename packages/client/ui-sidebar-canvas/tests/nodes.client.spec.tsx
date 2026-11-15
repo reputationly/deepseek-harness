@@ -318,9 +318,9 @@ it('shows a queued status and a retryable failure', () => {
   expect(screen.getByRole('button', { name: 'status.retry' })).toBeTruthy()
 })
 
-it('plans and starts generation from a retry card through the shared budget flow', async () => {
+it('plans and starts generation from a retry card directly', async () => {
   const planNodes = vi.fn(async () => ({
-    state: 'needs_confirmation' as const, token: 'retry-token',
+    state: 'ready' as const,
     lines: [{ node: 'n1', kind: 'video', model: 'video-model', calls: 1, seconds: 3 }],
     totals: { videoCalls: 1, videoSeconds: 3, imageCalls: 0, speechLines: 0, musicCalls: 0 }, jobs: [],
   }))
@@ -347,9 +347,8 @@ it('plans and starts generation from a retry card through the shared budget flow
   render(<RetryCard />)
   fireEvent.click(screen.getByRole('button', { name: 'status.retry' }))
   await waitFor(() => { expect(planNodes).toHaveBeenCalledWith(['n1']) })
-  await waitFor(() => { expect(screen.getByRole('dialog', { name: 'budget.title' })).toBeTruthy() })
-  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
-  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['n1'], 'retry-token') })
+  await waitFor(() => { expect(generateNodes).toHaveBeenCalledWith(['n1']) })
+  expect(screen.queryByRole('dialog')).toBeNull()
 })
 
 it('draws a group frame with its scene number and member count', () => {

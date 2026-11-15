@@ -211,9 +211,9 @@ export function apply(ctx: Context): void {
           if (!result.ok) throw new Error(result.error.message)
           return result.value
         },
-        generateNodes: async (nodes, token, scope) => {
+        generateNodes: async (nodes, scope) => {
           if (media === undefined) return undefined
-          const result = await media.generateNodes(sessionId, nodes, token, scope)
+          const result = await media.generateNodes(sessionId, nodes, scope)
           if (!result.ok) throw new Error(result.error.message)
           return result.value
         },

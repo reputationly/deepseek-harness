@@ -90,16 +90,6 @@ export interface Config {
   minSegmentSeconds?: number
   /** Generation tasks one call may run at once. */
   generateConcurrency?: number
-  /** Video calls above which a plan needs the user's confirmation. */
-  confirmVideoCalls?: number
-  /** Total video seconds above which a plan needs the user's confirmation. */
-  confirmVideoSeconds?: number
-  /** Spoken lines above which a plan needs the user's confirmation. */
-  confirmSpeechLines?: number
-  /** Image calls above which a plan needs the user's confirmation. */
-  confirmImageCalls?: number
-  /** Music calls above which a plan needs the user's confirmation. */
-  confirmMusicCalls?: number
   /** FFmpeg executable, or an absolute path to its bundled runtime copy. */
   ffmpegPath?: string
   /** FFprobe executable, or an absolute path to its bundled runtime copy. */
@@ -171,11 +161,6 @@ export const Config: z<Config> = z.object({
   maxSegmentSeconds: z.number().default(15),
   minSegmentSeconds: z.number().default(4),
   generateConcurrency: z.number().default(3),
-  confirmVideoCalls: z.number().default(2),
-  confirmVideoSeconds: z.number().default(20),
-  confirmSpeechLines: z.number().default(20),
-  confirmImageCalls: z.number().default(8),
-  confirmMusicCalls: z.number().default(2),
   ffmpegPath: z.string().default('ffmpeg'),
   ffprobePath: z.string().default('ffprobe'),
   editTimeoutMs: z.number().default(600_000),
@@ -226,11 +211,6 @@ const CONFIG_KEYS = [
   'maxSegmentSeconds',
   'minSegmentSeconds',
   'generateConcurrency',
-  'confirmVideoCalls',
-  'confirmVideoSeconds',
-  'confirmSpeechLines',
-  'confirmImageCalls',
-  'confirmMusicCalls',
   'ffmpegPath',
   'ffprobePath',
   'editTimeoutMs',

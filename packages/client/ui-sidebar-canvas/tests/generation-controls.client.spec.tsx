@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** A quote remains bound to its opening canvas, including when confirmation is delayed. */
+/** Generation starts directly once the plan is ready, with no confirmation step. */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -11,7 +11,7 @@ afterEach(cleanup)
 type Props = Parameters<typeof useGenerationControls>[0]
 const scope = { directory: '/project', episode: brandString<EpisodeId>('e1') }
 const plan = (state: MediaPlanView['state'], message?: string): MediaPlanView => ({
-  state, token: 'quote', ...message === undefined ? {} : { message }, lines: [], jobs: [],
+  state, ...message === undefined ? {} : { message }, lines: [], jobs: [],
   totals: { videoCalls: 0, videoSeconds: 0, imageCalls: 0, speechLines: 0, musicCalls: 1 },
 })
 function Harness(props: Props) {
@@ -20,29 +20,23 @@ function Harness(props: Props) {
 }
 function props(): Props {
   return { document: undefined, scope, t: key => key,
-    planNodes: vi.fn(async () => plan('needs_confirmation')), generateNodes: vi.fn(async () => plan('started')) }
+    planNodes: vi.fn(async () => plan('ready')), generateNodes: vi.fn(async () => plan('started')) }
 }
 
-it('retains the original scope and quote token through confirmation', async () => {
+it('starts generation directly once the plan is ready', async () => {
   const value = props()
   render(<Harness {...value} />)
   fireEvent.click(screen.getByText('generate'))
-  await screen.findByRole('dialog', { name: 'budget.title' })
+  await waitFor(() => { expect(value.generateNodes).toHaveBeenCalledExactlyOnceWith(['n1'], scope) })
   expect(value.planNodes).toHaveBeenCalledExactlyOnceWith(['n1'], scope)
-  expect(value.generateNodes).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'budget.confirm' }))
-  await waitFor(() => { expect(value.generateNodes).toHaveBeenCalledExactlyOnceWith(['n1'], 'quote', scope) })
+  expect(screen.queryByRole('dialog')).toBeNull()
 })
 
-it('refuses confirmation after the project changes', async () => {
-  const value = props()
-  const view = render(<Harness {...value} />)
+it('does not start when the plan refuses', async () => {
+  const value = { ...props(), planNodes: vi.fn(async () => plan('blocked', 'gate refused')) }
+  render(<Harness {...value} />)
   fireEvent.click(screen.getByText('generate'))
-  await screen.findByRole('dialog', { name: 'budget.title' })
-  view.rerender(<Harness {...value} scope={{ ...scope, directory: '/other' }} />)
-  const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'budget.confirm' })
-  expect(confirm.disabled).toBe(true)
-  fireEvent.click(confirm)
+  await screen.findByText('gate refused')
   expect(value.generateNodes).not.toHaveBeenCalled()
 })
 

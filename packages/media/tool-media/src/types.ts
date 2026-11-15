@@ -81,11 +81,9 @@ export interface MediaJobRef {
 /** Result of planning or starting one generation request. */
 export interface MediaPlanView {
   /** What the Host decided to do. */
-  readonly state: 'ready' | 'blocked' | 'needs_confirmation' | 'already_running' | 'started' | 'failed'
+  readonly state: 'ready' | 'blocked' | 'already_running' | 'started' | 'failed'
   /** Why the plan refuses or failed, when it did. */
   readonly message?: string
-  /** Token to present once the user agrees to the totals. */
-  readonly token?: string
   /** Per-node calls. */
   readonly lines: readonly MediaPlanLine[]
   /** Calls by kind. */

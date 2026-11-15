@@ -59,9 +59,6 @@ function runtime(overrides: { document?: CanvasDocument; bible?: Bible; kill?: (
         maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'm', videoRefModel: 'm', imageModel: 'm',
         speechModel: 'm', musicModel: 'm',
       },
-      confirmLimits: {
-        confirmVideoCalls: 2, confirmVideoSeconds: 20, confirmSpeechLines: 10, confirmImageCalls: 2, confirmMusicCalls: 1,
-      },
       concurrency: 1,
       generate: {
         image: vi.fn(async () => ({ path: '/p/out.png', model: 'm' })),
@@ -116,11 +113,10 @@ it('stops before transcoding if the project switches while the scoped canvas rea
   expect(previewVideo).not.toHaveBeenCalled()
 })
 
-it('asks for confirmation when the plan crosses the image threshold', async () => {
+it('plans image nodes and reports their calls without a confirmation step', async () => {
   const h = runtime({ document: doc([image('n1'), image('n2'), image('n3')]) })
-  const expectedToken1: unknown = expect.any(String)
   await expect(h.runtime.plan(session, ['n1', 'n2', 'n3'])).resolves.toMatchObject({
-    state: 'needs_confirmation', token: expectedToken1,
+    state: 'ready', jobs: [], lines: [{ node: 'n1' }, { node: 'n2' }, { node: 'n3' }],
   })
 })
 
@@ -158,13 +154,10 @@ it('reports video seconds in the plan lines', async () => {
   expect(view.lines[0]?.seconds).toBeGreaterThan(0)
 })
 
-it('asks for confirmation before starting a plan over the threshold', async () => {
+it('starts a plan over the former confirmation threshold without asking', async () => {
   const h = runtime({ document: doc([image('n1'), image('n2'), image('n3')]) })
-  const expectedToken2: unknown = expect.any(String)
-  await expect(h.runtime.generate(session, ['n1', 'n2', 'n3'], undefined)).resolves.toMatchObject({
-    state: 'needs_confirmation', token: expectedToken2,
-  })
-  expect(h.start).not.toHaveBeenCalled()
+  await expect(h.runtime.generate(session, ['n1', 'n2', 'n3'])).resolves.toMatchObject({ state: 'started' })
+  expect(h.start).toHaveBeenCalled()
 })
 
 it('reports a blocked plan with its gate and missing choices', async () => {
@@ -177,6 +170,6 @@ it('reports a blocked plan with its gate and missing choices', async () => {
 
 it('finishes an empty plan without starting jobs', async () => {
   const h = runtime()
-  const view = await h.runtime.generate(session, [], undefined)
-  expect(['started', 'ready', 'needs_confirmation', 'blocked']).toContain(view.state)
+  const view = await h.runtime.generate(session, [])
+  expect(['started', 'ready', 'blocked']).toContain(view.state)
 })

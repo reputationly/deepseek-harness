@@ -48,11 +48,6 @@ export interface NodeDepsConfig {
   readonly imageModel: string
   readonly speechModel: string
   readonly musicModel: string
-  readonly confirmVideoCalls: number
-  readonly confirmVideoSeconds: number
-  readonly confirmSpeechLines: number
-  readonly confirmImageCalls: number
-  readonly confirmMusicCalls: number
   readonly generateConcurrency: number
   readonly outputDir: string
 }
@@ -123,13 +118,6 @@ export function createNodeToolDeps(input: NodeDepsInput): NodeToolDeps {
       imageModel: resolved.imageModel,
       speechModel: resolved.speechModel,
       musicModel: resolved.musicModel,
-    },
-    confirmLimits: {
-      confirmVideoCalls: resolved.confirmVideoCalls,
-      confirmVideoSeconds: resolved.confirmVideoSeconds,
-      confirmSpeechLines: resolved.confirmSpeechLines,
-      confirmImageCalls: resolved.confirmImageCalls,
-      confirmMusicCalls: resolved.confirmMusicCalls,
     },
     concurrency: resolved.generateConcurrency,
     generate: generator,

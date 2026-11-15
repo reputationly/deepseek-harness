@@ -35,11 +35,10 @@ export interface MediaRuntime {
   readonly preview: (session: Session, node: CanvasNodeId, version: VersionId, scope: CanvasScope) => Promise<string>
   /** Plan the nodes without changing the canvas or starting work. */
   readonly plan: (session: Session, nodes: readonly string[], scope?: CanvasScope) => Promise<MediaPlanView>
-  /** Start the plan, presenting the confirmation token when the user agreed to the totals. */
+  /** Start the plan. */
   readonly generate: (
     session: Session,
     nodes: readonly string[],
-    token: string | undefined,
     scope?: CanvasScope,
   ) => Promise<MediaPlanView>
   /** Cancel one running media job the Session owns. */
@@ -423,7 +422,6 @@ export class MediaService extends TypertRemoteService {
    * Start the given nodes' generation.
    * @param session - Session that owns the canvas.
    * @param nodes - canvas node ids to generate.
-   * @param token - confirmation token from `planNodes`, after the user agreed.
    * @param scope - original editor project and episode, retained through confirmation.
    * @returns the started jobs, or why nothing started.
    */
@@ -431,10 +429,9 @@ export class MediaService extends TypertRemoteService {
   generateNodes(
     session: Session,
     nodes: readonly string[],
-    token: string | undefined,
     scope?: CanvasScope,
   ): Promise<MediaPlanView> {
-    return this.runtime.generate(session, nodes, token, scope)
+    return this.runtime.generate(session, nodes, scope)
   }
 
   /**
