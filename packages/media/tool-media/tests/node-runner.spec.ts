@@ -259,7 +259,7 @@ describe('planNodes', () => {
   })
 
   it('rechecks storyboard quality when retrying its video node directly', () => {
-    const invalid: StoredShot = { ...shot('s1'), shotSize: undefined }
+    const { shotSize: _removed, ...invalid } = shot('s1')
     const board = boardNode('n2', [invalid])
     const video = videoNode('v1', 'n2', ['s1'])
     expect(planNodes(documentOf([board, video]), bible, ['v1'], limits).blocked).toEqual({
