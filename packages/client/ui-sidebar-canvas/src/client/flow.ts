@@ -5,11 +5,15 @@ import type { CanvasDocument, CanvasNode, CanvasNodeId, CanvasOperation, Storybo
 import { shotBadge } from './model/cards.ts'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { edgeLabel, edgeStyle } from './model/edges.ts'
-import type { ReadCanvasFile } from './face.ts'
+import type { CanvasVideoFiles, PreviewCanvasVideo, ReadCanvasFile } from './face.ts'
 import type { NS } from './locales.ts'
 
 /** What every node card reads besides its document node. */
 export type CanvasNodeFace = {
+  /** Summary of the scoped, validated timeline currently read by the editor. */
+  readonly timelineSummary?: { readonly node: CanvasNodeId; readonly clips: number; readonly durationMs: number }
+  readonly videoFiles?: CanvasVideoFiles
+  readonly previewVideo?: PreviewCanvasVideo
   readonly readFile: ReadCanvasFile
   readonly t: PropsLocale<typeof NS>['t']
   /** Applies the user's edits, such as switching the shown version. */
@@ -29,12 +33,7 @@ export type CanvasFlowNode = Node<{
 /** One drawn edge. */
 export type CanvasFlowEdge = Edge
 
-/**
- * Draw the document's nodes; group members are positioned inside their group.
- * @param document - canvas document.
- * @param face - media reads and copy handed to every card.
- * @returns groups first, then content nodes, as the flow requires parents before children.
- */
+
 /** Segment badge of a video node, using the storyboard the view computed and the node's scene group. */
 function segmentBadgeOf(
   document: CanvasDocument,
@@ -56,6 +55,13 @@ function segmentBadgeOf(
   return t('badge.segment', { segment: badge.segment })
 }
 
+/**
+ * Map canvas nodes to flow cards, placing parent groups before their children.
+ * @param document - Canvas document before the applied edit.
+ * @param face - Media access and localized copy supplied to each card.
+ * @param segments - Precomputed storyboard segments.
+ * @returns Parent groups first, followed by their content cards.
+ */
 export function flowNodes(
   document: CanvasDocument,
   face: CanvasNodeFace,

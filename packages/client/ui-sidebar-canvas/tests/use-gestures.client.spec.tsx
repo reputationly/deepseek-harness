@@ -10,7 +10,7 @@ import { EditHistory } from '../src/client/model/history.ts'
 afterEach(() => { cleanup() })
 
 const doc: CanvasDocument = {
-  version: 2, revision: 1, nextId: 4, edges: [],
+  version: 3, revision: 1, nextId: 4, edges: [],
   nodes: [
     { id: 'n1' as never, type: 'image', title: 'a.png', x: 0, y: 0, width: 280, height: 260, activeVersion: 'v1' as never, versions: [] },
     { id: 'n2' as never, type: 'video', title: 'v.mp4', x: 400, y: 0, width: 280, height: 220, activeVersion: 'v1' as never, versions: [] },

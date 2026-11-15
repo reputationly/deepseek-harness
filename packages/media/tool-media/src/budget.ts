@@ -33,7 +33,7 @@ export interface PlanChoice {
 
 /** What a plan cannot do until an earlier step runs. */
 export interface PlanBlock {
-  readonly gate: GateId
+  readonly gate: GateId | 'media_recovery'
   readonly missing: readonly string[]
 }
 
@@ -80,7 +80,11 @@ export interface Budget {
   readonly needsConfirmation: boolean
 }
 
-/** Deterministic JSON so two identical plans always hash the same. */
+/**
+ * Deterministic JSON so two identical plans always hash the same.
+ * @param value - JSON-compatible plan data.
+ * @returns recursively key-sorted JSON for hashing.
+ */
 export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(entry => canonicalJson(entry)).join(',')}]`
   if (typeof value === 'object' && value !== null) {
@@ -89,7 +93,8 @@ export function canonicalJson(value: unknown): string {
       .sort(([left], [right]) => left.localeCompare(right))
     return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(',')}}`
   }
-  return JSON.stringify(value) ?? 'null'
+  if (value === undefined || typeof value === 'function' || typeof value === 'symbol') return 'null'
+  return JSON.stringify(value)
 }
 
 /**

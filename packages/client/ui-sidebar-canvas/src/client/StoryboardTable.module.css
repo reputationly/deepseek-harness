@@ -13,7 +13,7 @@
 .table td { padding: 2px 6px; vertical-align: top; }
 .index { color: var(--dsw-alias-label-tertiary); text-align: right; }
 .cell { box-sizing: border-box; width: 100%; min-width: 64px; padding: 3px 4px; border: 0.5px solid transparent; border-radius: var(--dsw-radius-sm); color: var(--dsw-alias-label-primary); background: transparent; font: inherit; }
-.cell:hover { border-color: var(--dsw-alias-border-l3); }
+@media (hover: hover) { .cell:hover { border-color: var(--dsw-alias-border-l3); } }
 .cell:focus { border-color: var(--dsw-alias-state-business-primary); outline: none; background: var(--dsw-alias-bg-base); }
 .footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 12px; border-top: 0.5px solid var(--dsw-alias-border-l3); }
 .summary { color: var(--dsw-alias-label-tertiary); font-size: 12px; }

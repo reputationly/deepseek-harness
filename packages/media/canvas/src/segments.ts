@@ -47,7 +47,7 @@ function cueOf(shot: Shot): string {
 
 /** Duration of one shot with the algorithm's floor and rounding. */
 function durationOf(shot: Shot): number {
-  return Math.max(0.3, Math.round((Number(shot.durationSec) || 3) * 10) / 10)
+  return Math.max(0.3, Math.round((shot.durationSec || 3) * 10) / 10)
 }
 
 /**

@@ -45,7 +45,7 @@ const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
   ...overrides,
 })
 
-const document = (nodes: CanvasDocument['nodes']): CanvasDocument => ({ version: 2, revision: 0, nextId: 2, nodes, edges: [] })
+const document = (nodes: CanvasDocument['nodes']): CanvasDocument => ({ version: 3, revision: 0, nextId: 2, nodes, edges: [] })
 
 describe('production record', () => {
   it('round-trips and defaults to the brief stage', () => {

@@ -7,11 +7,24 @@ import { basename } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ResolvedConfig } from './config.ts'
 import { activeVersionOf, assertCanvas, CanvasCorruptError } from './document.ts'
+import { CanvasConflictError } from './errors.ts'
+export { CanvasConflictError } from './errors.ts'
 import { fitGroups, layoutCreated, nodeSize, type DraftNode } from './layout.ts'
 import { edgeId, inferRole } from './roles.ts'
 import type {
-  CanvasDocument, CanvasEdge, CanvasEdgeRole, CanvasEditResult, CanvasNodeId, CanvasNodeType, CanvasOperation,
-  CanvasSkippedOperation, DialogueLine, NodeVersion, Shot, ShotId, VersionId,
+  CanvasDocument,
+  CanvasEdge,
+  CanvasEdgeRole,
+  CanvasEditResult,
+  CanvasNodeId,
+  CanvasNodeType,
+  CanvasOperation,
+  CanvasSkippedOperation,
+  DialogueLine,
+  NodeVersion,
+  Shot,
+  ShotId,
+  VersionId,
 } from './types.ts'
 
 /** Inputs every operation list needs beyond the document itself. */
@@ -22,6 +35,8 @@ export interface ApplyOptions {
   readonly origin?: 'agent' | 'user'
   /** Operations the caller already refused, keyed by list index, with the reason. */
   readonly rejected?: ReadonlyMap<number, string>
+  /** Adopted timeline sources remain addressable when the node's history is trimmed. */
+  readonly preservedVersions?: ReadonlyMap<CanvasNodeId, ReadonlySet<VersionId>>
   /** Clock used for version timestamps; tests fix it. */
   readonly now?: () => string
 }
@@ -83,18 +98,6 @@ export function checkRevision(document: CanvasDocument, baseRevision: number | u
   throw new CanvasConflictError(baseRevision, document.revision)
 }
 
-/** Raised when the document changed since the caller read it; nothing was written. */
-export class CanvasConflictError extends Error {
-  /**
-   * @param expected - revision the caller based the edit on.
-   * @param actual - current document revision.
-   */
-  constructor(readonly expected: number, readonly actual: number) {
-    super(`canvas revision is ${String(actual)}, not the ${String(expected)} this edit was based on`)
-    this.name = 'CanvasConflictError'
-  }
-}
-
 /**
  * Apply operations in order. An operation that cannot apply is skipped with a reason and the rest
  * still run.
@@ -108,7 +111,9 @@ export function applyOperations(
   operations: readonly CanvasOperation[],
   options: ApplyOptions,
 ): ApplyOutcome {
-  const nodes = new Map<string, WorkingNode>(document.nodes.map(node => [node.id, { ...node, versions: node.versions ?? [] }]))
+  const nodes = new Map<string, WorkingNode>(
+    document.nodes.map(node => [node.id, { ...node, versions: node.versions ?? [] }]),
+  )
   const edges = new Map<string, CanvasEdge>(document.edges.map(edge => [edge.id, edge]))
   const refs = new Map<string, CanvasNodeId>()
   const created: CanvasNodeId[] = []
@@ -146,22 +151,26 @@ export function applyOperations(
     node.activeVersion = version.id
     working.set(node.id, version)
   }
+  const inputVersions = new Map<CanvasNodeId, Set<VersionId>>()
   const dropVersions = (node: WorkingNode): void => {
     const versions = node.versions
     const limit = isMediaType(node.type) ? options.limits.versionLimit : options.limits.textVersionLimit
     if (versions.length <= limit) return
-    const kept = versions.slice(versions.length - limit)
+    const kept = new Set(versions.slice(-limit).map(version => version.id))
     const active = activeVersionOf(node)
-    if (active !== undefined && !kept.some(version => version.id === active.id)) {
-      kept.shift()
-      kept.unshift(active)
-    }
-    node.versions = kept
+    if (active !== undefined) kept.add(active.id)
+    const pinned = options.preservedVersions?.get(node.id)
+    node.versions = versions.filter(
+      version =>
+        kept.has(version.id) ||
+        pinned?.has(version.id) === true ||
+        inputVersions.get(node.id)?.has(version.id) === true,
+    )
   }
   const storyboardOf = (node: WorkingNode): Shot[] => {
     const version = activeVersionOf(node)
     if (node.type !== 'storyboard') throw new Skip(`node ${node.id} is not a storyboard`)
-    return [...version?.shots ?? []]
+    return [...(version?.shots ?? [])]
   }
   const writeShots = (node: WorkingNode, shots: readonly Shot[]): void => {
     if (shots.length > options.limits.maxShotsPerStoryboard) {
@@ -171,7 +180,7 @@ export function applyOperations(
     if (current !== undefined) {
       const next = { ...current, shots }
       working.set(node.id, next)
-      node.versions = node.versions.map(held => held.id === current.id ? next : held)
+      node.versions = node.versions.map(held => (held.id === current.id ? next : held))
       return
     }
     setVersion(node, { id: nextVersionId(node.versions), shots, createdAt: now(), origin })
@@ -187,9 +196,11 @@ export function applyOperations(
     return shot
   }
   const withShot = (shots: readonly Shot[], index: number, patch: ShotPatch): readonly Shot[] =>
-    shots.map((shot, at) => at === index ? { ...shot, ...patch } : shot)
+    shots.map((shot, at) => (at === index ? { ...shot, ...patch } : shot))
   const orderOf = (role: CanvasEdgeRole, target: string): number => {
-    const held = [...edges.values()].filter(edge => edge.target === target && edge.role === role).map(edge => edge.order ?? 0)
+    const held = [...edges.values()]
+      .filter(edge => edge.target === target && edge.role === role)
+      .map(edge => edge.order ?? 0)
     return held.length === 0 ? 0 : Math.max(...held) + 1
   }
 
@@ -201,9 +212,14 @@ export function applyOperations(
         const content = isTextType(operation.type) ? operation.text : operation.path
         const needsContent = operation.type !== 'storyboard' && operation.type !== 'timeline'
         // A node that names only what it will generate exists so a job can fill it later.
-        const pending = operation.gen !== undefined && (content === undefined || content === '') && operation.shots === undefined
+        const pending =
+          operation.gen !== undefined && (content === undefined || content === '') && operation.shots === undefined
         if (needsContent && !pending && (content === undefined || content === '')) {
-          throw new Skip(isTextType(operation.type) ? `a ${operation.type} node needs text` : `${operation.type === 'image' || operation.type === 'audio' ? 'an' : 'a'} ${operation.type} node needs path`)
+          throw new Skip(
+            isTextType(operation.type)
+              ? `a ${operation.type} node needs text`
+              : `${operation.type === 'image' || operation.type === 'audio' ? 'an' : 'a'} ${operation.type} node needs path`,
+          )
         }
         if (operation.gen !== undefined && operation.gen.prompt.length > options.limits.maxPromptLength) {
           throw new Skip(`prompt exceeds ${String(options.limits.maxPromptLength)} characters`)
@@ -213,23 +229,45 @@ export function applyOperations(
         }
         const id = brandString<CanvasNodeId>(`n${String(nextId++)}`)
         const version: NodeVersion = {
-          id: brandString<VersionId>('v1'),
-          ...content === undefined || content === '' ? {} : isTextType(operation.type) ? { text: content } : { path: content },
-          ...operation.shots === undefined ? {} : { shots: operation.shots },
-          ...operation.gen === undefined ? {} : { prompt: operation.gen.prompt },
-          ...operation.gen?.model === undefined ? {} : { model: operation.gen.model },
-          ...operation.gen === undefined ? {} : { params: operation.gen.params },
+          id: operation.initialVersion?.id ?? brandString<VersionId>('v1'),
+          ...(content === undefined || content === ''
+            ? {}
+            : isTextType(operation.type)
+              ? { text: content }
+              : { path: content }),
+          ...(operation.shots === undefined ? {} : { shots: operation.shots }),
+          ...(operation.gen === undefined ? {} : { prompt: operation.gen.prompt }),
+          ...(operation.gen?.model === undefined ? {} : { model: operation.gen.model }),
+          ...(operation.gen === undefined ? {} : { params: operation.gen.params }),
+          ...(operation.initialVersion?.params === undefined ? {} : { params: operation.initialVersion.params }),
+          ...(operation.initialVersion?.durationMs === undefined
+            ? {}
+            : { durationMs: operation.initialVersion.durationMs }),
+          ...(operation.initialVersion?.width === undefined ? {} : { width: operation.initialVersion.width }),
+          ...(operation.initialVersion?.height === undefined ? {} : { height: operation.initialVersion.height }),
+          ...(operation.inputs === undefined ? {} : { inputs: operation.inputs }),
           createdAt: now(),
           origin,
         }
-        const title = operation.title ?? (content === undefined || content === '' ? operation.type : isTextType(operation.type) ? content.slice(0, 24) : basename(content))
+        const title =
+          operation.title ??
+          (content === undefined || content === ''
+            ? operation.type
+            : isTextType(operation.type)
+              ? content.slice(0, 24)
+              : basename(content))
         nodes.set(id, {
-          id, type: operation.type, title, x: 0, y: 0, ...nodeSize(operation.type),
+          id,
+          type: operation.type,
+          title,
+          x: 0,
+          y: 0,
+          ...nodeSize(operation.type),
           versions: pending ? [] : [version],
-          ...pending ? {} : { activeVersion: version.id },
-          ...operation.gen === undefined ? {} : { gen: operation.gen },
-          ...operation.bible === undefined ? {} : { bible: operation.bible },
-          ...group === undefined ? {} : { group: brandString<CanvasNodeId>(group) },
+          ...(pending || operation.candidate === true ? {} : { activeVersion: version.id }),
+          ...(operation.gen === undefined ? {} : { gen: operation.gen }),
+          ...(operation.bible === undefined ? {} : { bible: operation.bible }),
+          ...(group === undefined ? {} : { group: brandString<CanvasNodeId>(group) }),
         })
         claim(operation.ref, id)
         return
@@ -253,16 +291,32 @@ export function applyOperations(
       }
       case 'set_gen': {
         const node = find(operation.node)
-        if (node.type !== 'image' && node.type !== 'video' && node.type !== 'audio') throw new Skip(`node ${node.id} does not generate media`)
-        const { params, ...rest } = operation.gen
-        const merged = { ...node.gen, ...rest } as typeof node.gen
+        if (node.type !== 'image' && node.type !== 'video' && node.type !== 'audio')
+          throw new Skip(`node ${node.id} does not generate media`)
+        const previous = node.gen
+        const { params, model, ...rest } = operation.gen
+        const merged = { ...node.gen, ...rest }
+        if (model === null) delete merged.model
+        else if (model !== undefined) merged.model = model
         const nextParams: Record<string, string | number | boolean> = {}
         for (const [key, value] of Object.entries({ ...node.gen?.params, ...params })) {
           if (value !== null) nextParams[key] = value
         }
         const prompt = operation.gen.prompt ?? node.gen?.prompt ?? ''
-        if (prompt.length > options.limits.maxPromptLength) throw new Skip(`prompt exceeds ${String(options.limits.maxPromptLength)} characters`)
-        node.gen = { ...merged, kind: merged?.kind ?? (node.type === 'audio' ? 'speech' : node.type), prompt, params: nextParams }
+        if (prompt.length > options.limits.maxPromptLength)
+          throw new Skip(`prompt exceeds ${String(options.limits.maxPromptLength)} characters`)
+        node.gen = {
+          ...merged,
+          kind: merged.kind ?? (node.type === 'audio' ? 'speech' : node.type),
+          prompt,
+          params: nextParams,
+        }
+        if (
+          node.status?.state === 'failed' &&
+          node.status.recoveryRequired !== true &&
+          JSON.stringify(previous) !== JSON.stringify(node.gen)
+        )
+          delete node.status
         return
       }
       case 'set_text': {
@@ -272,7 +326,7 @@ export function applyOperations(
         if (current !== undefined) {
           const next = { ...current, text: operation.text }
           working.set(node.id, next)
-          node.versions = node.versions.map(held => held.id === current.id ? next : held)
+          node.versions = node.versions.map(held => (held.id === current.id ? next : held))
           return
         }
         setVersion(node, { id: nextVersionId(node.versions), text: operation.text, createdAt: now(), origin })
@@ -302,7 +356,10 @@ export function applyOperations(
       case 'remove_shot': {
         const node = find(operation.node)
         const shots = storyboardOf(node)
-        writeShots(node, shots.filter((_shot, at) => at !== shotAt(shots, operation.shot)))
+        writeShots(
+          node,
+          shots.filter((_shot, at) => at !== shotAt(shots, operation.shot)),
+        )
         return
       }
       case 'move_shot': {
@@ -316,20 +373,38 @@ export function applyOperations(
       }
       case 'set_version': {
         const node = find(operation.node)
-        if (!node.versions.some(version => version.id === operation.version)) throw new Skip(`node ${node.id} has no version ${operation.version}`)
-        node.activeVersion = brandString<VersionId>(operation.version)
+        if (operation.version !== null && !node.versions.some(version => version.id === operation.version))
+          throw new Skip(`node ${node.id} has no version ${operation.version}`)
+        const previous = node.activeVersion
+        if (operation.version === null) delete node.activeVersion
+        else node.activeVersion = brandString<VersionId>(operation.version)
+        delete node.inputChanged
+        if (node.activeVersion !== previous) {
+          const visited = new Set<CanvasNodeId>([node.id])
+          const queue = [node.id]
+          for (const source of queue)
+            for (const edge of edges.values()) {
+              if (edge.source !== source || visited.has(edge.target)) continue
+              visited.add(edge.target)
+              queue.push(edge.target)
+              const dependent = nodes.get(edge.target)
+              if (dependent?.gen !== undefined) dependent.inputChanged = true
+            }
+        }
         return
       }
       case 'append_version': {
         const node = find(operation.node)
         if (node.type === 'group') throw new Skip(`node ${node.id} is a group`)
         const { id, ...body } = operation.version
-        setVersion(node, {
+        const version = {
           ...body,
           id: id === undefined ? nextVersionId(node.versions) : brandString<VersionId>(id),
-          createdAt: body.createdAt ?? now(),
-          origin: body.origin ?? origin,
-        })
+          createdAt: body.createdAt,
+          origin: body.origin,
+        }
+        if (isMediaType(node.type)) node.versions = [...node.versions, version]
+        else setVersion(node, version)
         return
       }
       case 'set_stale': {
@@ -361,9 +436,11 @@ export function applyOperations(
         const to = find(operation.to)
         if (from.id === to.id) throw new Skip('a node cannot connect to itself')
         if (from.group === to.id || to.group === from.id) throw new Skip('a group cannot connect to its own member')
-        if (operation.kind === 'derivation' && operation.role !== undefined) throw new Skip('a derivation edge carries no role')
-        const role = operation.kind === 'derivation' ? undefined : operation.role ?? inferRole(from.type, to.type)
-        if (operation.kind === 'reference' && role === undefined) throw new Skip(`cannot infer what ${from.id} supplies to ${to.id}`)
+        if (operation.kind === 'derivation' && operation.role !== undefined)
+          throw new Skip('a derivation edge carries no role')
+        const role = operation.kind === 'derivation' ? undefined : (operation.role ?? inferRole(from.type, to.type))
+        if (operation.kind === 'reference' && role === undefined)
+          throw new Skip(`cannot infer what ${from.id} supplies to ${to.id}`)
         const kind = role === undefined ? 'derivation' : 'reference'
         if (role === 'first_frame' || role === 'last_frame') {
           if (from.type !== 'image' || to.type !== 'video') throw new Skip(`${role} connects an image to a video`)
@@ -371,12 +448,19 @@ export function applyOperations(
           if (held) throw new Skip(`${to.id} already has a ${role}`)
         }
         const id = edgeId(from.id, to.id, role)
-        if (edges.has(id)) throw new Skip(role === undefined ? `${from.id} is already connected to ${to.id}` : `${from.id} already supplies ${role} to ${to.id}`)
+        if (edges.has(id))
+          throw new Skip(
+            role === undefined
+              ? `${from.id} is already connected to ${to.id}`
+              : `${from.id} already supplies ${role} to ${to.id}`,
+          )
         if (reaches(edges, to.id, from.id)) throw new Skip(`connecting ${from.id} to ${to.id} would create a cycle`)
         edges.set(id, {
-          id, source: from.id, target: to.id,
-          ...role === undefined ? { kind: 'derivation' as const } : { kind: 'reference' as const, role },
-          ...role !== 'ref' || kind === 'derivation' ? {} : { order: operation.order ?? orderOf(role, to.id) },
+          id,
+          source: from.id,
+          target: to.id,
+          ...(role === undefined ? { kind: 'derivation' as const } : { kind: 'reference' as const, role }),
+          ...(role !== 'ref' || kind === 'derivation' ? {} : { order: operation.order ?? orderOf(role, to.id) }),
         })
         return
       }
@@ -389,7 +473,8 @@ export function applyOperations(
           for (const edge of held) edges.delete(edge.id)
           return
         }
-        if (!edges.delete(edgeId(from.id, to.id, operation.role))) throw new Skip(`${from.id} does not supply ${operation.role} to ${to.id}`)
+        if (!edges.delete(edgeId(from.id, to.id, operation.role)))
+          throw new Skip(`${from.id} does not supply ${operation.role} to ${to.id}`)
         return
       }
       case 'reorder_refs': {
@@ -409,9 +494,15 @@ export function applyOperations(
         if (nested !== undefined) throw new Skip(`node ${nested.id} is a group; groups do not nest`)
         const id = brandString<CanvasNodeId>(`g${String(nextId++)}`)
         nodes.set(id, {
-          id: brandString<CanvasNodeId>(id), type: 'group', title: operation.title ?? 'Group',
-          x: 0, y: 0, width: 0, height: 0, versions: [],
-          ...operation.sceneOrigin === undefined ? {} : { sceneOrigin: operation.sceneOrigin },
+          id: brandString<CanvasNodeId>(id),
+          type: 'group',
+          title: operation.title ?? 'Group',
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+          versions: [],
+          ...(operation.sceneOrigin === undefined ? {} : { sceneOrigin: operation.sceneOrigin }),
         })
         for (const member of members) member.group = brandString<CanvasNodeId>(id)
         claim(operation.ref, id)
@@ -468,23 +559,36 @@ export function applyOperations(
   for (const group of [...nodes.values()]) {
     if (group.type === 'group' && ![...nodes.values()].some(node => node.group === group.id)) dropNode(group.id)
   }
+  for (const node of nodes.values())
+    for (const version of node.versions)
+      for (const input of version.inputs ?? []) {
+        const pinned = inputVersions.get(input.node) ?? new Set<VersionId>()
+        pinned.add(input.version)
+        inputVersions.set(input.node, pinned)
+      }
   for (const node of nodes.values()) dropVersions(node)
-  layoutCreated(nodes, [...edges.values()], created.filter((id) => {
-    const node = nodes.get(id)
-    return node !== undefined && node.type !== 'group' && node.placed !== true
-  }))
+  layoutCreated(
+    nodes,
+    [...edges.values()],
+    created.filter((id) => {
+      const node = nodes.get(id)
+      return node !== undefined && node.type !== 'group' && node.placed !== true
+    }),
+  )
   fitGroups(nodes)
 
   const next: CanvasDocument = {
-    version: 2,
+    version: 3,
     revision: document.revision + (applied > 0 ? 1 : 0),
     nextId,
     nodes: [...nodes.values()],
     edges: [...edges.values()],
   }
   assertCanvas(next)
-  if (next.nodes.length > options.limits.maxNodes) throw new CanvasCorruptError(`canvas would hold more than ${String(options.limits.maxNodes)} nodes`)
-  if (next.edges.length > options.limits.maxEdges) throw new CanvasCorruptError(`canvas would hold more than ${String(options.limits.maxEdges)} edges`)
+  if (next.nodes.length > options.limits.maxNodes)
+    throw new CanvasCorruptError(`canvas would hold more than ${String(options.limits.maxNodes)} nodes`)
+  if (next.edges.length > options.limits.maxEdges)
+    throw new CanvasCorruptError(`canvas would hold more than ${String(options.limits.maxEdges)} edges`)
   return {
     document: next,
     result: {

@@ -13,6 +13,7 @@ import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { CatalogSource } from '../src/catalog.ts'
 import { placeMediaArtifact, registerVisualTools } from '../src/visual-tools.ts'
+import { bibleFixture } from './bible-fixture.ts'
 
 const PNG = Buffer.from('iVBORw0KGgo=', 'base64')
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -31,7 +32,10 @@ async function setup(withCanvas: boolean, catalog?: CatalogSource): Promise<void
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(NativeToolExecutor)
   provideWorkingDirectoryFixture(ctx, directory)
-  if (withCanvas) await ctx.plugin(CanvasService)
+  if (withCanvas) {
+    await ctx.plugin(CanvasService)
+    await ctx.canvas.updateBible(session, { upsert: bibleFixture.entries })
+  }
   registerVisualTools(ctx, {
     request: signal => Promise.resolve({ baseURL: 'https://gateway.example/v1', apiKey: 'sk-test', signal }),
     catalog,
@@ -81,6 +85,15 @@ afterEach(async () => {
 })
 
 describe('visual tools on a canvas', () => {
+  it('applies the same bible gate to legacy image and video tools before any gateway call', async () => {
+    await setup(true)
+    await ctx.canvas.updateBible(session, { remove: bibleFixture.entries.map(entry => entry.id) })
+    expect((await call('generate_image', { prompt: 'a cat' })).text).toContain('G1_bible_first')
+    expect((await call('generate_video', { prompt: 'a cat walks' })).text).toContain('G1_bible_first')
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect((await ctx.canvas.read(session)).nodes).toEqual([])
+  })
+
   it('uses explicit, basename, and shortened prompt titles for placed media', async () => {
     await setup(true)
     const explicit = await placeMediaArtifact(ctx.canvas, session, {
@@ -385,7 +398,7 @@ describe('visual tools on a canvas', () => {
 
   it('reports a written file that could not be placed', async () => {
     await setup(true)
-    await writeFile(join(directory, '.canvas'), 'not a directory')
+    vi.spyOn(ctx.canvas, 'edit').mockRejectedValueOnce(new Error('disk full'))
     fetchSpy.mockResolvedValueOnce(json({ data: [{ url: `data:image/png;base64,${PNG.toString('base64')}` }] }))
     const result = await call('generate_image', { prompt: 'a cat' })
     expect(result.isError).toBe(false)

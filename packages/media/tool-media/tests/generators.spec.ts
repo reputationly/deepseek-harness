@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import type { MediaCatalog } from '../src/catalog.ts'
 import { createGenerator, generationTier } from '../src/generators.ts'
 import type { MediaCall } from '../src/runner.ts'
+import type { RemoteMediaTask } from '../src/journal.ts'
 import type { CanvasNode } from '@deepseek-ai/dsh-canvas'
 
 const PNG = Buffer.from('iVBORw0KGgo=', 'base64')
@@ -58,8 +59,9 @@ function generator(withCatalog = false): ReturnType<typeof createGenerator> {
   return createGenerator({
     ...withCatalog ? { catalog: () => Promise.resolve(catalog as never) } : {},
     request: signal => Promise.resolve({ baseURL: 'https://gateway.example/v1', apiKey: 'sk-test', signal }),
-    write: async (prefix, contentType, bytes) => {
+    write: async (prefix, contentType, bytes, onPath) => {
       const path = join(directory, `${prefix}-${String(written.length)}.out`)
+      await onPath?.(path)
       await writeFile(path, bytes)
       written.push(`${path}:${contentType}`)
       return path
@@ -76,12 +78,12 @@ describe('generationTier', () => {
     source: 'live',
     capabilities: [{ id: 'v', operation: 'generate_video', model: 'v', paramSchema: { properties: { resolution: { enum: [...tiers] } } } }],
   })
-  it('keeps a requested tier the catalog offers', () => expect(generationTier(withTiers(['768P', '2K']), '2K')).toBe('2K'))
+  it('keeps a requested tier the catalog offers', () =>{  expect(generationTier(withTiers(['768P', '2K']), '2K')).toBe('2K') })
   it('picks the smallest tier that covers a delivery height', () => {
     expect(generationTier(withTiers(['768P', '2K']), '1080p')).toBe('2K')
     expect(generationTier(withTiers(['768P', '2K']), '480p')).toBe('768P')
   })
-  it('falls back to the largest tier when none covers the request', () => expect(generationTier(withTiers(['768P', '2K']), '4k')).toBe('2K'))
+  it('falls back to the largest tier when none covers the request', () =>{  expect(generationTier(withTiers(['768P', '2K']), '4k')).toBe('2K') })
   it('returns the request when the catalog offers no usable tiers', () => {
     expect(generationTier(withTiers(['a', 'b']), '1080p')).toBe('1080p')
     expect(generationTier(undefined, '1080p')).toBe('1080p')
@@ -124,7 +126,7 @@ describe('generators', () => {
     expect(body.images[0]).toContain('base64,')
   })
 
-  it('submits a video task, waits for it, and records nothing itself', async () => {
+  it('submits a video task, waits for it, and writes the result', async () => {
     fetchSpy
       .mockResolvedValueOnce(json({ id: 't1' }))
       .mockResolvedValueOnce(json({ status: 'succeeded', url: `data:video/mp4;base64,${MP4.toString('base64')}` }))
@@ -139,13 +141,56 @@ describe('generators', () => {
     expect(await readFile(media.path)).toEqual(MP4)
   })
 
+  it('checkpoints the remote task before polling and can resume with GET alone', async () => {
+    let saved: RemoteMediaTask | undefined
+    fetchSpy.mockResolvedValueOnce(json({ id: 'paid-task' }))
+    await expect(generator().video(call({
+      node: node('video'), entry: { node: 'n1' as never, kind: 'video', model: 'video-model', calls: 1, seconds: 6, lines: 1 },
+      onSubmitted: async (task) => { saved = task; throw new Error('simulated stop after checkpoint') },
+    }))).rejects.toThrow('simulated stop after checkpoint')
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(written).toEqual([])
+    if (saved === undefined) throw new Error('missing remote checkpoint')
+    const mediaGenerator = generator()
+    if (mediaGenerator.resume === undefined) throw new Error('missing remote recovery')
+    fetchSpy.mockClear()
+    fetchSpy.mockResolvedValueOnce(json({ status: 'succeeded', url: `data:video/mp4;base64,${MP4.toString('base64')}` }))
+    const result = await mediaGenerator.resume(saved, new AbortController().signal)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://gateway.example/v1/videos/paid-task')
+    expect(fetchSpy.mock.calls[0]?.[1]?.method ?? 'GET').toBe('GET')
+    expect(await readFile(result.path)).toEqual(MP4)
+  })
+
+  it('refuses to poll a saved task through a different gateway', async () => {
+    const mediaGenerator = generator()
+    if (mediaGenerator.resume === undefined) throw new Error('missing remote recovery')
+    await expect(mediaGenerator.resume({ id: 't1', model: 'm', kind: 'video', endpoint: '0'.repeat(64) }, new AbortController().signal))
+      .rejects.toMatchObject({ retryable: false })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('records the destination before any artifact bytes are published', async () => {
+    fetchSpy.mockResolvedValueOnce(json({ data: [{ url: `data:image/png;base64,${PNG.toString('base64')}` }] }))
+    let checkpoint: string | undefined
+    const result = await generator().image(call({ onArtifact: async (artifact) => {
+      await expect(readFile(artifact.path)).rejects.toMatchObject({ code: 'ENOENT' })
+      checkpoint = artifact.path
+    } }))
+    expect(checkpoint).toBe(result.path)
+    expect(await readFile(result.path)).toEqual(PNG)
+  })
+
   it('synthesizes speech with the voice the node carries', async () => {
+    const voice = join(directory, '参考 声音.mp3')
+    await writeFile(voice, Buffer.from('voice sample'))
     fetchSpy.mockResolvedValueOnce(binary(Buffer.from('mp3'), 'audio/mpeg'))
     const media = await generator().speech(call({
-      node: node('audio', '你好', { voice: 'voice-lin' }),
+      node: node('audio', '你好', { voice }),
       entry: { node: 'n1' as never, kind: 'speech', model: 'speech-model', calls: 1, lines: 1 },
     }))
     expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://gateway.example/v1/audio/speech')
+    expect(JSON.parse(fetchSpy.mock.calls[0]?.[1]?.body as string)).toMatchObject({ voice: `data:audio/mpeg;base64,${Buffer.from('voice sample').toString('base64')}` })
     expect(await readFile(media.path)).toEqual(Buffer.from('mp3'))
   })
 

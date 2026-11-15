@@ -1,10 +1,14 @@
 /** The storyboard table's rows, cell edits, and the segmentation summary under it. */
 import type { CanvasNode, CanvasOperation, Shot, ShotId, StoryboardSegment } from '@deepseek-ai/dsh-canvas/client'
+import { activeVersionOf } from './versions.ts'
 
-/** Shots a storyboard currently shows. */
+/**
+ * Shots a storyboard currently shows.
+ * @param node - Canvas node being inspected or edited.
+ * @returns Shots of the adopted storyboard version, or an empty list.
+ */
 export function rowsOf(node: CanvasNode | undefined): readonly Shot[] {
-  const versions = node?.versions ?? []
-  return versions.find(version => version.id === node?.activeVersion)?.shots ?? versions.at(-1)?.shots ?? []
+  return node === undefined ? [] : activeVersionOf(node)?.shots ?? []
 }
 
 /** What the table footer states about one storyboard. */
@@ -18,7 +22,7 @@ export interface StoryboardSummary {
 /**
  * Summary of one storyboard: shot count, total seconds, and how many video calls its segments need.
  * @param node - storyboard node.
- * @param maxSegmentSec - longest segment one generation call may cover.
+ * @param segments - Precomputed storyboard segments.
  * @returns the counts the table footer shows.
  */
 export function summaryOf(node: CanvasNode | undefined, segments: readonly StoryboardSegment[] = []): StoryboardSummary {
@@ -60,7 +64,7 @@ export function cellOperation(
   if (field === 'scene' || field === 'shotSize') {
     return { op: 'update_shot', node: node.id, shot, patch: { [field]: value as never } }
   }
-  return { op: 'update_shot', node: node.id, shot, patch: { [field]: String(value) } as never }
+  return { op: 'update_shot', node: node.id, shot, patch: { [field]: String(value) } }
 }
 
 /**
@@ -114,7 +118,10 @@ export function segmentOfShot(segments: readonly StoryboardSegment[], shot: Shot
   return segments.findIndex(segment => segment.shots.includes(shot))
 }
 
-/** Template a new table row starts from. */
+/**
+ * Template a new table row starts from.
+ * @returns Initial shot fields before the Host assigns an ID.
+ */
 export function blankShot(): Omit<Shot, 'id'> {
   return {
     title: '', shotSize: 'medium', visual: '', motion: '', camera: '', durationSec: 3,

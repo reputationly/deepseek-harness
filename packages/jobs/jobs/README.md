@@ -33,6 +33,8 @@ A producer registers work with a kind and a one-line label; the registry returns
 
 A producer streams output by naming pull sources on its spec — non-consuming offset readers the registry pumps at its own cadence — or by pushing chunks through the `JobHandle` its starter receives; both land in the job's bounded ring, where `stdout` and `stderr` chunks reach the model and `log` chunks reach observers only. Observers read retained chunks at absolute byte offsets and are signaled on advancement; the settlement that ends the job also ends the stream, and `updateProgress` publishes a live progress line into every projection until then. Observation is invisible to the model: `readAt` consumes nothing and never touches notice state.
 
+UI producers can set `completionNotice: 'none'` on `JobSpec` when their caller handles completion. Ownership, lifecycle events, output, and controls remain available, but `dsh-tool-jobs` neither injects a completion message nor starts an agent turn for that job. Omit this option for ordinary agent background jobs.
+
 The shipped provider also records owned-job lifecycle metadata in the Session. Producers attach `JobSpec.toolCall` when a tool creates the job, preserving nested and root call identity. See the [durable event fields](../../../docs/subsystems/jobs.md#session-lifecycle-records) for timing and restart semantics.
 
 ### The ownership boundary
@@ -72,7 +74,7 @@ This section explains the design decisions behind the contract and points at the
 - **One registry per process, owner-relative answers.** One instance serves every composition in the process, so registrations and deliveries are relative to the registering scope: a controller or listener registered from an unscoped context serves every owner; one registered under an agent composition's scope serves exactly the agents composed under it.
 - **Access is fenced by the owner's session id.** Ids are predictable, so authorization — not secrecy — is the boundary.
 - **Settlement is first-wins, and its event follows every released waiter.** One terminal record, released waiters, then one round of contained event delivery; the `settled` event reports whether it released a live `wait` (`awaited`), so `dsh-tool-jobs` never announces a completion a waiting caller already collected, whichever plugin was waiting.
-- **Registrations outlive producer and controller fibers.** Owner and service disposal cancel live work and await compliant producers; a throwing teardown cancel force-fails only the record.
+- **Registrations outlive producer and controller fibers.** Owner and service disposal cancel live work and await compliant producers; a throwing teardown cancel force-fails only the record. `JobHooks.cancel(reason, cause)` distinguishes explicit control (`kill`) from disposal (`teardown`) independently of the reason text.
 
 ### Source map
 

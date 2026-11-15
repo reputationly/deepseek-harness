@@ -72,12 +72,12 @@ export async function removeLegacyHostCookies(cookies: HostCookieStore, url: str
 /**
  * Response headers not relayed to the renderer. `set-cookie` would hand the
  * Host's authentication cookie to the page's cookie jar, which the shell owns
- * instead; the rest describe the Node `fetch` connection (its encoding, length,
- * and hop-by-hop transport), which Chromium never sees.
+ * instead. Encoding headers describe the upstream body before fetch decodes
+ * it; hop-by-hop headers describe the Node connection Chromium never sees.
  */
 const WITHHELD_RESPONSE_HEADERS = [
   'set-cookie',
-  'content-encoding', 'content-length',
+  'content-encoding',
   'transfer-encoding', 'connection', 'keep-alive', 'te', 'trailer', 'upgrade', 'proxy-authenticate', 'proxy-authorization',
 ]
 
@@ -108,6 +108,7 @@ export async function forwardWebRequest(request: Request, host: string, cookie: 
   const response = await fetch(target, init)
   const outgoing = new Headers(response.headers)
   for (const name of WITHHELD_RESPONSE_HEADERS) outgoing.delete(name)
+  if (response.headers.has('content-encoding')) outgoing.delete('content-length')
   if (PLUGIN_BUNDLE_PATH.test(source.pathname)) outgoing.set('cache-control', 'no-store')
   return new Response(response.body, { status: response.status, headers: outgoing })
 }

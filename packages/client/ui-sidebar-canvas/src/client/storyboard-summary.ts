@@ -4,7 +4,12 @@ import type { StoryboardSummary } from './model/table.ts'
 
 const pluralKey = (count: number): 'one' | 'other' => count === 1 ? 'one' : 'other'
 
-/** Localized unit counts for a storyboard card or table footer. */
+/**
+ * Localized unit counts for a storyboard card or table footer.
+ * @param summary - Storyboard counts and segmentation.
+ * @param t - Typed locale translator.
+ * @returns Localized shot, duration, segment and generation-call counts.
+ */
 export function formatStoryboardSummary(summary: StoryboardSummary, t: PropsLocale<typeof NS>['t']): string {
   const count = (unit: 'shots' | 'seconds' | 'segments' | 'calls', value: number) =>
     t(`storyboard.${unit}.${pluralKey(value)}`, { count: value })

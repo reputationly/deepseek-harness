@@ -1,0 +1,12 @@
+# Canvas-only composition: replay owns model responses; cloud generation remains disabled.
+- id: canvas
+  name: '@deepseek-ai/dsh-canvas'
+  disabled: false
+- id: tool-media
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-fs-search
+  disabled: true

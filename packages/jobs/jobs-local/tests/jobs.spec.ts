@@ -998,17 +998,19 @@ describe('LocalJobRegistry disposal', () => {
     })
     let settle!: (outcome: JobOutcome) => void
     const cancels: (string | undefined)[] = []
+    const causes: Parameters<JobHooks['cancel']>[1][] = []
     ctx.jobs.start({
       kind: 'bash',
       label: 'sleep 600',
       run: () => ({
-        cancel(reason) { cancels.push(reason); settle({ status: 'killed' }) },
+        cancel(reason, cause) { cancels.push(reason); causes.push(cause); settle({ status: 'killed' }) },
         done: new Promise<JobOutcome>((res) => { settle = res }),
       }),
     })
 
     await fiber.dispose()
     expect(cancels).toEqual(['jobs service disposed'])
+    expect(causes).toEqual(['teardown'])
     expect(seen).toEqual(['registered', 'stopping', 'settled:teardown', 'output', 'removed'])
   })
 

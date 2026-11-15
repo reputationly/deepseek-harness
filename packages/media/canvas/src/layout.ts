@@ -73,6 +73,26 @@ export function fitGroups(nodes: ReadonlyMap<string, DraftNode>): void {
   }
 }
 
+/** Pack completed, newly created groups using their final frames, including headers and padding. */
+function separateCreatedGroups(nodes: ReadonlyMap<string, DraftNode>, created: readonly string[]): void {
+  const fresh = new Set(created)
+  const groups = [...nodes.values()].filter(node => node.type === 'group')
+    .map(group => ({ group, members: membersOf(nodes, group.id) }))
+    .filter(unit => unit.members.length > 0 && unit.members.every(member => fresh.has(member.id)))
+  const pending = new Set(groups.map(unit => unit.group.id))
+  for (const { group, members } of groups) {
+    pending.delete(group.id)
+    const obstacles = [...nodes.values()].filter(other => other.id !== group.id && other.group !== group.id
+      && !pending.has(other.id) && (other.group === undefined || !pending.has(other.group)))
+    for (let hit = obstacles.find(other => overlaps(group, other)); hit !== undefined;
+      hit = obstacles.find(other => overlaps(group, other))) {
+      const offset = hit.y + hit.height + GAP_Y - group.y
+      group.y += offset
+      for (const member of members) member.y += offset
+    }
+  }
+}
+
 /**
  * Position the content nodes one operation list created. Nodes already on the canvas never move.
  * @param nodes - working node map; created nodes are mutated in place.
@@ -166,4 +186,6 @@ export function layoutCreated(nodes: ReadonlyMap<string, DraftNode>, edges: read
       break
     }
   }
+  fitGroups(nodes)
+  separateCreatedGroups(nodes, created)
 }

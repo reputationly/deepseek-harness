@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -1353,7 +1353,7 @@ it('isolates generated artifact delivery failures and continues with later files
     expect(sentTexts(fake.requests)).toContain('Follow-up processed')
   })
   expect(mediaAttempts).toEqual(['failed.png', 'failed.png', 'next.png'])
-  expect(sentTexts(fake.requests)).toContain(`生成的文件没能发到微信，已保存在电脑上：${failedPath}`)
+  expect(sentTexts(fake.requests)).toContain(`生成的文件没能发到微信，已保存在电脑上：${await realpath(failedPath)}`)
   expect(sentTexts(fake.requests)).not.toContain('微信消息处理失败，请稍后重试')
 })
 
@@ -1651,7 +1651,7 @@ it('forwards a real ApprovalService request from a desktop-preloaded Agent durin
   await ctx.plugin({
     inject: injectedServices,
     apply: (scope) => {
-      new WechatService(scope, {
+      new WechatService(scope, {}, {
         store,
         createClient: (_url, token) => new IlinkClient(fake.url, token),
         sleep: async () => {},
@@ -1767,7 +1767,7 @@ it('does not send a turn-failure message when disposal aborts a WeChat turn', as
   await ctx.plugin({
     inject: injectedServices,
     apply: (scope) => {
-      new WechatService(scope, {
+      new WechatService(scope, {}, {
         store,
         createClient: (_url, token) => new IlinkClient(fake.url, token),
         sleep: async () => {},
@@ -1946,7 +1946,7 @@ async function fixture(
     inject: injectedServices,
     apply: (scope) => {
       serviceContext = scope
-      service = new WechatService(scope, {
+      service = new WechatService(scope, {}, {
         store,
         createClient: createClient ?? ((_url, token) => new IlinkClient(baseUrl, token)),
         ...serviceDependencies,

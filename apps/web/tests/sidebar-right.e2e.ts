@@ -22,7 +22,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, ConsoleMessage, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
-import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, onTestFailed, onTestFinished } from 'vitest'
 import { createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { acknowledgeReloadConnectionLoss, launchWebScaffold, watchConsole, type WebScaffold } from './scaffold.ts'
 import {
@@ -475,7 +475,7 @@ describe('web e2e: shipped right Sidebar', () => {
 
       await expect.poll(async () => await tabTitles(column)).toEqual(['Start'])
       await expectTitleAlignment(column.locator('[data-dockkit-tab-title]'))
-      await expect.poll(async () => await column.locator('[data-sidebar-right-guide-entry]').count()).toBe(2)
+      await expect.poll(async () => await column.locator('[data-sidebar-right-guide-entry]').evaluateAll(entries => entries.map(entry => entry.getAttribute('data-sidebar-right-guide-entry')).sort())).toEqual(['canvas', 'files', 'terminal'])
       expect(await column.locator('[data-sidebar-right-guide-entry="browser"]').count()).toBe(0)
       await column.locator('[data-sidebar-right-guide-entry="files"]').click()
 
@@ -1116,6 +1116,8 @@ describe('web e2e: shipped right Sidebar', () => {
 
     it('resists a floating panel dragged past the viewport edges and springs it back inside', async () => {
       onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-right-float-edge'))
+      await page.emulateMedia({ reducedMotion: 'no-preference' })
+      onTestFinished(() => page.emulateMedia({ reducedMotion: null }))
       const column = await resetSidebar(page)
       const floats = page.locator('[data-sidebar-right-session]:not([hidden]) [data-dockkit-float]')
       await proseChip(page).click()

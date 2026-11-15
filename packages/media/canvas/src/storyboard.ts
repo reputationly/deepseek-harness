@@ -52,11 +52,14 @@ export function parseScenes(text: string): readonly Scene[] {
 
 /**
  * Check a storyboard table against its bible and the production rules.
- * @param shots - shots as stored on a storyboard version.
+ * @param shots - storyboard candidates, which may still lack a shot size.
  * @param bible - bible the shots may reference.
  * @returns one message per problem, empty when the table passes.
  */
-export function validateShots(shots: readonly Shot[], bible: Bible): readonly string[] {
+export function validateShots(
+  shots: readonly (Omit<Shot, 'shotSize'> & Partial<Pick<Shot, 'shotSize'>>)[],
+  bible: Bible,
+): readonly string[] {
   const problems: string[] = []
   const known = new Set(bible.entries.map(entry => entry.id))
   const ids = new Set<string>()

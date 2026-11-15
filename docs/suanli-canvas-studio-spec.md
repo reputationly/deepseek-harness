@@ -60,7 +60,7 @@
 |:--|:--|:--|:--|:--|:--|
 | O1 | 文档补丁模型 | `app/gateway/src/canvas-v3/protocol.ts`（`CanvasV3Document{schemaVersion,revision}`、`CanvasV3Change{before,after}`、`CanvasV3Patch`） | 文档带 `revision`，每次修改产出 `before/after` 变更，界面按变更增量刷新、做冲突检测 | `packages/media/canvas/src/document.ts` 加 `revision`；`canvas/change` 事件带上 revision | P1 |
 | O2 | 上限常量 | 同上 `CANVAS_V3_LIMITS`（节点 1 万、边 2 万、提示词 2 万字、单次批量 64） | 上限做成 `Config` 字段并校验 | canvas 包新增的 `Config`（第 4.2 节，现在没有）：`maxNodes`、`maxEdges`、`maxPromptLength`、`maxBatchOperations` | P1 |
-| O3 | 命令日志 / 撤销 | `canvas-v3/command-journal.ts` | 每次 `apply` 记录逆操作，支持撤销、重做 | `packages/media/canvas/src/journal.ts`，`.canvas/journal/<episode>.jsonl`，保留最近 `journalLimit` 条 | P3 |
+| O3 | 命令日志 / 撤销 | `canvas-v3/command-journal.ts` | 每次 `apply` 记录逆操作，支持撤销、重做 | `packages/media/canvas/src/store.ts`，`.canvas/journal/<episode>.jsonl`，保留最近 `journalLimit` 条 | P3 |
 | O4 | 资源多版本 | `project-kernel/composition.service.ts`（`res_`/`ver_` 前缀，内容哈希做 id） | 节点挂多个版本，重新生成不新建节点 | `CanvasNode.versions[]` + `activeVersion`（第 3.3 节） | P1 |
 | O5 | 文本版本 | `text-version/*`（行级 diff） | 剧本、分镜改写也留版本 | `script` 和 `storyboard` 节点共用 `versions`，只保留最近 `textVersionLimit` 版，不做 diff 界面 | P1 |
 | O6 | 主体库（角色一致性） | `protocol.ts` 的 `subject.*` 命令，`containerKind:"subject"` | 角色/场景/道具作为成员容器，成员挂参考图 | 设定集 `bible.json` 条目 + `imageNodes`（第 3.5 节） | P1 |

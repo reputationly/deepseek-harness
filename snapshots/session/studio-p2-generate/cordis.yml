@@ -31,3 +31,7 @@
   disabled: true
 - id: tool-pwsh
   disabled: true
+
+- insert:
+    - id: snapshot-clock-fixture
+      name: '../../../apps/cli/tests/fixtures/snapshot-clock.ts'

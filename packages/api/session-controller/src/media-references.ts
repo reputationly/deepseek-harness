@@ -1,5 +1,5 @@
 /**
- * Authenticated GET/HEAD /api/file reads bounded file responses through
+ * Authenticated GET/HEAD /api/file reads bounded full or single-range responses through
  * the composed filesystem provider. Paths and MIME types do not restrict access;
  * the connection service authenticates requests before this handler. A request
  * without the current `v` version is redirected, uncached, to the versioned URL,
@@ -23,6 +23,15 @@ const NO_STORE = { ...BASE_HEADERS, 'Cache-Control': 'private, no-store' }
 // A versioned URL names one file version, so its response never changes.
 const VERSIONED = { ...BASE_HEADERS, 'Cache-Control': 'private, max-age=31536000, immutable' }
 
+function byteRange(value: string | null, size: number): { start: number; end: number } | null | undefined {
+  if (value === null) return undefined
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(value.trim())
+  if (match === null || match[1] === '' && match[2] === '') return undefined
+  const start = match[1] === '' ? Math.max(0, size - Number(match[2])) : Number(match[1])
+  const end = match[1] !== '' && match[2] !== '' ? Math.min(Number(match[2]), size - 1) : size - 1
+  return start > end || start >= size ? null : { start, end }
+}
+
 async function serveFile(request: Request, fs: FileSystem, maxBytes: number): Promise<Response> {
   const fail = (status: number, text: string): Response =>
     new Response(request.method === 'HEAD' ? null : text, { status, headers: NO_STORE })
@@ -44,12 +53,24 @@ async function serveFile(request: Request, fs: FileSystem, maxBytes: number): Pr
     const headers: Record<string, string> = {
       ...VERSIONED,
       'Content-Type': mime.lookup(target.displayPath) || 'application/octet-stream',
+      'Accept-Ranges': 'bytes',
     }
     if (request.method === 'HEAD') {
       if (info.size !== undefined) headers['Content-Length'] = String(info.size)
       return new Response(null, { headers })
     }
     const bytes = await fs.readBytes(target, request.signal, maxBytes)
+    // No ETag or Last-Modified validator is issued, so If-Range cannot match.
+    const range = request.headers.has('if-range') ? undefined : byteRange(request.headers.get('range'), bytes.byteLength)
+    if (range === null) return new Response(null, {
+      status: 416,
+      headers: { ...NO_STORE, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes */${bytes.byteLength}`, 'Content-Length': '0' },
+    })
+    if (range !== undefined) {
+      headers['Content-Range'] = `bytes ${range.start}-${range.end}/${bytes.byteLength}`
+      headers['Content-Length'] = String(range.end - range.start + 1)
+      return new Response(bytes.slice(range.start, range.end + 1), { status: 206, headers })
+    }
     headers['Content-Length'] = String(bytes.byteLength)
     return new Response(bytes.slice(), { headers })
   } catch (error: unknown) {

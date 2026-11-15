@@ -1,4 +1,5 @@
 import { extname, resolve } from 'node:path'
+import { localMediaPath } from './local-path.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CanvasService } from '@deepseek-ai/dsh-canvas'
 import type { Session } from '@deepseek-ai/dsh-session'
@@ -13,6 +14,9 @@ import {
 } from './ffmpeg-guards.ts'
 import { placeMediaArtifact } from './visual-tools.ts'
 
+/**
+ * Host services and output-path allocation used by local FFmpeg tools.
+ */
 export interface EditToolDeps {
   readonly runner: Pick<FfmpegRunner, 'exec' | 'probe'>
   readonly editTimeoutMs: number
@@ -39,6 +43,13 @@ type ProbeResult = {
   }[]
 }
 
+function inputPath(source: string, projectDir: string): string {
+  const local = localMediaPath(source)
+  const checked = checkFfmpegCommand(['-i', local])
+  if (!checked.ok) throw new Error(checked.error)
+  return resolve(projectDir, local)
+}
+
 function inputPaths(args: readonly string[], projectDir: string): string[] {
   const paths: string[] = []
   let lavfi = false
@@ -46,7 +57,7 @@ function inputPaths(args: readonly string[], projectDir: string): string[] {
     if (args[index] === '-f' && args[index + 1] === 'lavfi') lavfi = true
     if (args[index] === '-i') {
       const path = args[index + 1]
-      if (!lavfi && path !== undefined) paths.push(resolve(projectDir, path))
+      if (!lavfi && path !== undefined) paths.push(inputPath(path, projectDir))
       lavfi = false
     }
   }
@@ -188,6 +199,11 @@ function ffmpegDescription(): string {
   ].join(' ')
 }
 
+/**
+ * Register local FFmpeg, video-merge and media-probe tools with the owning context.
+ * @param ctx - Owning Cordis context.
+ * @param deps - Host execution, canvas and output-path dependencies.
+ */
 export function registerEditTools(ctx: Context, deps: EditToolDeps): void {
   ctx.tools.register(defineTool({
     name: 'ffmpeg',
@@ -206,9 +222,10 @@ export function registerEditTools(ctx: Context, deps: EditToolDeps): void {
     async execute(args, exec) {
       const input = args
       const outputType = input.output_type ?? 'video'
-      const checked = checkFfmpegAudioPreserve(input.args, undefined, outputType)
+      const normalized = input.args.map((arg, index) => input.args[index - 1] === '-i' && /^file:/iu.test(arg) ? localMediaPath(arg) : arg)
+      const checked = checkFfmpegAudioPreserve(normalized, undefined, outputType)
       if (!checked.ok) throw new Error(checked.error)
-      const font = injectCjkFont(input.args, deps.fontFile)
+      const font = injectCjkFont(normalized, deps.fontFile)
       if (!font.ok) throw new Error(font.error)
       const drawtext = checkFfmpegDrawtext(font.args)
       if (!drawtext.ok) throw new Error(drawtext.error)
@@ -246,11 +263,9 @@ export function registerEditTools(ctx: Context, deps: EditToolDeps): void {
     async execute(args, exec) {
       const input = args
       if (input.video_paths.length < 2) throw new Error('merge_videos needs at least two video_paths.')
-      const command = checkFfmpegCommand(input.video_paths.flatMap(file => ['-i', file]))
-      if (!command.ok) throw new Error(command.error)
       const canvas = deps.canvas()
       const { directory } = nodeFrom(exec, canvas)
-      const paths = input.video_paths.map(file => resolve(directory, file))
+      const paths = input.video_paths.map(file => inputPath(file, directory))
       const sources = inputNodeIds(input.input_node_ids, paths.length)
       const probes = await Promise.all(paths.map(file => deps.runner.probe(file, {
         signal: exec.signal,
@@ -324,7 +339,7 @@ export function registerEditTools(ctx: Context, deps: EditToolDeps): void {
       if ((input.path === undefined) === (input.node_id === undefined)) throw new Error('Pass exactly one of path or node_id.')
       const canvas = deps.canvas()
       const { directory, session } = nodeFrom(exec, canvas)
-      let path = input.path === undefined ? '' : resolve(directory, input.path)
+      let path = input.path === undefined ? '' : inputPath(input.path, directory)
       if (input.node_id !== undefined) {
         if (canvas === undefined || session === undefined) throw new Error('media_probe needs a canvas session to resolve node_id; pass path instead.')
         try {

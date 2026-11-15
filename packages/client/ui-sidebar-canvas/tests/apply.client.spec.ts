@@ -1,7 +1,9 @@
 /** The canvas tab type, copy, and seats follow the plugin lifetime; one face per Session reads and edits through the Remote. */
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CanvasNodeId, EpisodeId, VersionId } from '@deepseek-ai/dsh-canvas/client'
 import { expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
@@ -16,10 +18,10 @@ const view = (directory: string) => ({
   directory,
   episode: { id: 'e1' as never, title: 'Canvas' },
   revisions: { canvas: 0 },
-  document: { version: 2 as const, revision: 0, nextId: 1, nodes: [], edges: [] },
+  document: { version: 3 as const, revision: 0, nextId: 1, nodes: [], edges: [] },
 })
 
-async function mountPlugin() {
+async function mountPlugin(withMedia = true) {
   const ctx = new Context()
   const tabs = new SidebarRightTabRegistry(ctx)
   ctx.provide('sidebarRightTabs', tabs)
@@ -38,6 +40,7 @@ async function mountPlugin() {
     register: (name: string, values: unknown) => { dictionaries.set(name, values); return () => { dictionaries.delete(name) } },
   } as never)
   const listeners = new Set<(change: { directory: string }) => void>()
+  const renderListeners = new Set<(change: { directory: string }) => void>()
   const canvas = {
     get: vi.fn(async (sessionId: SessionId) => ({ ok: true as const, value: view(`/projects/${sessionId}`) })),
     apply: vi.fn(async () => ({ ok: true as const, value: { refs: {}, created: [], skipped: [] } })),
@@ -49,22 +52,35 @@ async function mountPlugin() {
     capabilities: vi.fn(async () => ({ ok: true as const, value: [] })),
     planNodes: vi.fn(async () => ({ ok: true as const, value: plan })),
     generateNodes: vi.fn(async () => ({ ok: true as const, value: plan })),
+    videoPreview: vi.fn(async () => ({ ok: true as const, value: '/projects/s1/compatible.webm' })),
+    pendingTimelineRenders: vi.fn(async () => ({ ok: true as const, value: [] })),
+    claimTimelineRender: vi.fn(async () => ({ ok: true as const, value: undefined })),
   }
-  ctx.provide('remote', {
-    canvas, workspaceFiles, media,
-    $on: (event: string, listener: (change: { directory: string }) => void) => {
-      expect(event).toBe('canvas/change')
-      listeners.add(listener)
-      return () => { listeners.delete(listener) }
-    },
-  } as never)
+  // Match the gateway's service-backed namespaces, rather than plain nested objects.
+  class Remote extends Service {
+    constructor(owner: Context) { super(owner, 'remote') }
+    $on(event: string, listener: (change: { directory: string }) => void): () => void {
+      expect(['canvas/change', 'media/render-change']).toContain(event)
+      const target = event === 'canvas/change' ? listeners : renderListeners
+      target.add(listener)
+      return () => { target.delete(listener) }
+    }
+  }
+  new Remote(ctx)
   ctx.provide('remote.canvas', canvas as never)
-  ctx.provide('remote.media', media as never)
+  class Media extends Service {
+    constructor(owner: Context) { super(owner, 'remote.media') }
+  }
+  // A sibling provider requires inject; a provision on the consumer's ancestor does not.
+  const mediaProvider = withMedia
+    ? await ctx.plugin({ apply: (owner: Context) => { Object.assign(new Media(owner), media) } })
+    : undefined
   ctx.provide('remote.workspaceFiles', workspaceFiles as never)
   const fiber = await ctx.plugin({ inject, apply })
   return {
-    ctx, tabs, entries, dictionaries, canvas, workspaceFiles, media, listeners,
+    ctx, tabs, entries, dictionaries, canvas, workspaceFiles, media, listeners, renderListeners,
     emitChange(directory: string) { for (const listener of listeners) listener({ directory }) },
+    async stopMedia() { await mediaProvider?.dispose() },
     async dispose() { await fiber.dispose(); await ctx.fiber.dispose() },
   }
 }
@@ -110,7 +126,7 @@ it('gives each Session one stable face that reads, edits, and follows Host chang
     await second.load()
 
     await first.edit([{ op: 'remove', node: 'n1' }])
-    expect(h.canvas.apply).toHaveBeenLastCalledWith('s1', [{ op: 'remove', node: 'n1' }], 0, undefined)
+    expect(h.canvas.apply).toHaveBeenLastCalledWith('s1', [{ op: 'remove', node: 'n1' }], 0, 'e1', '/projects/s1')
 
     h.canvas.get.mockClear()
     h.emitChange('/projects/s2')
@@ -163,25 +179,51 @@ it('reads the bible and drives media planning through the optional namespace', a
     await expect(face.planNodes(['n1'])).resolves.toMatchObject({ state: 'ready' })
     await expect(face.generateNodes(['n1'], 'tok')).resolves.toMatchObject({ state: 'ready' })
     expect(h.canvas.bible).toHaveBeenCalledWith('s1')
-    expect(h.media.planNodes).toHaveBeenCalledWith('s1', ['n1'])
-    expect(h.media.generateNodes).toHaveBeenCalledWith('s1', ['n1'], 'tok')
+    expect(h.media.planNodes).toHaveBeenCalledWith('s1', ['n1'], undefined)
+    expect(h.media.generateNodes).toHaveBeenCalledWith('s1', ['n1'], 'tok', undefined)
   } finally {
     await h.dispose()
   }
 })
 
-it('returns no plan when the deployment lacks the media namespace', async () => {
+it('keeps the canvas usable without any media namespace', async () => {
+  const h = await mountPlugin(false)
+  try {
+    const face = h.entries[0]!.inject!('s1' as SessionId) as CanvasInjected
+    await face.load()
+    expect(face.hooks.canvas.getSnapshot().status).toBe('ready')
+    await expect(face.capabilities('generate_image')).resolves.toEqual([])
+    await expect(face.planNodes?.(['n1'])).resolves.toBeUndefined()
+    await expect(face.generateNodes?.(['n1'], undefined)).resolves.toBeUndefined()
+    await expect(face.previewVideo?.(brandString<CanvasNodeId>('n1'), brandString<VersionId>('v1'), { directory: '/projects/s1', episode: brandString<EpisodeId>('e1') }, new AbortController().signal))
+      .resolves.toEqual({ ok: false, message: 'Video previews are unavailable' })
+  } finally {
+    await h.dispose()
+  }
+})
+
+it('releases the optional namespace on provider unload while preserving the canvas face', async () => {
   const h = await mountPlugin()
   try {
-    h.ctx.set('remote.media', undefined as never)
-    const face = h.entries[0]!.inject!('s1' as SessionId) as { planNodes: (nodes: string[]) => Promise<unknown> }
-    await expect(face.planNodes(['n1'])).resolves.toBeUndefined()
+    const faceOf = h.entries[0]!.inject!
+    const face = faceOf('s1' as SessionId) as CanvasInjected
+    await face.capabilities('generate_video')
+    expect(h.media.capabilities).toHaveBeenCalledOnce()
+    await h.stopMedia()
+    expect(faceOf('s1' as SessionId)).toBe(face)
+    await expect(face.capabilities('generate_video')).resolves.toEqual([])
+    await expect(face.previewVideo?.(brandString<CanvasNodeId>('n1'), brandString<VersionId>('v1'), { directory: '/projects/s1', episode: brandString<EpisodeId>('e1') }, new AbortController().signal))
+      .resolves.toEqual({ ok: false, message: 'Video previews are unavailable' })
+    expect(h.media.capabilities).toHaveBeenCalledOnce()
+    expect(h.media.videoPreview).not.toHaveBeenCalled()
+    await face.load()
+    expect(face.hooks.canvas.getSnapshot().status).toBe('ready')
   } finally {
     await h.dispose()
   }
 })
 
-it('surfaces remote failures and missing media for capabilities and plans', async () => {
+it('surfaces remote failures for capabilities and plans', async () => {
   const h = await mountPlugin()
   try {
     h.media.capabilities.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'cap boom' } } as never)
@@ -198,9 +240,6 @@ it('surfaces remote failures and missing media for capabilities and plans', asyn
     await expect(face.planNodes(['n1'])).rejects.toThrow('plan boom')
     await expect(face.generateNodes(['n1'])).rejects.toThrow('gen boom')
     await expect(face.bible()).rejects.toThrow('bible boom')
-    h.ctx.set('remote.media', undefined as never)
-    await expect(face.capabilities('generate_image')).resolves.toEqual([])
-    await expect(face.generateNodes(['n1'])).resolves.toBeUndefined()
   } finally {
     await h.dispose()
   }
@@ -218,6 +257,26 @@ it('returns capabilities from the successful namespace', async () => {
   }
 })
 
+it('prepares compatible video through the optional namespace before reading its bytes', async () => {
+  const h = await mountPlugin()
+  try {
+    const face = h.entries[0]!.inject!('s1' as SessionId) as CanvasInjected
+    const signal = new AbortController().signal
+    const data = new Uint8Array([1, 2, 3])
+    h.workspaceFiles.readBytes.mockResolvedValueOnce({ ok: true, value: { data } })
+    const scope = { directory: '/projects/s1', episode: brandString<EpisodeId>('e1') }
+    const node = brandString<CanvasNodeId>('n1'), version = brandString<VersionId>('v1')
+    await expect(face.previewVideo?.(node, version, scope, signal)).resolves.toEqual({ ok: true, data })
+    expect(h.media.videoPreview).toHaveBeenCalledWith('s1', 'n1', 'v1', scope)
+    expect(h.workspaceFiles.readBytes).toHaveBeenCalledWith('s1', '/projects/s1/compatible.webm', {}, signal)
+    h.media.videoPreview.mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'preview failed' } } as never)
+    await expect(face.previewVideo?.(node, version, scope, signal)).resolves.toEqual({ ok: false, message: 'preview failed' })
+    expect(h.workspaceFiles.readBytes).toHaveBeenCalledTimes(1)
+  } finally {
+    await h.dispose()
+  }
+})
+
 it('passes the Host apply arity and reports a rejected edit through the canvas notice', async () => {
   const h = await mountPlugin()
   try {
@@ -225,7 +284,7 @@ it('passes the Host apply arity and reports a rejected edit through the canvas n
     await face.load()
     h.canvas.apply.mockRejectedValueOnce(new Error('apply boom'))
     await face.edit([{ op: 'remove', node: 'n1' }])
-    expect(h.canvas.apply).toHaveBeenCalledWith('s1', [{ op: 'remove', node: 'n1' }], 0, undefined)
+    expect(h.canvas.apply).toHaveBeenCalledWith('s1', [{ op: 'remove', node: 'n1' }], 0, 'e1', '/projects/s1')
     expect(face.hooks.canvas.getSnapshot().notice).toBe('apply boom')
   } finally {
     await h.dispose()

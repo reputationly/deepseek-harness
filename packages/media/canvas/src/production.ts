@@ -4,6 +4,7 @@
  */
 
 import { activeVersionOf, CanvasCorruptError } from './document.ts'
+import type { validateShots } from './storyboard.ts'
 import type { Bible } from './bible.ts'
 import type { CanvasDocument, CanvasNode, EpisodeProduction, GateId, Production, StageId } from './types.ts'
 
@@ -141,7 +142,8 @@ function storyboardProblems(document: CanvasDocument, bible: Bible | undefined):
   const problems: ShotProblem[] = []
   for (const node of document.nodes) {
     if (node.type !== 'storyboard') continue
-    for (const shot of activeVersionOf(node)?.shots ?? []) {
+    const candidates: Parameters<typeof validateShots>[0] = activeVersionOf(node)?.shots ?? []
+    for (const shot of candidates) {
       const missing: string[] = []
       if (shot.shotSize === undefined) missing.push('shotSize')
       if (!(shot.durationSec >= 1)) missing.push('durationSec')

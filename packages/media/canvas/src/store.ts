@@ -3,12 +3,13 @@
  * @module
  */
 
-import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import type { ResolvedConfig } from './config.ts'
 import { EMPTY_CANVAS, parseCanvas, serializeCanvas } from './document.ts'
 import type { CanvasDocument } from './types.ts'
+import { archiveDocument, readDocumentHistory } from './document-history.ts'
 
 /**
  * Canvas file of an episode.
@@ -67,12 +68,16 @@ export class CanvasStore {
   updateCanvas<T>(
     directory: string,
     file: string,
-    change: (current: CanvasDocument) => { readonly document?: CanvasDocument; readonly value: T },
+    change: (
+      current: CanvasDocument,
+    ) =>
+      | { readonly document?: CanvasDocument; readonly value: T }
+      | Promise<{ readonly document?: CanvasDocument; readonly value: T }>,
   ): Promise<T> {
     return this.serialize(directory, async () => {
-      const { document, value } = change(await this.readCanvas(directory, file))
+      const { document, value } = await change(await this.readCanvas(directory, file))
       if (document === undefined) return value
-      await this.write(canvasFile(directory, file), serializeCanvas(document))
+      await this.write(canvasFile(directory, file), serializeCanvas(document, this.limits))
       return value
     })
   }
@@ -102,12 +107,33 @@ export class CanvasStore {
   }
 
   /**
+   * Read a live document and its retained revisions while the caller holds this project's queue.
+   * @param directory - project directory.
+   * @param file - relative document file inside `.canvas/`.
+   * @param parse - owning document parser.
+   * @param limit - maximum preceding revision window.
+   * @returns live document first, followed by retained predecessors; empty before creation.
+   */
+  async documentHistory<D extends { readonly revision: number }>(
+    directory: string,
+    file: string,
+    parse: (source: string) => D,
+    limit: number,
+  ): Promise<readonly D[]> {
+    const stored = await this.readDocument(directory, file, parse)
+    return stored === undefined
+      ? []
+      : [stored.value, ...(await readDocumentHistory(join(directory, '.canvas', file), stored.value, parse, limit))]
+  }
+
+  /**
    * Rewrite a JSON document that carries a revision, bumping the revision once per write.
    * @param directory - project directory.
    * @param file - file relative to `.canvas/`.
-   * @param parse - validator for the file content.
+   * @param parse - validator for the existing and candidate file content.
    * @param create - document to start from when the file does not exist.
    * @param change - computes the next document and a value for the caller; returning no document leaves the file untouched.
+   * @param historyLimit - when present, archive predecessors before commit; absent disables history.
    * @returns the value `change` produced and the revision the file holds afterwards.
    */
   updateDocument<T, D extends { readonly revision: number }>(
@@ -115,16 +141,23 @@ export class CanvasStore {
     file: string,
     parse: (source: string) => D,
     create: () => D,
-    change: (current: D) => { readonly document?: D; readonly value: T },
+    change: (
+      current: D,
+    ) => { readonly document?: D; readonly value: T } | Promise<{ readonly document?: D; readonly value: T }>,
+    historyLimit?: number,
   ): Promise<{ readonly value: T; readonly revision: number }> {
     return this.serialize(directory, async () => {
       const stored = await this.readDocument(directory, file, parse)
       const current = stored?.value ?? create()
-      const next = change(current)
+      const next = await change(current)
       if (next.document === undefined) return { value: next.value, revision: current.revision }
       const revision = current.revision + 1
       const document: D = { ...next.document, revision }
-      await this.write(join(directory, '.canvas', file), `${JSON.stringify(document, null, 2)}\n`)
+      const content = `${JSON.stringify(document, null, 2)}\n`
+      parse(content)
+      if (historyLimit !== undefined && stored !== undefined)
+        await archiveDocument(join(directory, '.canvas', file), current, parse, historyLimit)
+      await this.write(join(directory, '.canvas', file), content)
       return { value: next.value, revision }
     })
   }
@@ -133,23 +166,17 @@ export class CanvasStore {
   private serialize<T>(directory: string, run: () => Promise<T>): Promise<T> {
     const previous = this.tails.get(directory) ?? Promise.resolve()
     const result = previous.then(run, run)
-    const tail = result.catch(() => undefined).finally(() => {
-      if (this.tails.get(directory) === tail) this.tails.delete(directory)
-    })
+    const tail = result
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.tails.get(directory) === tail) this.tails.delete(directory)
+      })
     this.tails.set(directory, tail)
     return result
   }
 
   /** Write one file atomically, creating the directory it lives in. */
   private async write(file: string, content: string): Promise<void> {
-    const temporary = `${file}.${randomUUID()}.tmp`
-    await mkdir(dirname(file), { recursive: true })
-    try {
-      await writeFile(temporary, content)
-      await rename(temporary, file)
-    } catch (error: unknown) {
-      await rm(temporary, { force: true })
-      throw error
-    }
+    await writeFileAtomic(file, content, { mode: 0o666 })
   }
 }

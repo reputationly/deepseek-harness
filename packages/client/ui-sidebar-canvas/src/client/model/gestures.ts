@@ -78,7 +78,6 @@ export function keyboardIntent(
  * @param document - document before the deletion.
  * @param nodes - node ids the gesture removed.
  * @param edges - edge ids the gesture removed.
- * @param t - copy function for the operation.
  * @returns the edits and how many entities they remove, or undefined when there is nothing to confirm.
  */
 export function deleteIntent(

@@ -1,0 +1,12 @@
+version: 1
+scenario: canvas-local-edit
+profile: headless
+composition: canvas-local-edit
+recording: authored
+header:
+  class: canvas-local-edit
+  pin: true
+replay:
+  override: true
+workspace:
+  final: true

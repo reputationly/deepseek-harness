@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/client-ui-wechat/README.md
+/:
+  en: 0eda4754373fefb0
+  zh: 2cc7feeb600059f3
+/deepseek-ai-dsh-client-ui-wechat:
+  en: 4d45cb0bebff088e
+  zh: 5de333d172536996
+/deepseek-ai-dsh-client-ui-wechat/summary:
+  en: db81acf0f098fd59
+  zh: 9290b0328a6b2770
+/deepseek-ai-dsh-client-ui-wechat/table-of-contents:
+  en: 2e89ddb1e73218cb
+  zh: 5b9aa0e046408356
+/deepseek-ai-dsh-client-ui-wechat/use-this-package:
+  en: b07b6802ea086755
+  zh: e4f90fe0f79f08c2
+/deepseek-ai-dsh-client-ui-wechat/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-client-ui-wechat/model-experience/wechat-settings:
+  en: f85ffd22f19d5cbd
+  zh: fcded856fc43e645
+/deepseek-ai-dsh-client-ui-wechat/model-experience/wechat-settings/what-the-model-sees:
+  en: f811588c596efdf5
+  zh: d004ed38bf1f67d7
+/deepseek-ai-dsh-client-ui-wechat/model-experience/wechat-settings/token-effect:
+  en: df41b204b7f7491c
+  zh: 189386805ab22cbc
+/deepseek-ai-dsh-client-ui-wechat/model-experience/wechat-settings/kv-cache-effect:
+  en: 51557cfca6528d0a
+  zh: d1b3665ea85e5686
+/deepseek-ai-dsh-client-ui-wechat/known-limitations-and-deferred-work:
+  en: 5098320795bca3c2
+  zh: 8ba801cc6f100628
+/deepseek-ai-dsh-client-ui-wechat/known-limitations-and-deferred-work/dev-note:
+  en: e3659c5496f2376a
+  zh: 82c67a9354afb95e

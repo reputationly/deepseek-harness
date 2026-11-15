@@ -1,4 +1,4 @@
-/** Media gateway client: synchronous image and speech plus polled music and video tasks. */
+/** Media gateway requests and durable task polling. */
 
 /** One generated media file downloaded to disk. */
 export interface MediaArtifact {
@@ -17,11 +17,17 @@ export interface GatewayRequest {
 
 /** Failure reported by the gateway, carrying its HTTP status when one arrived. */
 export class MediaGatewayError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
     super(message)
     this.name = 'MediaGatewayError'
   }
 }
+
+/** A provider confirmed its asynchronous task ended in failure or cancellation. */
+export class MediaTaskFailedError extends MediaGatewayError {}
 
 /** Request headers accepted by both bearer and API-key relays. */
 function headers(request: GatewayRequest, contentType = 'application/json'): Record<string, string> {
@@ -69,7 +75,7 @@ async function ensureOk(response: Response): Promise<Response> {
 
 /** One `{url}` image entry from an image response. */
 async function imageURL(response: Response): Promise<string> {
-  const body = await (await ensureOk(response)).json() as { data?: Array<{ url?: string; b64_json?: string }> }
+  const body = (await (await ensureOk(response)).json()) as { data?: Array<{ url?: string; b64_json?: string }> }
   const first = body.data?.[0]
   if (first?.url !== undefined && first.url !== '') return first.url
   if (first?.b64_json !== undefined && first.b64_json !== '') return `data:image/png;base64,${first.b64_json}`
@@ -152,22 +158,33 @@ export async function editImages(
  */
 export async function generateSpeech(
   request: GatewayRequest,
-  input: { model: string; text: string; voice: string; format?: string },
+  input: {
+    model: string
+    text: string
+    voice?: string
+    instructions?: string
+    format?: string
+    params?: Readonly<Record<string, string | number | boolean>>
+  },
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
-  const response = await ensureOk(await fetch(`${root(request.baseURL)}/audio/speech`, {
-    method: 'POST',
-    headers: headers(request),
-    body: JSON.stringify({
-      model: input.model,
-      input: input.text,
-      voice: input.voice,
-      ...(input.format === undefined ? {} : { response_format: input.format }),
+  const response = await ensureOk(
+    await fetch(`${root(request.baseURL)}/audio/speech`, {
+      method: 'POST',
+      headers: headers(request),
+      body: JSON.stringify({
+        ...input.params,
+        model: input.model,
+        input: input.text,
+        ...(input.voice === undefined ? {} : { voice: input.voice }),
+        ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
+        ...(input.format === undefined ? {} : { response_format: input.format }),
+      }),
+      signal: request.signal,
     }),
-    signal: request.signal,
-  }))
+  )
   const contentType = response.headers.get('content-type') ?? 'audio/mpeg'
   if (contentType.includes('application/json')) {
-    const body = await response.json() as { data?: Array<{ url?: string }> }
+    const body = (await response.json()) as { data?: Array<{ url?: string }> }
     const url = body.data?.[0]?.url
     if (url === undefined) throw new MediaGatewayError('gateway returned no audio')
     const audio = await ensureOk(await fetch(url, { signal: request.signal }))
@@ -179,7 +196,7 @@ export async function generateSpeech(
 /** Async media task state reported by the gateway. */
 export type TaskState =
   | { readonly status: 'pending'; readonly progress: number }
-  | { readonly status: 'done'; readonly url: string }
+  | { readonly status: 'done'; readonly url: string; readonly scoreABC?: string }
   | { readonly status: 'failed'; readonly reason: string }
 
 /**
@@ -189,14 +206,20 @@ export type TaskState =
  * @param body - model-specific request fields.
  * @returns the gateway task id.
  */
-export async function submitTask(request: GatewayRequest, model: string, body: Record<string, unknown>): Promise<string> {
-  const response = await ensureOk(await fetch(`${root(request.baseURL)}/videos`, {
-    method: 'POST',
-    headers: headers(request),
-    body: JSON.stringify({ model, ...body }),
-    signal: request.signal,
-  }))
-  const parsed = await response.json() as { id?: string; task_id?: string }
+export async function submitTask(
+  request: GatewayRequest,
+  model: string,
+  body: Record<string, unknown>,
+): Promise<string> {
+  const response = await ensureOk(
+    await fetch(`${root(request.baseURL)}/videos`, {
+      method: 'POST',
+      headers: headers(request),
+      body: JSON.stringify({ model, ...body }),
+      signal: request.signal,
+    }),
+  )
+  const parsed = (await response.json()) as { id?: string; task_id?: string }
   const id = parsed.id ?? parsed.task_id
   if (id === undefined || id === '') throw new MediaGatewayError('gateway returned no task id')
   return id
@@ -209,26 +232,31 @@ export async function submitTask(request: GatewayRequest, model: string, body: R
  * @returns normalized task state.
  */
 export async function readTask(request: GatewayRequest, id: string): Promise<TaskState> {
-  const response = await ensureOk(await fetch(`${root(request.baseURL)}/videos/${encodeURIComponent(id)}`, {
-    headers: headers(request),
-    signal: request.signal,
-  }))
-  const body = await response.json() as {
+  const response = await ensureOk(
+    await fetch(`${root(request.baseURL)}/videos/${encodeURIComponent(id)}`, {
+      headers: headers(request),
+      signal: request.signal,
+    }),
+  )
+  const body = (await response.json()) as {
     status?: string
     progress?: number
     url?: string
     content_url?: string
     result_url?: string
-    metadata?: { url?: string }
+    metadata?: { url?: string; score_abc?: unknown }
     data?: { url?: string; result_url?: string }
     error?: { message?: string }
   }
   const status = body.status ?? 'pending'
   if (status === 'succeeded' || status === 'success' || status === 'completed' || status === 'done') {
-    const url = body.url ?? body.content_url ?? body.result_url
-      ?? body.metadata?.url ?? body.data?.url ?? body.data?.result_url
-    if (url === undefined) throw new MediaGatewayError('gateway finished without a media URL')
-    return { status: 'done', url }
+    const url =
+      body.url ?? body.content_url ?? body.result_url ?? body.metadata?.url ?? body.data?.url ?? body.data?.result_url
+    if (url === undefined || url === '') throw new MediaGatewayError('gateway finished without a media URL')
+    const scoreABC = body.metadata?.score_abc
+    if (scoreABC !== undefined && typeof scoreABC !== 'string')
+      throw new MediaGatewayError('gateway returned an invalid ABC score')
+    return { status: 'done', url, ...(scoreABC === undefined ? {} : { scoreABC }) }
   }
   if (status === 'failed' || status === 'failure' || status === 'cancelled') {
     return { status: 'failed', reason: body.error?.message ?? 'gateway reported failure' }
@@ -248,17 +276,40 @@ export async function awaitTask(
   id: string,
   options: { timeoutMs: number; intervalMs: number },
 ): Promise<string> {
+  return (await awaitTaskResult(request, id, options)).url
+}
+
+/**
+ * Poll a submitted task, retaining its composition score when supplied.
+ * @param request - endpoint, credential, and cancellation signal.
+ * @param id - previously submitted task id; this function never submits work.
+ * @param options - total budget and polling interval.
+ * @returns the completed media URL and optional rendered ABC score.
+ * @throws A gateway failure when polling fails, the task fails, or the budget expires.
+ */
+export async function awaitTaskResult(
+  request: GatewayRequest,
+  id: string,
+  options: { timeoutMs: number; intervalMs: number },
+): Promise<Extract<TaskState, { status: 'done' }>> {
   const deadline = Date.now() + options.timeoutMs
   for (;;) {
     const state = await readTask(request, id)
-    if (state.status === 'done') return state.url
-    if (state.status === 'failed') throw new MediaGatewayError(state.reason)
+    if (state.status === 'done') return state
+    if (state.status === 'failed') throw new MediaTaskFailedError(state.reason)
     if (Date.now() + options.intervalMs > deadline) {
       throw new MediaGatewayError(`task ${id} did not finish within ${String(options.timeoutMs)}ms`)
     }
     await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, options.intervalMs)
-      request.signal.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
+      request.signal.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer)
+          resolve()
+        },
+        { once: true },
+      )
     })
     if (request.signal.aborted) throw new MediaGatewayError('cancelled')
   }
@@ -270,7 +321,10 @@ export async function awaitTask(
  * @param url - media URL or `data:` URI.
  * @returns the bytes and their content type.
  */
-export async function downloadMedia(request: GatewayRequest, url: string): Promise<{ bytes: Uint8Array; contentType: string }> {
+export async function downloadMedia(
+  request: GatewayRequest,
+  url: string,
+): Promise<{ bytes: Uint8Array; contentType: string }> {
   if (url.startsWith('data:')) {
     const [meta, payload] = url.slice(5).split(',', 2)
     const contentType = meta?.split(';')[0] || 'application/octet-stream'

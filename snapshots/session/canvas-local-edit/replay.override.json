@@ -1,0 +1,198 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "tool-call-delta",
+        "index": 0,
+        "id": "local-edit-call-1",
+        "name": "canvas_get",
+        "argumentsDelta": "{\"nodes\":[\"n1\"],\"detail\":\"full\"}"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "local-edit-call-1",
+          "name": "canvas_get",
+          "arguments": "{\"nodes\":[\"n1\"],\"detail\":\"full\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 10,
+          "outputTokens": 5
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "tool-call-delta",
+        "index": 0,
+        "id": "local-edit-call-2",
+        "name": "media_edit",
+        "argumentsDelta": "{\"directory\":\"{{fromRequest:Current working directory: .([^\\\\\\\"]*)}}\",\"episode\":\"e1\",\"node\":\"n1\",\"version\":\"missing-version\",\"operation\":\"audio_edit\",\"volume\":0}"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "local-edit-call-2",
+          "name": "media_edit",
+          "arguments": "{\"directory\":\"{{fromRequest:Current working directory: .([^\\\\\\\"]*)}}\",\"episode\":\"e1\",\"node\":\"n1\",\"version\":\"missing-version\",\"operation\":\"audio_edit\",\"volume\":0}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 10,
+          "outputTokens": 5
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "tool-call-delta",
+        "index": 0,
+        "id": "local-edit-call-3",
+        "name": "media_edit",
+        "argumentsDelta": "{\"directory\":\"{{fromRequest:Current working directory: .([^\\\\\\\"]*)}}\",\"episode\":\"e1\",\"node\":\"n1\",\"version\":\"v1\",\"operation\":\"first_frame\"}"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "local-edit-call-3",
+          "name": "media_edit",
+          "arguments": "{\"directory\":\"{{fromRequest:Current working directory: .([^\\\\\\\"]*)}}\",\"episode\":\"e1\",\"node\":\"n1\",\"version\":\"v1\",\"operation\":\"first_frame\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 10,
+          "outputTokens": 5
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "tool-call-delta",
+        "index": 0,
+        "id": "local-edit-call-4",
+        "name": "canvas_get",
+        "argumentsDelta": "{\"nodes\":[\"n1\"],\"detail\":\"full\"}"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "local-edit-call-4",
+          "name": "canvas_get",
+          "arguments": "{\"nodes\":[\"n1\"],\"detail\":\"full\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 10,
+          "outputTokens": 5
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "text"
+      },
+      {
+        "type": "text-delta",
+        "index": 0,
+        "text": "LOCAL_EDITS_REJECTED"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": "LOCAL_EDITS_REJECTED"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 10,
+          "outputTokens": 5
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "stop"
+        }
+      }
+    ]
+  }
+]

@@ -49,7 +49,7 @@ describe('roles', () => {
 describe('parseCanvas', () => {
   it('migrates a version-1 canvas into versions and named reference edges', () => {
     const document = parseCanvas(JSON.stringify(v1))
-    expect(document.version).toBe(2)
+    expect(document.version).toBe(3)
     expect(document.revision).toBe(0)
     expect(document.nextId).toBe(3)
     const [image, , , group] = document.nodes
@@ -67,7 +67,7 @@ describe('parseCanvas', () => {
     ])
   })
 
-  it('round-trips a version-2 document through serialization', () => {
+  it('round-trips a migrated document through format-3 serialization', () => {
     const document = parseCanvas(JSON.stringify(v1))
     const again = parseCanvas(serializeCanvas(document))
     expect(again).toEqual(document)
@@ -126,7 +126,7 @@ describe('parseCanvas', () => {
   })
 
   it('rejects a newer format without touching the file contract', () => {
-    expect(() => parseCanvas('{"version":3,"revision":0,"nextId":1,"nodes":[],"edges":[]}'))
+    expect(() => parseCanvas('{"version":4,"revision":0,"nextId":1,"nodes":[],"edges":[]}'))
       .toThrow(CanvasUnsupportedVersionError)
     expect(() => parseCanvas('{"version":0,"nextId":1,"nodes":[],"edges":[]}')).toThrow(CanvasCorruptError)
   })
@@ -193,8 +193,8 @@ describe('parseCanvas', () => {
   it('rejects documents that exceed the deployment bounds', () => {
     const limits = resolveConfig({ maxNodes: 1, maxEdges: 1, maxPromptLength: 2, maxShotsPerStoryboard: 1 })
     const document = parseCanvas(JSON.stringify(v1))
-    expect(() => assertWithinLimits(document, limits)).toThrow('nodes')
-    expect(() => assertWithinLimits(EMPTY_CANVAS, limits)).not.toThrow()
+    expect(() => { assertWithinLimits(document, limits) }).toThrow('nodes')
+    expect(() => { assertWithinLimits(EMPTY_CANVAS, limits) }).not.toThrow()
     const manyEdges = parseCanvas(JSON.stringify({
       version: 2, revision: 0, nextId: 3,
       nodes: [
@@ -206,13 +206,13 @@ describe('parseCanvas', () => {
         { id: 'n2->n1', source: 'n2', target: 'n1', kind: 'derivation' },
       ],
     }))
-    expect(() => assertWithinLimits(manyEdges, resolveConfig({ maxEdges: 1 }))).toThrow('edges')
+    expect(() => { assertWithinLimits(manyEdges, resolveConfig({ maxEdges: 1 })) }).toThrow('edges')
     const longPrompt = parseCanvas(JSON.stringify({
       version: 2, revision: 0, nextId: 2,
       nodes: [{ id: 'n1', type: 'image', title: 'a', x: 0, y: 0, width: 1, height: 1, gen: { kind: 'image', prompt: 'long', params: {} } }],
       edges: [],
     }))
-    expect(() => assertWithinLimits(longPrompt, limits)).toThrow('prompt exceeds')
+    expect(() => { assertWithinLimits(longPrompt, limits) }).toThrow('prompt exceeds')
   })
 
   it('parses through the limits when the caller passes them', () => {
@@ -221,12 +221,12 @@ describe('parseCanvas', () => {
   })
 
   it('migrates through migrateCanvas directly and rejects dangling edges', () => {
-    expect(migrateCanvas(v1).version).toBe(2)
+    expect(migrateCanvas(v1).version).toBe(3)
     expect(() => migrateCanvas({ ...v1, edges: [{ source: 'n9', target: 'n1', kind: 'reference' }] })).toThrow('missing node')
     expect(() => migrateCanvas({ ...v1, edges: [{ source: 'n1', target: 'n2', kind: 'weird' }] })).toThrow('unknown kind')
   })
 
-  it('reports the active version and falls back to the last stored one', () => {
+  it('resolves only the explicitly adopted version', () => {
     const node: CanvasNode = {
       id: 'n1' as CanvasNode['id'], type: 'text', title: 't', x: 0, y: 0, width: 1, height: 1,
       versions: [
@@ -237,7 +237,7 @@ describe('parseCanvas', () => {
     }
     expect(activeVersionOf(node)?.text).toBe('one')
     const { activeVersion: _active, ...withoutActive } = node
-    expect(activeVersionOf(withoutActive)?.text).toBe('two')
+    expect(activeVersionOf(withoutActive)).toBeUndefined()
     expect(activeVersionOf({ ...node, versions: [] })).toBeUndefined()
     const { versions: _versions, ...withoutVersions } = node
     expect(activeVersionOf(withoutVersions)).toBeUndefined()

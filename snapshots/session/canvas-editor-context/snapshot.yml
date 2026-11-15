@@ -1,0 +1,12 @@
+version: 1
+scenario: canvas-editor-context
+profile: headless
+composition: canvas-editor-context
+recording: authored
+header:
+  class: canvas-editor-context
+  pin: true
+replay:
+  override: true
+workspace:
+  final: true

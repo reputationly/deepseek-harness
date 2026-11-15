@@ -2,7 +2,7 @@
 import { expect, it, vi } from 'vitest'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
-  CanvasDocument, CanvasEditResult, CanvasNodeId, CanvasOperation, CanvasView, ShotId, VersionId,
+  CanvasDocument, CanvasEditResult, CanvasNodeId, CanvasOperation, CanvasView, EpisodeId, ShotId, VersionId,
 } from '@deepseek-ai/dsh-canvas/client'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { applyOperations } from '../../../media/canvas/src/operations.ts'
@@ -14,7 +14,7 @@ const view = (directory: string, nextId = 1): CanvasView => ({
   directory,
   episode: { id: 'e1' as never, title: 'Canvas' },
   revisions: { canvas: 3 },
-  document: { version: 2, revision: 3, nextId, nodes: [], edges: [] },
+  document: { version: 3, revision: 3, nextId, nodes: [], edges: [] },
   segments: {},
 })
 const ok = <T>(value: T): RemoteResult<T> => ({ ok: true, value })
@@ -38,6 +38,18 @@ it('shows the document it read and keeps it visible when a later read fails', as
   get.mockResolvedValueOnce(ok(view('/project', 2)))
   await source.load()
   expect(source.state.getSnapshot()).toMatchObject({ status: 'ready', error: undefined, view: view('/project', 2) })
+})
+
+it('preserves the form revision even when the latest source snapshot is newer', async () => {
+  const latest = view('/project')
+  const get = vi.fn(async () => ok({ ...latest, document: { ...latest.document, revision: 4 } }))
+  const apply = vi.fn(async () => failure('the draft was based on revision 3', 'canvas/conflict'))
+  const source = new CanvasSource({ get, apply })
+  await source.load()
+  const operations: CanvasOperation[] = [{ op: 'set_gen', node: 'n1', gen: { prompt: 'old draft' } }]
+  await source.edit(operations, { baseRevision: 3 })
+  expect(apply).toHaveBeenCalledExactlyOnceWith(operations, 3, { directory: '/project', episode: 'e1' })
+  expect(source.state.getSnapshot().conflict).toBe(true)
 })
 
 it('lets only the latest read publish', async () => {
@@ -65,7 +77,7 @@ it('applies edits in one call, reads the settled document, and reports what did 
   expect(get).toHaveBeenCalledOnce()
 
   await source.edit([{ op: 'remove', node: 'n1' }])
-  expect(apply).toHaveBeenCalledWith([{ op: 'remove', node: 'n1' }], 3)
+  expect(apply).toHaveBeenCalledWith([{ op: 'remove', node: 'n1' }], 3, { directory: '/project', episode: 'e1' })
   expect(get).toHaveBeenCalledTimes(2)
   expect(source.state.getSnapshot().notice).toBeUndefined()
 
@@ -87,7 +99,23 @@ it('reports a rejected remote call even when it throws a non-Error value', async
   const source = new CanvasSource({ get, apply })
   await source.load()
   await source.edit([{ op: 'remove', node: 'n1' }])
-  expect(source.state.getSnapshot()).toMatchObject({ status: 'ready', notice: 'remote rejected the edit' })
+  expect(source.state.getSnapshot()).toMatchObject({ status: 'ready', notice: 'remote rejected the edit', noticeCode: 'unknown' })
+})
+
+it('ignores queued writes and late acknowledgements after disposal', async () => {
+  const acknowledgement = Promise.withResolvers<RemoteResult<CanvasEditResult>>()
+  const apply = vi.fn(async () => acknowledgement.promise)
+  const source = new CanvasSource({ get: vi.fn(async () => ok(view('/project'))), apply })
+  await source.load()
+  const onAcknowledged = vi.fn()
+  const first = source.edit([{ op: 'remove', node: 'n1' }], { onAcknowledged })
+  const second = source.edit([{ op: 'remove', node: 'n2' }], { onAcknowledged })
+  await vi.waitFor(() => { expect(apply).toHaveBeenCalledOnce() })
+  source.dispose()
+  acknowledgement.resolve(ok(applied))
+  await Promise.all([first, second])
+  expect(apply).toHaveBeenCalledOnce()
+  expect(onAcknowledged).not.toHaveBeenCalled()
 })
 
 it('keeps the edit queue usable after a post-edit reload rejects', async () => {
@@ -98,7 +126,9 @@ it('keeps the edit queue usable after a post-edit reload rejects', async () => {
   const apply = vi.fn(async () => ok(applied))
   const source = new CanvasSource({ get, apply })
   await source.load()
-  await expect(source.edit([{ op: 'remove', node: 'n1' }])).rejects.toThrow('reload failed')
+  await source.edit([{ op: 'remove', node: 'n1' }])
+  expect(source.state.getSnapshot()).toMatchObject({ status: 'failed', error: 'reload failed' })
+  await source.load()
   await source.edit([{ op: 'remove', node: 'n2' }])
   expect(apply).toHaveBeenCalledTimes(2)
 })
@@ -129,7 +159,7 @@ it('undoes a queued shot removal to the motion saved by the preceding edit', asy
   const storyboardId = brandString<CanvasNodeId>('b1')
   const shotId = brandString<ShotId>('s1')
   let document: CanvasDocument = {
-    version: 2, revision: 217, nextId: 2, edges: [],
+    version: 3, revision: 217, nextId: 2, edges: [],
     nodes: [{
       id: storyboardId, type: 'storyboard', title: 'Board', x: 0, y: 0, width: 320, height: 200,
       activeVersion: brandString<VersionId>('v1'),
@@ -245,9 +275,53 @@ it('clears the notice after a successful edit', async () => {
   expect(source.state.getSnapshot().notice).toBeUndefined()
 })
 
-it('edits before the first read with base revision zero', async () => {
+it('refuses edits before the canvas owner has been read', async () => {
   const apply = vi.fn(async () => ok({ revision: 1, refs: {}, created: [], skipped: [] } as never))
   const source = new CanvasSource({ get: vi.fn(async () => ok(view('/project'))), apply })
   await source.edit([{ op: 'move', node: 'n1', x: 1, y: 1 }])
-  expect(apply).toHaveBeenCalledWith([{ op: 'move', node: 'n1', x: 1, y: 1 }], 0)
+  expect(apply).not.toHaveBeenCalled()
+  expect(source.state.getSnapshot().noticeCode).toBe('scope')
+})
+
+it('rejects a captured editor scope after the source switches to a different project', async () => {
+  const apply = vi.fn(async () => ok(applied))
+  const source = new CanvasSource({ get: vi.fn(async () => ok(view('/other'))), apply })
+  await source.load()
+  const onApplied = vi.fn()
+  await source.edit([{ op: 'remove', node: 'n1' }], { scope: { directory: '/project', episode: brandString<EpisodeId>('e1') }, onApplied })
+  expect(apply).not.toHaveBeenCalled()
+  expect(onApplied).not.toHaveBeenCalled()
+  expect(source.state.getSnapshot().noticeCode).toBe('scope')
+})
+
+it('refuses queued old-scope edits and ignores acknowledgements arriving after a scope switch', async () => {
+  let currentView = view('/project')
+  const acknowledgement = Promise.withResolvers<RemoteResult<CanvasEditResult>>()
+  const apply = vi.fn(async () => acknowledgement.promise)
+  const source = new CanvasSource({ get: vi.fn(async () => ok(currentView)), apply })
+  await source.load()
+  const onApplied = vi.fn(), onAcknowledged = vi.fn()
+  const first = source.edit([{ op: 'remove', node: 'n1' }], { onApplied, onAcknowledged })
+  const second = source.edit([{ op: 'remove', node: 'n2' }], { onApplied, onAcknowledged })
+  await vi.waitFor(() => { expect(apply).toHaveBeenCalledOnce() })
+  currentView = view('/other')
+  await source.load()
+  acknowledgement.resolve(ok(applied))
+  await Promise.all([first, second])
+  expect(apply).toHaveBeenCalledOnce()
+  expect(onApplied).not.toHaveBeenCalled()
+  expect(onAcknowledged).not.toHaveBeenCalled()
+  expect(source.state.getSnapshot().view?.directory).toBe('/other')
+  expect(source.state.getSnapshot().noticeCode).toBe('scope')
+})
+
+it('retains form ownership after a known write whose following reread fails', async () => {
+  const get = vi.fn(async () => ok(view('/project'))).mockResolvedValueOnce(ok(view('/project'))).mockRejectedValueOnce(new Error('read disconnected'))
+  const source = new CanvasSource({ get, apply: vi.fn(async () => ok(applied)) })
+  await source.load()
+  const onApplied = vi.fn(), onAcknowledged = vi.fn()
+  await source.edit([{ op: 'set_gen', node: 'n1', gen: { prompt: 'retained draft' } }], { onApplied, onAcknowledged })
+  expect(onAcknowledged).toHaveBeenCalledOnce()
+  expect(onApplied).not.toHaveBeenCalled()
+  expect(source.state.getSnapshot()).toMatchObject({ status: 'failed', error: 'read disconnected' })
 })

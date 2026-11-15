@@ -9,7 +9,7 @@ const face = { readFile: async () => ({ ok: false as const, message: 'unused' })
 const version = { id: 'v1' as never, createdAt: 'now', origin: 'user' as const }
 
 const document: CanvasDocument = {
-  version: 2,
+  version: 3,
   revision: 0,
   nextId: 6,
   nodes: [
@@ -60,7 +60,7 @@ it('shows a scene-only badge and a segment-only badge when only one source is av
     gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: boardId, shots: [shotId] } },
   })
   const sceneOnly = flowNodes({
-    version: 2, revision: 0, nextId: 1, edges: [], nodes: [board, group, video('scene-video', groupId)],
+    version: 3, revision: 0, nextId: 1, edges: [], nodes: [board, group, video('scene-video', groupId)],
   }, face, { board: [] })
   expect(sceneOnly.find(node => node.id === 'scene-video')?.data.segmentBadge).toBe('badge.scene')
 
@@ -68,14 +68,14 @@ it('shows a scene-only badge and a segment-only badge when only one source is av
     index: 0, shots: [shotId], durationSec: 1, kind: 'opening' as const, join: 'strict' as const, needsTailChain: false,
   }
   const segmentOnly = flowNodes({
-    version: 2, revision: 0, nextId: 1, edges: [], nodes: [board, video('segment-video')],
+    version: 3, revision: 0, nextId: 1, edges: [], nodes: [board, video('segment-video')],
   }, face, { board: [segment] })
   expect(segmentOnly.find(node => node.id === 'segment-video')?.data.segmentBadge).toBe('badge.segment')
 })
 
 it('draws each role with its own style and label', () => {
-  const t = (key: string, params?: Record<string, unknown>) => `${key}:${String(params?.n ?? '')}`
-  const edges = flowEdges(document, t as never)
+  const t = (key: string, params?: Record<string, unknown>) => `${key}:${typeof params?.n === 'number' ? params.n : ''}`
+  const edges = flowEdges(document, t)
   expect(edges[0]).toMatchObject({
     id: 'n1->n2:prompt', source: 'n1', target: 'n2', label: 'edge.prompt:1',
     style: { strokeDasharray: '6 4', stroke: 'var(--dsh-color-border-strong)' },

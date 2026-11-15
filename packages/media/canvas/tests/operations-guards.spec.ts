@@ -24,7 +24,7 @@ const shot = (id: string): Shot => ({
 })
 
 const documentOf = (nodes: readonly CanvasNode[], edges: CanvasDocument['edges'] = []): CanvasDocument => ({
-  version: 2, revision: 0, nextId: nodes.length + 1, nodes, edges,
+  version: 3, revision: 0, nextId: nodes.length + 1, nodes, edges,
 })
 
 describe('operation guards', () => {
@@ -337,7 +337,7 @@ describe('host-side version and status operations', () => {
       ['v1', '/a.png', 'user'],
       ['v2', '/a-v2.png', 'agent'],
     ])
-    expect(document.nodes[0]?.activeVersion).toBe('v2')
+    expect(document.nodes[0]?.activeVersion).toBe('v1')
   })
 
   it('accepts an explicit version id and the call clock, and rejects a group', () => {

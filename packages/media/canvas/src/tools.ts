@@ -7,7 +7,6 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolExecution, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
-import type { BibleStyle } from './bible.ts'
 import { activeVersionOf } from './document.ts'
 import type { CanvasService } from './index.ts'
 import { parseScenes } from './storyboard.ts'
@@ -25,6 +24,8 @@ interface ListedNode {
   group?: string
   version?: string
   versions?: number
+  /** Full or narrowed reads include candidate recipes and immutable version ids. */
+  history?: string
   status?: string
   stale?: boolean
   inputChanged?: boolean
@@ -80,9 +81,9 @@ interface OperationInput {
   params?: Record<string, string | number | boolean | null>
   shots?: ShotInput[]
   shot?: string
-  patch?: Record<string, unknown>
+  patch?: Omit<ShotInput, 'id'>
   after?: string
-  version?: string
+  version?: string | null
   role?: 'prompt' | 'ref' | 'first_frame' | 'last_frame' | 'audio' | 'source'
   order?: number
   sources?: string[]
@@ -116,7 +117,7 @@ interface ShotInput {
 const text = { type: 'string' as const }
 
 /** One spoken line of a shot, as the schema shows it to the model. */
-const dialogueSchema: ValueSchemaSpec = {
+const dialogueSchema = {
   type: 'object' as const,
   additionalProperties: false as const,
   properties: {
@@ -124,10 +125,10 @@ const dialogueSchema: ValueSchemaSpec = {
     speaker: { type: 'string' as const, description: 'Bible entry id of the speaker; omit the field for narration.' },
     line: { type: 'string' as const, required: true as const, description: 'What the speaker says, as written.' },
   },
-}
+} satisfies ValueSchemaSpec
 
 /** One shot of a storyboard, as the schema shows it to the model. */
-const shotSchema: ValueSchemaSpec = {
+const shotSchema = {
   type: 'object' as const,
   additionalProperties: false as const,
   properties: {
@@ -135,7 +136,7 @@ const shotSchema: ValueSchemaSpec = {
     title: { type: 'string' as const, description: 'Short title of the shot, at most 24 characters.' },
     shotSize: {
       type: 'string' as const,
-      enum: ['extreme_wide', 'wide', 'full', 'medium', 'medium_close', 'close', 'extreme_close', 'insert'],
+      enum: ['extreme_wide', 'wide', 'full', 'medium', 'medium_close', 'close', 'extreme_close', 'insert'] as const,
       description: 'Camera framing; gate G2 needs it before a video is generated.',
     },
     visual: { type: 'string' as const, description: 'What the frame shows.' },
@@ -161,6 +162,7 @@ const nodeRowSchema = {
     inputChanged: { type: 'boolean' as const }, bible: text, path: text, text, prompt: text, model: text,
     shots: { type: 'integer' as const },
     inputs: { type: 'array' as const, items: text },
+    history: { type: 'string' as const, description: 'JSON version records, including ids, captured inputs, and generation recipes.' },
   },
 }
 
@@ -240,6 +242,7 @@ function rowOf(node: CanvasNode, document: CanvasDocument, short: boolean): List
     ...node.group === undefined ? {} : { group: node.group },
     ...version === undefined ? {} : { version: version.id },
     ...node.versions === undefined ? {} : { versions: node.versions.length },
+    ...short || node.versions === undefined ? {} : { history: JSON.stringify(node.versions) },
     ...node.status === undefined ? {} : { status: node.status.state },
     ...node.stale === true ? { stale: true } : {},
     ...node.inputChanged === true ? { inputChanged: true } : {},
@@ -327,6 +330,7 @@ function renderListing(listing: CanvasListing): string {
       node.inputs === undefined ? undefined : `inputs=${node.inputs.join('+')}`,
     ].filter(part => part !== undefined)
     lines.push(`- ${node.id} ${node.type} ${JSON.stringify(node.title)} ${detail.join(' ')}`.trimEnd())
+    if (node.history !== undefined) lines.push(`  Version history (only v= is adopted): ${node.history}`)
   }
   for (const group of listing.groups) lines.push(`- ${group.id} group ${JSON.stringify(group.title)} members=${group.members.join(',')}`)
   if (listing.edges.length > 0) {
@@ -382,6 +386,17 @@ function shotOf(input: ShotInput, fallback: number): Shot {
     })),
     sfx: input.sfx ?? '',
     negative: input.negative ?? '',
+  }
+}
+
+function shotPatchOf(input: Omit<ShotInput, 'id'>): Partial<Omit<Shot, 'id'>> {
+  const { characters, scene, props, dialogue, ...fields } = input
+  return {
+    ...fields,
+    ...characters === undefined ? {} : { characters: characters.map(entry => brandString<BibleEntryId>(entry)) },
+    ...scene === undefined ? {} : { scene: brandString<BibleEntryId>(scene) },
+    ...props === undefined ? {} : { props: props.map(entry => brandString<BibleEntryId>(entry)) },
+    ...dialogue === undefined ? {} : { dialogue: shotOf({ dialogue }, 1).dialogue },
   }
 }
 
@@ -443,7 +458,7 @@ function operationOf(input: OperationInput, index: number): CanvasOperation {
         op: 'update_shot',
         node: need(input.node, index, input, 'node'),
         shot: need(input.shot, index, input, 'shot'),
-        patch: input.patch ?? {},
+        patch: shotPatchOf(input.patch ?? {}),
       }
     case 'insert_shot':
       return {
@@ -531,7 +546,8 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
   ctx.tools.register(defineTool({
     name: 'canvas_get',
     description: 'Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges. '
-      + 'Nodes report their active version, generation inputs, and whether their storyboard or inputs changed since they were made.',
+        + 'Nodes report their adopted version, generation inputs, and whether their storyboard or inputs changed since they were made. '
+        + 'A full or narrowed read includes version ids and recipes. Generated media remains a candidate until set_version explicitly adopts it.',
     parameters: {
       nodes: { type: 'array', items: { type: 'string' }, description: 'Node or group ids to read in full. Omit to list the whole canvas with long text shortened.' },
       detail: {
@@ -590,7 +606,7 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
               description: 'add creates a node from type plus text, path, shots, or prompt. update changes title, text, or path. '
                 + 'set_gen changes how a media node generates and takes params where null deletes a parameter. '
                 + 'set_text and set_shots store a new version; update_shot, insert_shot, remove_shot, and move_shot edit one shot. '
-                + 'set_version switches the active version. connect and disconnect take from and to, with an optional role. '
+                + 'set_version adopts a version, or clears adoption when version is null. connect and disconnect take from and to, with an optional role. '
                 + 'reorder_refs rewrites the reference order. group frames nodes under title; ungroup dissolves the group.',
             },
             ref: { type: 'string', description: 'Name for the node that add or group creates, usable wherever a node id is expected later in this call.' },
@@ -610,9 +626,13 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
             params: { type: 'object', description: 'Generation parameters; null deletes one.', additionalProperties: true, properties: {} },
             shots: { type: 'array', description: 'Shots of a storyboard, or the shot insert_shot adds.', items: shotSchema },
             shot: { type: 'string', description: 'Shot id that the operation acts on.' },
-            patch: { type: 'object', description: 'Shot fields update_shot replaces.', additionalProperties: true, properties: {} },
+            patch: {
+              type: 'object', description: 'Shot fields update_shot replaces. Omitted fields stay unchanged. Required fields cannot be null.',
+              additionalProperties: false,
+              properties: Object.fromEntries(Object.entries(shotSchema.properties).filter(([key]) => key !== 'id')),
+            },
             after: { type: 'string', description: 'Shot id the moved or inserted shot follows; omit to append.' },
-            version: { type: 'string', description: 'Version id set_version activates.' },
+            version: { oneOf: [{ type: 'string' }, { type: 'null' }], description: 'Version id set_version adopts, or null to clear adoption.' },
             role: { type: 'string', enum: ['prompt', 'ref', 'first_frame', 'last_frame', 'audio', 'source'], description: 'What the edge supplies. Inferred from node types when omitted.' },
             order: { type: 'integer', description: 'Position among the reference inputs.' },
             sources: { type: 'array', items: { type: 'string' }, description: 'Reference sources in the order reorder_refs applies.' },
@@ -772,7 +792,7 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
     async execute(args, exec) {
       const request: Parameters<CanvasService['updateBible']>[1] = {
         ...args.logline === undefined ? {} : { logline: args.logline },
-        ...args.style === undefined ? {} : { style: args.style as BibleStyle },
+        ...args.style === undefined ? {} : { style: args.style },
         ...args.upsert === undefined ? {} : {
           upsert: args.upsert.map(entry => ({
             id: brandString<BibleEntryId>(entry.id),

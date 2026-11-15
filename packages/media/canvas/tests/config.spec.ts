@@ -13,6 +13,7 @@ describe('canvas Config', () => {
       maxShotsPerStoryboard: 24,
       maxSegmentSeconds: 15,
       journalLimit: 200,
+      timelineHistoryLimit: 100,
     })
   })
 

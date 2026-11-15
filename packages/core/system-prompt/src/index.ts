@@ -182,6 +182,7 @@ const CONTEXT_ORDERS = {
   // Process-specific paths and endpoints stay out of the cached system prompt.
   HARNESS_SOURCE: 200,
   WEB_SURFACE: 210,
+  CANVAS_EDITOR: 220,
 } as const
 
 /** Name of a centrally allocated runtime-context position. */

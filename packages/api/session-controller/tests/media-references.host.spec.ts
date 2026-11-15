@@ -91,14 +91,14 @@ describe('SessionMediaReferences /api/file', () => {
     expect(inspect).not.toHaveBeenCalled()
   })
 
-  it('uses the filesystem byte reader to reject post-stat image growth', async () => {
+  it.each([undefined, 'bytes=0-0'])('uses the filesystem byte reader to reject post-stat growth with Range %s', async (range) => {
     const route = await mount(PNG_BYTES.length)
     const path = join(root, 'growing.png')
     await writeFile(path, PNG_BYTES)
     route.fs.internals.inspectReadBytesAfterStat = async () => {
       await appendFile(path, new Uint8Array(1))
     }
-    expect((await route.call(path)).status).toBe(413)
+    expect((await route.call(path, range === undefined ? undefined : { headers: { range } })).status).toBe(413)
   })
 
   it.each([
@@ -151,17 +151,50 @@ describe('SessionMediaReferences /api/file', () => {
     expect((await responseBytes(await route.raw(next.href))).at(-1)).toBe(9)
   })
 
-  it('ignores Range headers and returns complete bodies without advertising ranges', async () => {
+  it.each([
+    ['bytes=0-3', 0, 3], ['bytes=4-', 4, 11], ['bytes=-4', 8, 11],
+    ['bytes=0-999', 0, 11], ['bytes=-999', 0, 11],
+    ['bytes=0-999999999999999999999999999', 0, 11],
+  ])('serves a bounded single range %s after the version redirect', async (range, start, end) => {
     const route = await mount()
     const path = join(root, 'clip.mp4')
     await writeFile(path, PNG_BYTES)
-    for (const range of ['bytes=0-3', 'bytes=-4', 'bytes=999-', 'bytes=abc', 'items=0-0', 'bytes=0-1,3-4']) {
+    const response = await route.call(path, { headers: { range } })
+    expect(response.status).toBe(206)
+    expect(response.headers.get('accept-ranges')).toBe('bytes')
+    expect(response.headers.get('content-range')).toBe(`bytes ${start}-${end}/12`)
+    expect(response.headers.get('content-length')).toBe(String(end - start + 1))
+    expect(response.headers.get('content-type')).toBe('video/mp4')
+    expect(response.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+    expect(await responseBytes(response)).toEqual(PNG_BYTES.slice(start, end + 1))
+  })
+
+  it.each(['bytes=12-', 'bytes=999999999999999999999999999-', 'bytes=-0', 'bytes=8-4'])('refuses unsatisfiable %s without a body', async (range) => {
+    const route = await mount()
+    const path = join(root, 'clip.mp4')
+    await writeFile(path, PNG_BYTES)
+    const response = await route.call(path, { headers: { range } })
+    expect(response.status).toBe(416)
+    expect(response.headers.get('content-range')).toBe('bytes */12')
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+    expect(response.headers.get('content-length')).toBe('0')
+    expect(response.body).toBeNull()
+  })
+
+  it('ignores unsupported ranges and unmatched If-Range validators', async () => {
+    const route = await mount()
+    const path = join(root, 'clip.mp4')
+    await writeFile(path, PNG_BYTES)
+    for (const range of ['bytes=abc', 'items=0-0', 'bytes=0-1,3-4', 'bytes=-']) {
       const response = await route.call(path, { headers: { range } })
       expect(response.status).toBe(200)
-      expect(response.headers.get('accept-ranges')).toBeNull()
+      expect(response.headers.get('accept-ranges')).toBe('bytes')
       expect(response.headers.get('content-range')).toBeNull()
       expect(await responseBytes(response)).toEqual(PNG_BYTES)
     }
+    const conditional = await route.call(path, { headers: { range: 'bytes=0-3', 'if-range': '"unknown"' } })
+    expect(conditional.status).toBe(200)
+    expect(await responseBytes(conditional)).toEqual(PNG_BYTES)
   })
 
   it('answers HEAD without reading content and reports missing and non-regular files', async () => {
@@ -225,6 +258,10 @@ describe('SessionMediaReferences /api/file', () => {
     vi.spyOn(route.fs, 'stat').mockResolvedValue({ type: 'file', version: FsVersion('r1') })
     const read = vi.spyOn(route.fs, 'readBytes').mockResolvedValue(PNG_BYTES)
     expect(await responseBytes(await route.call('/remote/photo.png'))).toEqual(PNG_BYTES)
+    const partial = await route.call('/remote/photo.png', { headers: { range: 'bytes=2-4' } })
+    expect(partial.status).toBe(206)
+    expect(partial.headers.get('content-range')).toBe('bytes 2-4/12')
+    expect(await responseBytes(partial)).toEqual(PNG_BYTES.slice(2, 5))
     expect(read).toHaveBeenCalledWith(target, expect.any(AbortSignal), DEFAULT_LIMIT)
     for (const [code, status] of [
       ['FS_PERMISSION_DENIED', 403], ['FS_SANDBOX_DENIED', 403], ['FS_NOT_FOUND', 404],
@@ -244,6 +281,9 @@ describe('SessionMediaReferences /api/file', () => {
     const response = await route.call(path)
     expect(response.headers.get('content-length')).toBe('0')
     expect(await response.text()).toBe('')
+    const partial = await route.call(path, { headers: { range: 'bytes=0-' } })
+    expect(partial.status).toBe(416)
+    expect(partial.headers.get('content-range')).toBe('bytes */0')
     expect((await route.call(path, { signal: AbortSignal.abort() })).status).toBe(499)
   })
 

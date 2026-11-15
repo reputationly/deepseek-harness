@@ -1,5 +1,5 @@
 /** Host implementation behind the Remote `media` namespace. */
-import type { CanvasService } from '@deepseek-ai/dsh-canvas'
+import { CanvasInputError, type CanvasService } from '@deepseek-ai/dsh-canvas'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import { runnerServicesOf, type NodeToolDeps } from './node-tools.ts'
@@ -7,25 +7,29 @@ import { budgetOf, type Budget } from './budget.ts'
 import { planNodes, type NodePlan } from './node-runner.ts'
 import { startPlan } from './runner.ts'
 import type { MediaPlanView } from './types.ts'
+import type { MediaRuntime } from './remote.ts'
 
 /** Calls one deployment needs to plan and start media generation. */
 export interface MediaRuntimeDeps {
+  readonly previewVideo?: (path: string, project: string) => Promise<string>
   readonly canvasOf: () => CanvasService
   readonly tools: NodeToolDeps
-  readonly jobs: { readonly kill: (id: JobId, caller: Session['id'], reason?: string) => 'requested' | 'already-finished' } | undefined
+  readonly jobs:
+    | { readonly kill: (id: JobId, caller: Session['id'], reason?: string) => 'requested' | 'already-finished' }
+    | undefined
 }
 
 /** View of one budget with no started jobs. */
 function viewOfBudget(budget: Budget): MediaPlanView {
   return {
     state: budget.needsConfirmation ? 'needs_confirmation' : 'ready',
-    ...budget.needsConfirmation ? { token: budget.token } : {},
+    ...(budget.needsConfirmation ? { token: budget.token } : {}),
     lines: budget.lines.map(line => ({
       node: line.node,
       kind: line.kind,
       model: line.model,
       calls: line.calls,
-      ...line.seconds === undefined ? {} : { seconds: line.seconds },
+      ...(line.seconds === undefined ? {} : { seconds: line.seconds }),
     })),
     totals: budget.totals,
     jobs: [],
@@ -57,29 +61,54 @@ function blockedView(plan: NodePlan, deps: MediaRuntimeDeps): MediaPlanView {
  * @param deps - canvas access, tool bounds, and the jobs registry.
  * @returns planning, generation, and cancellation bound to one Session.
  */
-export function createMediaRuntime(deps: MediaRuntimeDeps): {
-  plan: (session: Session, nodes: readonly string[]) => Promise<MediaPlanView>
-  generate: (session: Session, nodes: readonly string[], token: string | undefined) => Promise<MediaPlanView>
-  cancel: (session: Session, jobId: string) => boolean
-} {
+export function createMediaRuntime(deps: MediaRuntimeDeps): MediaRuntime {
+  const request = async (run: () => Promise<MediaPlanView>): Promise<MediaPlanView> => {
+    try {
+      return await run()
+    } catch (error: unknown) {
+      if (error instanceof CanvasInputError) return emptyView('failed', error.message)
+      throw error
+    }
+  }
   return {
-    plan: async (session, nodes) => {
-      const services = await runnerServicesOf(deps.canvasOf, deps.tools, session)
-      const loaded = await services.canvas.read()
-      const bible = await services.canvas.bible()
-      return blockedView(planNodes(loaded.document, bible, nodes.slice(), deps.tools.limits), deps)
+    preview: async (session, id, versionId, scope) => {
+      const canvas = deps.canvasOf()
+      const target = await canvas.targetOf(session, scope.episode, scope.directory)
+      const document = await canvas.read(session, target.episode.id, target.directory)
+      const node = document.nodes.find(candidate => candidate.id === id)
+      const path = node?.type === 'video' ? node.versions?.find(version => version.id === versionId)?.path : undefined
+      if (canvas.directoryOf(session) !== target.directory)
+        throw new CanvasInputError('the project changed; reopen the canvas before previewing')
+      if (path === undefined)
+        throw new CanvasInputError('Video version is unavailable; reread the canvas and choose a retained version')
+      if (deps.previewVideo === undefined) throw new Error('Video previews are unavailable')
+      return deps.previewVideo(path, target.directory)
     },
-    generate: async (session, nodes, token) => {
-      const outcome = await startPlan(await runnerServicesOf(deps.canvasOf, deps.tools, session), nodes.slice(), token)
-      if (outcome.status === 'blocked') return blockedView(outcome.plan, deps)
-      if (outcome.status === 'already_running') return emptyView('already_running', outcome.nodes.join(', '))
-      if (outcome.status === 'needs_confirmation') return viewOfBudget(outcome.budget)
-      return {
-        ...viewOfBudget(budgetOf(outcome.plan, deps.tools.confirmLimits)),
-        state: 'started',
-        jobs: outcome.jobs.map(job => ({ node: job.node, jobId: job.jobId })),
-      }
-    },
+    plan: (session, nodes, scope) =>
+      request(async () => {
+        const services = await runnerServicesOf(deps.canvasOf, deps.tools, session, scope?.episode, scope?.directory)
+        const loaded = await services.canvas.read()
+        const bible = await services.canvas.bible()
+        return blockedView(planNodes(loaded.document, bible, nodes.slice(), deps.tools.limits), deps)
+      }),
+    generate: (session, nodes, token, scope) =>
+      request(async () => {
+        const outcome = await startPlan(
+          await runnerServicesOf(deps.canvasOf, deps.tools, session, scope?.episode, scope?.directory),
+          nodes.slice(),
+          token,
+        )
+        if (outcome.status === 'blocked') return blockedView(outcome.plan, deps)
+        if (outcome.status === 'already_running') {
+          return { ...emptyView('already_running', outcome.nodes.join(', ')), jobs: outcome.jobs ?? [] }
+        }
+        if (outcome.status === 'needs_confirmation') return viewOfBudget(outcome.budget)
+        return {
+          ...viewOfBudget(budgetOf(outcome.plan, deps.tools.confirmLimits)),
+          state: 'started',
+          jobs: outcome.jobs.map(job => ({ node: job.node, jobId: job.jobId })),
+        }
+      }),
     cancel: (session, jobId) => deps.jobs?.kill(jobId as JobId, session.id) === 'requested',
   }
 }

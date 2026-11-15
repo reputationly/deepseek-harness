@@ -1,91 +1,111 @@
-# 蒜狸小助手 · 境内安装包源站
+# Suanli Assistant domestic installer origin
 
-EdgeOne 的下载走 `download.ovaijisuan.com`，默认源站是 Cloudflare R2 的自定义域名。国内节点回源
-必须跨境，一条连接只有 ~0.5 MB/s，319 MB 的安装包首拉要十分钟以上。这台机器在境内维护一份副本，
-让国内回源变成内网级别的速度（实测 **5 MB/s**），并且不需要 EdgeOne 的任何付费能力（预热、源站防护、
-源站故障转移在免费版都不可用）。
+English | [中文](README.zh.md)
 
-## 结构
+<a id="summary"></a>
+
+## Summary
+
+Use a domestic installer origin to reduce cold-download latency while Cloudflare R2 remains the source of release pointers and the fallback for missing packages. EdgeOne serves downloads at `download.ovaijisuan.com`. This setup works without paid EdgeOne prefetch, origin protection or origin failover.
+
+<a id="table-of-contents"></a>
+
+## Table of Contents
+
+- [Layout](#layout)
+- [Deployment](#deployment)
+- [EdgeOne rules](#edgeone-rules)
+- [Acceptance](#acceptance)
+- [Known issues](#known-issues)
+- [Dev Note](#dev-note)
+
+<a id="layout"></a>
+
+## Layout
 
 ```
-用户 ──> EdgeOne 边缘 ──(缓存命中)──> 直接返回
-                    └─(未命中)──> <origin-host>:80 (Caddy) ──> 127.0.0.1:8080 (serve.py)
-                                                                   ├─ 本地有 → 直接吐
-                                                                   └─ 本地没有 → 代理 aijisuan.kdns.fr
+User --> EdgeOne edge --(hit)--> cached response
+                   \--(miss)--> <origin-host>:80 (Caddy) --> 127.0.0.1:8080 (serve.py)
+                                                              |-- local file: serve
+                                                              \-- missing: proxy aijisuan.kdns.fr
 ```
 
-- `sync.py`：每 15 分钟读一次发布的 `latest.json`（带 `size`/`sha256`），一致就不下载；不一致才按
-  6 个 HTTP Range 并发拉取，校验通过后原子替换，并把 `<target>/latest/<stable>` 硬链到版本目录文件
-  （一份字节、两个名字，磁盘只占 1 GB）。
-- `serve.py`：只监听回环，GET/HEAD + Range，`/versions/` 发 1 年 immutable、`/latest/` 发 5 分钟，
-  要求 `X-Origin-Token`；本地缺文件时反向代理 R2，所以「刚发版、还没同步完」的窗口期不会 404，
-  只会慢一次。
-- 发布流水线在 `publish` 之后 POST `https://<origin-host>/suanli-assistant/__sync`，通过
-  `suanli-installer-sync.path` 立刻拉起同步，把窗口从 15 分钟压到「同步本身所需时间」。
+- `sync.py`: reads published `latest.json`, including `size` and `sha256`, every fifteen minutes. Unchanged files are not downloaded. Changed files use six concurrent HTTP Range requests, are verified and atomically replaced, then hard-linked from `<target>/latest/<stable>` to the versioned file: two names share one set of bytes.
+- `serve.py`: listens only on loopback and supports GET/HEAD and Range. `/versions/` receives one-year immutable caching; `/latest/` receives five minutes. Requests require `X-Origin-Token`. Missing files proxy to R2, so the interval between publication and synchronization is slow once rather than returning 404.
+- After `publish`, the release workflow POSTs to `https://<origin-host>/suanli-assistant/__sync`. `suanli-installer-sync.path` starts synchronization immediately instead of waiting for the fifteen-minute timer.
 
-## 部署
+<a id="deployment"></a>
+
+## Deployment
 
 ```bash
-# 1) 文件
+# 1) Files
 install -m 755 sync.py /usr/local/sbin/suanli-installer-sync
 install -m 755 serve.py /usr/local/sbin/suanli-files-server
 install -d -m 755 /srv/downloads /etc/suanli
 
-# 2) 回源 token（只存在机器上，不进仓库）
+# 2) Origin token: keep it on the machine, never in the repository
 printf 'SUANLI_FILES_TOKEN=%s\n' "$(openssl rand -base64 24 | tr -d '\n')" > /etc/suanli/files.env
 chmod 600 /etc/suanli/files.env
 
-# 3) 专用低权用户
+# 3) Dedicated unprivileged user
 useradd --system --no-create-home --shell /usr/sbin/nologin suanli-files
 
 # 4) systemd
 install -m 644 suanli-files.service suanli-installer-sync.{service,timer,path} /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now suanli-files suanli-installer-sync.timer suanli-installer-sync.path
-systemctl start suanli-installer-sync        # 首次灌数据，约 5 分钟
+systemctl start suanli-installer-sync        # initial synchronization, about five minutes
 
-# 5) Caddy 片段（见 Caddyfile.example）
+# 5) Caddy snippet: see Caddyfile.example
 caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
 ```
 
-## EdgeOne 规则（只覆盖安装包，不动指针和境外流量）
+<a id="edgeone-rules"></a>
 
-规则引擎里给 `download.ovaijisuan.com` 的规则加一个子规则：
+## EdgeOne rules
 
-- 条件：`${http.request.file_extension} in ['exe', 'dmg', 'zip', 'blockmap']`
-- 动作（按顺序）：
+Apply the origin override only to installer files, leaving pointers and non-domestic traffic unchanged. Add a child rule under the `download.ovaijisuan.com` rule:
+
+- Condition: `${http.request.file_extension} in ['exe', 'dmg', 'zip', 'blockmap']`
+- Actions, in order:
   1. `ModifyOrigin` → `IPDomain` / `<origin-host>` / `http` / 80
   2. `HostHeader` → `custom` / `<origin-host>`
   3. `ModifyRequestHeader` → `set` / `X-Origin-Token` / `<origin-token>`
 
-父规则原有的强制 HTTPS、遵循源站缓存、分片回源**保持不变**；`nightly.yml` 与 `latest.json` 不匹配
-扩展名条件，继续走 R2——那两张指针文件在本机是 15 分钟级的旧数据，不能用来判断版本。
+Keep the parent rule's HTTPS enforcement, origin cache policy and range fetching. `nightly.yml` and `latest.json` do not match the extension condition and continue using R2. Local copies can lag by fifteen minutes and must not determine the current version.
 
-> 免费版不可用的两个能力，这里都用别的办法绕过了：**预热**额度为 0 → 用本机副本代替；
-> **源站故障转移**仅白名单 → 由 `serve.py` 自己回退 R2。
+The local replica replaces unavailable free-plan prefetch; `serve.py` implements fallback to R2 when origin failover is unavailable.
 
-## 验收
+<a id="acceptance"></a>
+
+## Acceptance
 
 ```bash
-# 本地：无 token 403，有 token 200/206
+# Local: 403 without a token; 200/206 with a token
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/suanli-assistant/<path>.exe
 curl -sS -o /dev/null -H "X-Origin-Token: $TOKEN" -r 0-1023 \
   http://127.0.0.1:8080/suanli-assistant/<path>.exe -w '%{http_code}\n'
 
-# 国内冷拉（应到几 MB/s）
+# Domestic cold download: expect several MB/s
 curl -sS -o /dev/null -r 0-8388607 -w '%{speed_download}\n' \
   "https://download.ovaijisuan.com/suanli-assistant/win32-x64/versions/<version>/<artifact>.exe"
 
-# 同步是否跟上发布
+# Confirm synchronization caught up with publication
 journalctl -u suanli-installer-sync -n 20
 python3 -c "import json;d=json.load(open('/srv/downloads/suanli-assistant/.state.json'));print({k.split('/')[0] for k in d}, {v['version'] for v in d.values()})"
 ```
 
-## 已知坑
+<a id="known-issues"></a>
 
-1. **Caddy 的自动 80→443 跳转优先级高于自定义 `:80` 站点**，会把 EO 回源打成 308；必须
-   `auto_https disable_redirects`，再在 `:80` 里显式 `redir`。
-2. **同步失败时不能让 `<target>/latest/` 继续指向旧字节**：`sync.py` 在放弃时会先 `unlink` 那个
-   浮动链接，让请求落到 R2 回退，否则用户会下到上一个版本。
-3. 同步自己**直连 R2**（`SUANLI_SYNC_BASE`），不要走 CDN——否则会变成
-   「本机 → 边缘 → 本机 → 回退 R2」的多余往返。
+## Known issues
+
+1. Caddy's automatic 80→443 redirect takes precedence over a custom `:80` site and can turn EdgeOne origin fetches into 308 responses. Set `auto_https disable_redirects`, then declare `redir` explicitly in `:80`.
+2. Failed synchronization must not leave `<target>/latest/` pointing at old bytes. Before giving up, `sync.py` unlinks that floating link so requests fall back to R2 rather than serve the previous version.
+3. Synchronization connects directly to R2 through `SUANLI_SYNC_BASE`. Going through the CDN adds a loop from this machine to the edge, back to this machine, then to fallback R2.
+
+<a id="dev-note"></a>
+
+## Dev Note
+
+None.

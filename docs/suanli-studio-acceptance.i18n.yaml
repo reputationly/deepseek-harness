@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for suanli-studio-acceptance.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/suanli-studio-acceptance.md
+/media-studio-self-test-and-acceptance-plan:
+  en: 06a1c1af8935a0d7
+  zh: b8996839f187d46c
+/media-studio-self-test-and-acceptance-plan/summary:
+  en: 1819524768a6f367
+  zh: 83015f26026bf892
+/media-studio-self-test-and-acceptance-plan/contents:
+  en: 372b43269f3ddfd3
+  zh: fdef7e097dc1b1e0
+/media-studio-self-test-and-acceptance-plan/developer-self-tests:
+  en: c4df55183d948703
+  zh: c40a63b3af41d6bd
+/media-studio-self-test-and-acceptance-plan/native-acceptance-procedure:
+  en: 0d552fed75eafb67
+  zh: d9332a8df1558f16
+/media-studio-self-test-and-acceptance-plan/remaining-verification:
+  en: a61df27ca2fcbd09
+  zh: 0ea5bd1653b4e501
+/media-studio-self-test-and-acceptance-plan/cloud-model-acceptance:
+  en: 9fa8d3478774e1ca
+  zh: 17f81961067e8895
+/media-studio-self-test-and-acceptance-plan/completion-and-evidence:
+  en: 58b0a4700cf85f62
+  zh: 66c7f9859fc2c075
+/media-studio-self-test-and-acceptance-plan/dev-note:
+  en: d792f460f1e02c05
+  zh: 4c7aed9a2e9e2859

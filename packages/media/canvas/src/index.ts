@@ -9,6 +9,8 @@ import { isAbsolute, resolve } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { bibleFile, EMPTY_BIBLE, parseBible, type Bible, type BibleEntry } from './bible.ts'
@@ -16,24 +18,68 @@ import type z from '@deepseek-ai/schemastery'
 import { Config as configSchema, resolveConfig, type Config, type ResolvedConfig } from './config.ts'
 import { activeVersionOf, assertWithinLimits, CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
 import { applyOperations, CanvasConflictError, checkRevision } from './operations.ts'
-import { episodeOf, parseProject, withBinding, withEpisode, type ProjectSpec, type ProductionFormat, type StudioProject } from './project.ts'
+import {
+  episodeOf,
+  parseProject,
+  withBinding,
+  withEpisode,
+  type ProjectSpec,
+  type ProductionFormat,
+  type StudioProject,
+} from './project.ts'
 import { advanceStage, EMPTY_PRODUCTION, parseProductionFile, stageOf } from './production.ts'
 import { planShotSegments } from './segments.ts'
 import { canvasFile, CanvasStore } from './store.ts'
 import { registerCanvasTools } from './tools.ts'
+import { registerTimelineTools } from './timeline-tools.ts'
+import { applyTimeline, parseTimeline, timelineDuration } from './timeline.ts'
 import type {
-  BibleEntryId, CanvasDocument, CanvasEditResult, CanvasEpisode, CanvasNode, CanvasOperation, CanvasView, EpisodeId, GateId,
-  Production, StageId,
+  Timeline,
+  TimelineEditResult,
+  TimelineOperation,
+  TimelineRevision,
+  TimelineRestoreMode,
+} from './timeline-types.ts'
+import type {
+  BibleEntryId,
+  CanvasDocument,
+  CanvasEditResult,
+  CanvasEpisode,
+  CanvasNode,
+  CanvasOperation,
+  CanvasView,
+  EpisodeId,
+  GateId,
+  Production,
+  StageId,
+  CanvasNodeId,
+  VersionId,
+  CanvasEditorContext,
 } from './types.ts'
 
 export type * from './types.ts'
-export { activeVersionOf, CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
+export type * from './timeline-types.ts'
+export { applyTimeline, parseTimeline, timelineDuration } from './timeline.ts'
+export { activeVersionOf, parseCanvas, CanvasCorruptError, CanvasUnsupportedVersionError } from './document.ts'
+export { previewVersionOf } from './versions.ts'
 export { CanvasConflictError } from './operations.ts'
 export { Config } from './config.ts'
 export type { StudioProject, ProjectSpec, ProductionFormat } from './project.ts'
 export { gateBibleFirst, gateStoryboardQuality, STAGE_ORDER, videoNodesByShots } from './production.ts'
 export { planShotSegments, shotSegmentKind } from './segments.ts'
 export type { Bible, BibleEntry } from './bible.ts'
+
+/** Keep alternate names unique within one entry; cross-entry collisions remain validation errors. */
+function normalizeBibleAliases(entry: BibleEntry): BibleEntry {
+  const names = new Set([entry.name.toLowerCase()])
+  const aliases = entry.aliases.filter((alias) => {
+    const name = alias.toLowerCase()
+    if (names.has(name)) return false
+    names.add(name)
+    return true
+  })
+  return { ...entry, aliases }
+}
 
 /**
  * Generation segments of every storyboard in one document.
@@ -64,6 +110,15 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Project canvas documents and the `canvas` Remote namespace. */
     canvas: CanvasService
+  }
+  interface Events {
+    /**
+     * A Client opens an episode; providers reconcile durable work before its first view.
+     * @mode parallel
+     * @param session - Session that opened the project.
+     * @param episode - episode to reconcile.
+     */
+    'canvas/open'(session: Session, episode: EpisodeId): Promise<void>
   }
 }
 
@@ -101,12 +156,13 @@ export interface BibleReferences {
 
 /** Owns every project's canvas documents. */
 export class CanvasService extends TypertRemoteService {
-  static inject = ['tools', 'workingDirectory']
+  static inject = ['tools', 'workingDirectory', 'systemPrompt']
 
   static Config: z<Config> = configSchema
 
   private readonly store: CanvasStore
   private readonly limits: ResolvedConfig
+  private readonly editors = new WeakMap<Session, CanvasEditorContext>()
 
   /**
    * @param ctx - Host context carrying the tool registry and Session directories.
@@ -117,6 +173,41 @@ export class CanvasService extends TypertRemoteService {
     this.limits = resolveConfig(config)
     this.store = new CanvasStore(this.limits)
     registerCanvasTools(ctx, this)
+    registerTimelineTools(ctx, this)
+    ctx.systemPrompt.context({
+      name: 'canvas:editor',
+      order: ctx.systemPrompt.getContextOrder('CANVAS_EDITOR'),
+      interpolate: false,
+      text: ({ agent }) => {
+        if (agent === undefined) return ''
+        const editor = this.editors.get(agent.session)
+        if (editor === undefined || editor.scope.directory !== this.directoryOf(agent.session)) return ''
+        return (
+          'Last reported canvas editor (UI selection only; saved project data remains authoritative):\n' +
+          JSON.stringify(editor) +
+          '\nRead canvas_get and, for timeline edits, timeline_get before acting. ' +
+          'The selected version may be an unadopted candidate or missing. Preserve unsaved user drafts; do not treat them as saved edits. ' +
+          'Unavailable editor state must not redirect work to another project or episode.'
+        )
+      },
+    })
+  }
+
+  /**
+   * Publish or clear one Session's editor hint for the next logged runtime-context snapshot.
+   * @param session - Session owning this UI selection.
+   * @param context - captured selection without draft values; omitted when the editor closes.
+   * @throws RemoteError when the reported project no longer belongs to this Session; its old hint is cleared.
+   */
+  @Remote('editorContext')
+  editorContext(session: Session, context?: CanvasEditorContext): void {
+    this.editors.delete(session)
+    if (context === undefined) return
+    if (context.scope.directory !== this.directoryOf(session)) {
+      const error = new CanvasInputError('The project changed; reopen the editor before sharing its selection')
+      throw new RemoteError('canvas/invalid-input', error.message, { reason: error.message }, { cause: error })
+    }
+    this.editors.set(session, context)
   }
 
   /**
@@ -134,12 +225,22 @@ export class CanvasService extends TypertRemoteService {
    * @param episode - episode the caller asked for; the Session's binding applies when omitted.
    * @returns the resolved target; a directory without `project.json` reports the single canvas.
    * @throws Error when the requested episode does not exist.
+   * @param expectedDirectory - Captured project directory used to reject a project switch.
    */
-  async targetOf(session: Session, episode?: EpisodeId): Promise<CanvasTarget> {
+  async targetOf(session: Session, episode?: EpisodeId, expectedDirectory?: string): Promise<CanvasTarget> {
     const directory = this.directoryOf(session)
+    if (expectedDirectory !== undefined && expectedDirectory !== directory)
+      throw new CanvasInputError('the project changed; reopen the canvas before editing')
     const project = await this.readProject(session)
     if (project === undefined) {
-      return { directory, project: undefined, episode: { id: brandString<EpisodeId>('e1'), title: 'Canvas' }, file: 'canvas.json' }
+      if (episode !== undefined && episode !== 'e1')
+        throw new CanvasInputError(`canvas episode ${episode} does not exist`)
+      return {
+        directory,
+        project: undefined,
+        episode: { id: brandString<EpisodeId>('e1'), title: 'Canvas' },
+        file: 'canvas.json',
+      }
     }
     const chosen = episode ?? episodeOf(project, session.id)
     const held = project.episodes.find(entry => entry.id === chosen)
@@ -153,9 +254,10 @@ export class CanvasService extends TypertRemoteService {
    * @param episode - episode to read; the Session's binding applies when omitted.
    * @returns the validated document; an empty canvas when the project has none.
    * @throws `CanvasCorruptError` when the canvas file is not a valid document.
+   * @param expectedDirectory - Captured project directory used to reject a project switch.
    */
-  async read(session: Session, episode?: EpisodeId): Promise<CanvasDocument> {
-    const target = await this.targetOf(session, episode)
+  async read(session: Session, episode?: EpisodeId, expectedDirectory?: string): Promise<CanvasDocument> {
+    const target = await this.targetOf(session, episode, expectedDirectory)
     return this.store.readCanvas(target.directory, target.file)
   }
 
@@ -163,7 +265,7 @@ export class CanvasService extends TypertRemoteService {
    * Apply operations to the canvas of a Session's project in one write.
    * @param session - Session opened on the project.
    * @param operations - ordered operations; relative media paths resolve against the project directory.
-   * @param options - base revision the caller read, episode to edit, and who prompted the change.
+   * @param options - base revision, captured target, origin, and atomic mode to reject the whole batch when any operation is skipped.
    * @returns assigned ids, the revision after the write, and the skipped operations with their reasons.
    * @throws `CanvasCorruptError` when the canvas file is not a valid document.
    * @throws `CanvasConflictError` when the document moved past the caller's base revision.
@@ -171,33 +273,100 @@ export class CanvasService extends TypertRemoteService {
   async edit(
     session: Session,
     operations: readonly CanvasOperation[],
-    options: { readonly baseRevision?: number; readonly episode?: EpisodeId; readonly origin?: 'agent' | 'user' } = {},
+    options: {
+      readonly baseRevision?: number
+      readonly episode?: EpisodeId
+      readonly origin?: 'agent' | 'user'
+      readonly expectedDirectory?: string
+      readonly atomic?: boolean
+      readonly timelineRevisions?: readonly { readonly node: CanvasNodeId; readonly revision: number }[]
+    } = {},
   ): Promise<CanvasEditResult> {
     if (operations.length > this.limits.maxBatchOperations) {
-      throw new Error(`canvas: ${String(operations.length)} operations exceed the ${String(this.limits.maxBatchOperations)} this deployment accepts`)
+      throw new Error(
+        `canvas: ${String(operations.length)} operations exceed the ${String(this.limits.maxBatchOperations)} this deployment accepts`,
+      )
     }
-    const target = await this.targetOf(session, options.episode)
+    const target = await this.targetOf(session, options.episode, options.expectedDirectory)
     const rejected = new Map<number, string>()
-    const prepared = await Promise.all(operations.map(async (operation, index) => {
-      if ((operation.op !== 'add' && operation.op !== 'update') || operation.path === undefined) return operation
-      const path = isAbsolute(operation.path) ? operation.path : resolve(target.directory, operation.path)
-      if (!await isFile(path)) rejected.set(index, `file ${operation.path} does not exist`)
-      return { ...operation, path }
-    }))
-    let changed = false
-    const result = await this.store.updateCanvas(target.directory, target.file, (current) => {
+    const prepared = await Promise.all(
+      operations.map(async (operation, index) => {
+        if ((operation.op !== 'add' && operation.op !== 'update') || operation.path === undefined) return operation
+        const path = isAbsolute(operation.path) ? operation.path : resolve(target.directory, operation.path)
+        if (!(await isFile(path))) rejected.set(index, `file ${operation.path} does not exist`)
+        return { ...operation, path }
+      }),
+    )
+    const notification = { changed: false }
+    const result = await this.store.updateCanvas(target.directory, target.file, async (current) => {
       checkRevision(current, options.baseRevision)
+      for (const expected of options.timelineRevisions ?? []) {
+        const stored = await this.store.readDocument(
+          target.directory,
+          this.timelineFile(target, expected.node),
+          parseTimeline,
+        )
+        const revision = stored?.value.revision ?? 0
+        if (revision !== expected.revision) throw new CanvasConflictError(expected.revision, revision)
+      }
+      const timelines: { readonly node: CanvasNodeId; readonly document: Timeline }[] = []
+      const preservedVersions = new Map<CanvasNodeId, Set<VersionId>>()
+      for (const node of current.nodes) {
+        if (node.type !== 'timeline') continue
+        const saved = await this.store.documentHistory(
+          target.directory,
+          this.timelineFile(target, node.id),
+          parseTimeline,
+          this.limits.timelineHistoryLimit,
+        )
+        for (const document of saved) {
+          timelines.push({ node: node.id, document })
+          for (const track of document.tracks)
+            for (const clip of track.clips) {
+              if (clip.source === undefined) continue
+              let versions = preservedVersions.get(clip.source.node)
+              if (versions === undefined) {
+                versions = new Set()
+                preservedVersions.set(clip.source.node, versions)
+              }
+              versions.add(clip.source.version)
+            }
+        }
+      }
       const outcome = applyOperations(current, prepared, {
         limits: this.limits,
-        ...options.origin === undefined ? {} : { origin: options.origin },
+        ...(options.origin === undefined ? {} : { origin: options.origin }),
         rejected,
+        preservedVersions,
       })
+      if (options.atomic === true && outcome.result.skipped.length > 0) {
+        throw new CanvasInputError(
+          `canvas batch rejected: ${outcome.result.skipped.map(item => item.reason).join('; ')}`,
+        )
+      }
+      for (const held of timelines) {
+        if (!outcome.document.nodes.some(node => node.id === held.node)) continue
+        for (const track of held.document.tracks)
+          for (const clip of track.clips) {
+            if (clip.source === undefined) continue
+            const source = outcome.document.nodes.find(node => node.id === clip.source?.node)
+            if (!source?.versions?.some(version => version.id === clip.source?.version)) {
+              throw new CanvasInputError(
+                `timeline ${held.node} revision ${String(held.document.revision)} retains clip ${clip.id}; remove its live reference and let history expire, or remove the timeline, before deleting its source`,
+              )
+            }
+          }
+      }
       assertWithinLimits(outcome.document, this.limits)
-      changed = outcome.changed
-      return { ...outcome.changed ? { document: outcome.document } : {}, value: outcome.result }
+      notification.changed = outcome.changed
+      return { ...(outcome.changed ? { document: outcome.document } : {}), value: outcome.result }
     })
-    if (changed) {
-      this.ctx.emit('canvas/change', { directory: target.directory, episode: target.episode.id, revisions: { canvas: result.revision } })
+    if (notification.changed) {
+      this.ctx.emit('canvas/change', {
+        directory: target.directory,
+        episode: target.episode.id,
+        revisions: { canvas: result.revision },
+      })
     }
     return result
   }
@@ -222,7 +391,8 @@ export class CanvasService extends TypertRemoteService {
       if (node.type === 'image') {
         take(node)
       } else if (node.type === 'group') {
-        const images = document.nodes.filter(member => member.group === id && member.type === 'image')
+        const images = document.nodes
+          .filter(member => member.group === id && member.type === 'image')
           .sort((a, b) => a.y - b.y || a.x - b.x)
         if (images.length === 0) throw new CanvasInputError(`canvas group ${id} contains no image`)
         images.forEach(take)
@@ -274,11 +444,20 @@ export class CanvasService extends TypertRemoteService {
   /**
    * Read the bible of a Session's project.
    * @param session - Session opened on the project.
+   * @param expectedDirectory - captured project owner, when called from a running media job.
    * @returns the bible, or an empty one when the project has none, with the revision the file holds.
    */
-  async bibleOf(session: Session): Promise<{ readonly bible: Bible; readonly revision: number }> {
-    const stored = await this.store.readDocument(this.directoryOf(session), bibleFile(), parseBible)
-    return stored === undefined ? { bible: EMPTY_BIBLE, revision: 0 } : { bible: stored.value, revision: stored.revision }
+  async bibleOf(
+    session: Session,
+    expectedDirectory?: string,
+  ): Promise<{ readonly bible: Bible; readonly revision: number }> {
+    const directory = this.directoryOf(session)
+    if (expectedDirectory !== undefined && directory !== expectedDirectory)
+      throw new CanvasInputError('the project changed; reopen the canvas before editing')
+    const stored = await this.store.readDocument(directory, bibleFile(), parseBible)
+    return stored === undefined
+      ? { bible: EMPTY_BIBLE, revision: 0 }
+      : { bible: stored.value, revision: stored.revision }
   }
 
   /**
@@ -293,9 +472,9 @@ export class CanvasService extends TypertRemoteService {
     for (const file of files) {
       const document = await this.store.readCanvas(target.directory, file)
       for (const node of document.nodes) {
-        const shots = node.type === 'storyboard' ? activeVersionOf(node)?.shots ?? [] : []
+        const shots = node.type === 'storyboard' ? (activeVersionOf(node)?.shots ?? []) : []
         for (const shot of shots) {
-          const used = [...shot.characters, ...shot.props, ...shot.scene === undefined ? [] : [shot.scene]]
+          const used = [...shot.characters, ...shot.props, ...(shot.scene === undefined ? [] : [shot.scene])]
           for (const line of shot.dialogue) {
             if (line.speaker.kind === 'character') used.push(line.speaker.entry)
           }
@@ -340,10 +519,17 @@ export class CanvasService extends TypertRemoteService {
     const target = await this.targetOf(session)
     const previous = stageOf((await this.productionOf(session)).production, target.episode.id)
     const at = new Date().toISOString()
-    const written = await this.store.updateDocument(directory, PRODUCTION_FILE, parseProductionFile, () => EMPTY_PRODUCTION, (current) => {
-      if (baseRevision !== undefined && baseRevision !== current.revision) throw new CanvasConflictError(baseRevision, current.revision)
-      return { document: advanceStage(current, target.episode.id, to, override, at), value: undefined }
-    })
+    const written = await this.store.updateDocument(
+      directory,
+      PRODUCTION_FILE,
+      parseProductionFile,
+      () => EMPTY_PRODUCTION,
+      (current) => {
+        if (baseRevision !== undefined && baseRevision !== current.revision)
+          throw new CanvasConflictError(baseRevision, current.revision)
+        return { document: advanceStage(current, target.episode.id, to, override, at), value: undefined }
+      },
+    )
     const production = (await this.productionOf(session)).production
     this.ctx.emit('canvas/change', { directory, revisions: { production: written.revision } })
     return { production, revision: written.revision, previous }
@@ -372,10 +558,16 @@ export class CanvasService extends TypertRemoteService {
       episodes: [{ id: brandString<EpisodeId>('e1'), title: '第 1 集', file: 'canvas.json' }],
       bindings: {},
     }
-    const { value, revision } = await this.store.updateDocument(directory, PROJECT_FILE, parseProject, () => empty, current => ({
-      document: current,
-      value: current,
-    }))
+    const { value, revision } = await this.store.updateDocument(
+      directory,
+      PROJECT_FILE,
+      parseProject,
+      () => empty,
+      current => ({
+        document: current,
+        value: current,
+      }),
+    )
     this.emitProjectChange(directory, revision)
     return { project: { ...value, revision }, revision }
   }
@@ -387,12 +579,21 @@ export class CanvasService extends TypertRemoteService {
    * @returns the new episode and the project revision.
    * @throws Error when the project has no metadata.
    */
-  async createEpisode(session: Session, title: string): Promise<{ readonly episode: CanvasEpisode; readonly revision: number }> {
+  async createEpisode(
+    session: Session,
+    title: string,
+  ): Promise<{ readonly episode: CanvasEpisode; readonly revision: number }> {
     const directory = this.directoryOf(session)
-    const created = await this.store.updateDocument(directory, PROJECT_FILE, parseProject, missingProject, (current) => {
-      const next = withEpisode(current, title)
-      return { document: next.project, value: { id: next.episode.id, title: next.episode.title } }
-    })
+    const created = await this.store.updateDocument(
+      directory,
+      PROJECT_FILE,
+      parseProject,
+      missingProject,
+      (current) => {
+        const next = withEpisode(current, title)
+        return { document: next.project, value: { id: next.episode.id, title: next.episode.title } }
+      },
+    )
     this.emitProjectChange(directory, created.revision)
     return { episode: created.value, revision: created.revision }
   }
@@ -406,10 +607,16 @@ export class CanvasService extends TypertRemoteService {
    */
   async useEpisode(session: Session, episode: EpisodeId): Promise<{ readonly revision: number }> {
     const directory = this.directoryOf(session)
-    const written = await this.store.updateDocument(directory, PROJECT_FILE, parseProject, missingProject, current => ({
-      document: withBinding(current, session.id, episode),
-      value: undefined,
-    }))
+    const written = await this.store.updateDocument(
+      directory,
+      PROJECT_FILE,
+      parseProject,
+      missingProject,
+      current => ({
+        document: withBinding(current, session.id, episode),
+        value: undefined,
+      }),
+    )
     this.emitProjectChange(directory, written.revision)
     return { revision: written.revision }
   }
@@ -436,23 +643,33 @@ export class CanvasService extends TypertRemoteService {
     const directory = this.directoryOf(session)
     const references = await this.bibleReferences(session)
     const blocked = (change.remove ?? []).filter(entry => (references.get(entry) ?? []).length > 0)
-    if (blocked.length > 0) throw new Error(`canvas: bible entry ${blocked.join(', ')} is still referenced by a storyboard`)
-    const written = await this.store.updateDocument(directory, bibleFile(), parseBible, () => EMPTY_BIBLE, (current) => {
-      if (baseRevision !== undefined && baseRevision !== current.revision) throw new CanvasConflictError(baseRevision, current.revision)
-      const removed = change.remove ?? []
-      const upserted = change.upsert ?? []
-      const next: Bible = {
-        ...current,
-        ...change.logline === undefined ? {} : { logline: change.logline },
-        style: { ...current.style, ...change.style },
-        // An upsert replaces the entry with the same id instead of appending a duplicate.
-        entries: [
-          ...current.entries.filter(entry => !removed.includes(entry.id) && !upserted.some(change => change.id === entry.id)),
-          ...upserted,
-        ],
-      }
-      return { document: next, value: next }
-    })
+    if (blocked.length > 0)
+      throw new Error(`canvas: bible entry ${blocked.join(', ')} is still referenced by a storyboard`)
+    const written = await this.store.updateDocument(
+      directory,
+      bibleFile(),
+      parseBible,
+      () => EMPTY_BIBLE,
+      (current) => {
+        if (baseRevision !== undefined && baseRevision !== current.revision)
+          throw new CanvasConflictError(baseRevision, current.revision)
+        const removed = change.remove ?? []
+        const upserted = (change.upsert ?? []).map(normalizeBibleAliases)
+        const next: Bible = {
+          ...current,
+          ...(change.logline === undefined ? {} : { logline: change.logline }),
+          style: { ...current.style, ...change.style },
+          // An upsert replaces the entry with the same id instead of appending a duplicate.
+          entries: [
+            ...current.entries.filter(
+              entry => !removed.includes(entry.id) && !upserted.some(change => change.id === entry.id),
+            ),
+            ...upserted,
+          ],
+        }
+        return { document: next, value: next }
+      },
+    )
     const bible = (await this.bibleOf(session)).bible
     this.ctx.emit('canvas/change', { directory, revisions: { bible: written.revision } })
     return { bible, revision: written.revision }
@@ -468,7 +685,10 @@ export class CanvasService extends TypertRemoteService {
   @Remote('get')
   async get(session: Session, episode?: EpisodeId): Promise<CanvasView> {
     const target = await this.targetOf(session, episode)
-    const document = await this.remote(target.directory, target.file, () => this.read(session, target.episode.id))
+    await this.ctx.parallel('canvas/open', session, target.episode.id)
+    const document = await this.remote(target.directory, target.file, () =>
+      this.read(session, target.episode.id, target.directory),
+    )
     return {
       directory: target.directory,
       episode: target.episode,
@@ -484,17 +704,27 @@ export class CanvasService extends TypertRemoteService {
    * @param operations - ordered operations.
    * @param baseRevision - revision the Client read.
    * @param episode - episode to edit; the Session's binding applies when omitted.
+   * @param expectedDirectory - captured project directory; a project switch refuses the write.
    * @returns assigned ids, the new revision, and the skipped operations.
    * @throws RemoteError `canvas/corrupt` when the canvas file is not a valid document.
    */
   @Remote('apply')
-  apply(session: Session, operations: CanvasOperation[], baseRevision: number, episode?: EpisodeId): Promise<CanvasEditResult> {
+  apply(
+    session: Session,
+    operations: CanvasOperation[],
+    baseRevision: number,
+    episode?: EpisodeId,
+    expectedDirectory?: string,
+  ): Promise<CanvasEditResult> {
     const directory = this.directoryOf(session)
-    return this.remote(directory, 'canvas.json', () => this.edit(session, operations, {
-      baseRevision,
-      origin: 'user',
-      ...episode === undefined ? {} : { episode },
-    }))
+    return this.remote(directory, 'canvas.json', () =>
+      this.edit(session, operations, {
+        baseRevision,
+        origin: 'user',
+        ...(episode === undefined ? {} : { episode }),
+        ...(expectedDirectory === undefined ? {} : { expectedDirectory }),
+      }),
+    )
   }
 
   /**
@@ -507,6 +737,270 @@ export class CanvasService extends TypertRemoteService {
   bible(session: Session): Promise<{ readonly bible: Bible; readonly revision: number }> {
     const directory = this.directoryOf(session)
     return this.remote(directory, bibleFile(), () => this.bibleOf(session))
+  }
+
+  /**
+   * Read the independent document of a timeline node.
+   * @param session - Session that owns the canvas.
+   * @param node - timeline node to open.
+   * @param episode - episode to read; the Session binding applies when omitted.
+   * @returns validated timeline, or undefined before its first edit.
+   * @param expectedDirectory - Captured project directory used to reject a project switch.
+   */
+  @Remote('timeline')
+  async timeline(
+    session: Session,
+    node: CanvasNodeId,
+    episode?: EpisodeId,
+    expectedDirectory?: string,
+  ): Promise<Timeline | undefined> {
+    const target = await this.remote(this.directoryOf(session), PROJECT_FILE, () =>
+      this.targetOf(session, episode, expectedDirectory),
+    )
+    const file = this.timelineFile(target, node)
+    return this.remote(target.directory, file, async () => {
+      await this.requireTimelineNode(target, node)
+      return (await this.store.readDocument(target.directory, file, parseTimeline))?.value
+    })
+  }
+
+  /**
+   * Commit editor or Agent commands against the revision they read.
+   * @param session - Session that owns the canvas.
+   * @param node - timeline node to edit.
+   * @param operations - atomic command batch.
+   * @param baseRevision - timeline revision the caller read, 0 before the first edit.
+   * @param spec - required output specification for the first edit; later edits use set_spec.
+   * @param episode - episode to edit; the Session binding applies when omitted.
+   * @returns committed document and intervals requiring a new preview.
+   * @param expectedDirectory - Captured project directory used to reject a project switch.
+   */
+  @Remote('editTimeline')
+  async editTimeline(
+    session: Session,
+    node: CanvasNodeId,
+    operations: TimelineOperation[],
+    baseRevision: number,
+    spec: Timeline['spec'] | undefined,
+    episode?: EpisodeId,
+    expectedDirectory?: string,
+  ): Promise<TimelineEditResult> {
+    const target = await this.remote(this.directoryOf(session), PROJECT_FILE, async () => {
+      if (operations.length > this.limits.maxBatchOperations) throw new CanvasInputError('too many timeline operations')
+      return this.targetOf(session, episode, expectedDirectory)
+    })
+    return this.commitTimeline(
+      target,
+      node,
+      current => ({ operations, history: current.revision === 0 ? {} : { undo: current.revision } }),
+      baseRevision,
+      spec,
+    )
+  }
+
+  /**
+   * List saved revisions under the project writer; no media paths or clip bodies cross this read.
+   * @param session - project Session.
+   * @param node - timeline node.
+   * @param episode - explicit episode; omitted uses the Session binding.
+   * @param expectedDirectory - captured project directory; omitted skips the directory fence.
+   * @returns live revision first followed by available predecessors; empty before initialization.
+   */
+  @Remote('timelineHistory')
+  async timelineHistory(
+    session: Session,
+    node: CanvasNodeId,
+    episode?: EpisodeId,
+    expectedDirectory?: string,
+  ): Promise<readonly TimelineRevision[]> {
+    const target = await this.remote(this.directoryOf(session), PROJECT_FILE, () =>
+      this.targetOf(session, episode, expectedDirectory),
+    )
+    const file = this.timelineFile(target, node)
+    return this.remote(target.directory, file, () =>
+      this.store.updateCanvas(target.directory, target.file, async () => {
+        await this.requireTimelineNode(target, node)
+        const documents = await this.store.documentHistory(
+          target.directory,
+          file,
+          parseTimeline,
+          this.limits.timelineHistoryLimit,
+        )
+        return {
+          value: documents.map((document) => {
+            const undo = document.history === undefined ? document.revision - 1 : document.history.undo
+            const redo = document.history?.redo
+            return {
+              revision: document.revision,
+              spec: document.spec,
+              tracks: document.tracks.length,
+              clips: document.tracks.reduce((count, track) => count + track.clips.length, 0),
+              durationMs: timelineDuration(document),
+              ...(undo !== undefined && documents.some(saved => saved.revision === undo) ? { undo } : {}),
+              ...(redo !== undefined && documents.some(saved => saved.revision === redo) ? { redo } : {}),
+            }
+          }),
+        }
+      }),
+    )
+  }
+
+  /**
+   * Restore by applying shared commands to the caller's revision. Existing generations remain unchanged.
+   * @param session - project Session.
+   * @param node - timeline node.
+   * @param revision - saved revision to restore.
+   * @param baseRevision - live revision the user or Agent reviewed.
+   * @param mode - explicit restoration or a checked undo/redo cursor step.
+   * @param episode - explicit episode; omitted uses the Session binding.
+   * @param expectedDirectory - captured project directory; omitted skips the directory fence.
+   * @returns newly committed revision and invalidated intervals; unchanged for the live revision itself.
+   */
+  @Remote('restoreTimeline')
+  async restoreTimeline(
+    session: Session,
+    node: CanvasNodeId,
+    revision: number,
+    baseRevision: number,
+    mode: TimelineRestoreMode,
+    episode?: EpisodeId,
+    expectedDirectory?: string,
+  ): Promise<TimelineEditResult> {
+    const target = await this.remote(this.directoryOf(session), PROJECT_FILE, async () => {
+      if (!Number.isSafeInteger(revision) || revision < 1) throw new CanvasInputError('invalid history revision')
+      return this.targetOf(session, episode, expectedDirectory)
+    })
+    return this.commitTimeline(
+      target,
+      node,
+      async (current) => {
+        const saved = await this.store.documentHistory(
+          target.directory,
+          this.timelineFile(target, node),
+          parseTimeline,
+          this.limits.timelineHistoryLimit,
+        )
+        const document = saved.find(document => document.revision === revision)
+        if (document === undefined) throw new CanvasInputError('history revision is no longer available')
+        const undo = current.history === undefined ? current.revision - 1 : current.history.undo
+        if ((mode === 'undo' && undo !== revision) || (mode === 'redo' && current.history?.redo !== revision))
+          throw new CanvasInputError('history cursor changed; reload before undo or redo')
+        const prior =
+          document.history === undefined
+            ? document.revision > 1
+              ? document.revision - 1
+              : undefined
+            : document.history.undo
+        const history =
+          mode === 'undo'
+            ? { ...(prior === undefined ? {} : { undo: prior }), redo: current.revision }
+            : mode === 'redo'
+              ? {
+                undo: current.revision,
+                ...(document.history?.redo === undefined ? {} : { redo: document.history.redo }),
+              }
+              : { undo: current.revision }
+        const operations: readonly TimelineOperation[] =
+          current.revision === revision
+            ? []
+            : [
+              ...current.tracks.map(track => ({ op: 'remove_track' as const, track: track.id })),
+              { op: 'set_spec' as const, spec: document.spec },
+              ...document.tracks.map(track => ({ op: 'add_track' as const, track })),
+            ]
+        return { operations, history }
+      },
+      baseRevision,
+      undefined,
+    )
+  }
+
+  /** Both direct edits and history restores enter the same project queue and source validation. */
+  private async commitTimeline(
+    target: CanvasTarget,
+    node: CanvasNodeId,
+    commands: (
+      current: Timeline,
+    ) =>
+      | { readonly operations: readonly TimelineOperation[]; readonly history: NonNullable<Timeline['history']> }
+      | Promise<{
+        readonly operations: readonly TimelineOperation[]
+        readonly history: NonNullable<Timeline['history']>
+      }>,
+    baseRevision: number,
+    spec: Timeline['spec'] | undefined,
+  ): Promise<TimelineEditResult> {
+    const file = this.timelineFile(target, node)
+    return this.remote(target.directory, file, async () => {
+      const notification = { changed: false }
+      const written = await this.store.updateDocument(
+        target.directory,
+        file,
+        parseTimeline,
+        () => {
+          if (spec === undefined) throw new CanvasInputError('choose timeline dimensions and frame rate before editing')
+          return parseTimeline(JSON.stringify({ version: 1, revision: 0, spec, tracks: [] }))
+        },
+        async (current) => {
+          await this.requireTimelineNode(target, node)
+          if (current.revision !== baseRevision) throw new CanvasConflictError(baseRevision, current.revision)
+          const { operations, history } = await commands(current)
+          let edited: TimelineEditResult
+          try {
+            edited = applyTimeline(current, operations, baseRevision)
+          } catch (error: unknown) {
+            if (error instanceof CanvasCorruptError) throw new CanvasInputError(error.reason)
+            throw error
+          }
+          const outcome = operations.length === 0 ? edited : { ...edited, document: { ...edited.document, history } }
+          const canvas = await this.store.readCanvas(target.directory, target.file)
+          for (const track of outcome.document.tracks) {
+            for (const clip of track.clips) {
+              if (clip.source === undefined) continue
+              const input = canvas.nodes.find(candidate => candidate.id === clip.source?.node)
+              const allowed = track.kind === 'video' ? ['video', 'image'] : ['audio', 'video']
+              if (input === undefined || !allowed.includes(input.type))
+                throw new CanvasInputError(`clip ${clip.id} has an incompatible source`)
+              const version = input.versions?.find(candidate => candidate.id === clip.source?.version)
+              if (version?.path === undefined || !(await isFile(resolve(target.directory, version.path))))
+                throw new CanvasInputError(`clip ${clip.id} source version is unavailable`)
+              if (
+                input.type !== 'image' &&
+                version.durationMs !== undefined &&
+                clip.source.inMs + clip.durationMs > version.durationMs
+              ) {
+                throw new CanvasInputError(`clip ${clip.id} exceeds the source duration`)
+              }
+            }
+          }
+          notification.changed = operations.length !== 0
+          return { ...(notification.changed ? { document: outcome.document } : {}), value: outcome }
+        },
+        this.limits.timelineHistoryLimit,
+      )
+      const outcome = { ...written.value, document: { ...written.value.document, revision: written.revision } }
+      if (notification.changed)
+        this.ctx.emit('canvas/change', {
+          directory: target.directory,
+          episode: target.episode.id,
+          revisions: { timelines: [{ node, revision: written.revision }] },
+        })
+      return outcome
+    })
+  }
+
+  /** Resolve only canonical node and episode paths; wire ids cannot choose filesystem paths. */
+  private timelineFile(target: CanvasTarget, node: CanvasNodeId): string {
+    if (!/^n[1-9][0-9]*$/.test(node)) throw new CanvasInputError('invalid timeline node id')
+    return `${target.file}.timelines/${node}.json`
+  }
+
+  /** Confirm node identity under the project writer's serialization lock when editing. */
+  private async requireTimelineNode(target: CanvasTarget, node: CanvasNodeId): Promise<void> {
+    const canvas = await this.store.readCanvas(target.directory, target.file)
+    if (!canvas.nodes.some(candidate => candidate.id === node && candidate.type === 'timeline')) {
+      throw new CanvasInputError(`canvas node ${node} is not a timeline`)
+    }
   }
 
   /** Read the project metadata, or undefined when the project has none. */
@@ -525,14 +1019,31 @@ export class CanvasService extends TypertRemoteService {
     try {
       return await run()
     } catch (error: unknown) {
+      if (error instanceof CanvasInputError)
+        throw new RemoteError('canvas/invalid-input', error.message, { reason: error.message }, { cause: error })
       if (error instanceof CanvasUnsupportedVersionError) {
-        throw new RemoteError('canvas/unsupported-version', error.message, { file: canvasFile(directory, file), version: error.version }, { cause: error })
+        throw new RemoteError(
+          'canvas/unsupported-version',
+          error.message,
+          { file: canvasFile(directory, file), version: error.version },
+          { cause: error },
+        )
       }
       if (error instanceof CanvasConflictError) {
-        throw new RemoteError('canvas/conflict', error.message, { expected: error.expected, actual: error.actual }, { cause: error })
+        throw new RemoteError(
+          'canvas/conflict',
+          error.message,
+          { expected: error.expected, actual: error.actual },
+          { cause: error },
+        )
       }
       if (!(error instanceof CanvasCorruptError)) throw error
-      throw new RemoteError('canvas/corrupt', error.message, { file: canvasFile(directory, file), reason: error.reason }, { cause: error })
+      throw new RemoteError(
+        'canvas/corrupt',
+        error.message,
+        { file: canvasFile(directory, file), reason: error.reason },
+        { cause: error },
+      )
     }
   }
 }

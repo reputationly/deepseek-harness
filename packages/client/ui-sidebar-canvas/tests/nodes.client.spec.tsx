@@ -11,8 +11,41 @@ import { ScriptNode, StoryboardNode, TextNode, TimelineNode } from '../src/clien
 import { GroupNode } from '../src/client/nodes/group.tsx'
 import { useGenerationControls } from '../src/client/GenerationControls.tsx'
 import { en, zh } from '../src/client/locales.ts'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CanvasNodeId, EpisodeId, VersionId } from '@deepseek-ai/dsh-canvas/client'
+import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { CanvasVideoFiles } from '../src/client/face.ts'
 
-afterEach(() => { cleanup() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+
+it('prepares the exact scoped video for file streaming without reading its complete bytes', async () => {
+  const readFile = vi.fn(async () => ({ ok: false as const, message: 'whole-file limit' }))
+  const videoPath = vi.fn(async () => ({ ok: true as const, value: '/project/compatible.mp4' }))
+  const useResource = vi.fn((_address: string) => ({ status: 'none' as const, value: undefined, failure: undefined }))
+  const scope = { directory: '/project', episode: brandString<EpisodeId>('e1') }
+  mount(VideoNode, { readFile, node: node('video', { versions: [{ id: brandString<VersionId>('v1'), path: 'large.mp4', createdAt: 'now', origin: 'user' }], activeVersion: brandString<VersionId>('v1') }),
+    videoFiles: { scope, videoPath, useResource, sessionId: brandString<SessionId>('session') } })
+  expect(videoPath).not.toHaveBeenCalled()
+  fireEvent.mouseEnter(document.querySelector('[data-canvas-video-preview]')!)
+  await waitFor(() => { expect(videoPath).toHaveBeenCalledWith(brandString<CanvasNodeId>('n1'), brandString<VersionId>('v1'), scope) })
+  await waitFor(() => { expect(useResource.mock.calls.some(([address]) => address.includes('compatible.mp4'))).toBe(true) })
+  expect(readFile).not.toHaveBeenCalled()
+})
+
+it('plays the authorized resource path and freshness token instead of a prepared path or complete-byte fallback', async () => {
+  const readFile = vi.fn()
+  const files: CanvasVideoFiles = {
+    scope: { directory: 'C:\\project', episode: brandString<EpisodeId>('e1') }, sessionId: brandString<SessionId>('session'),
+    videoPath: async () => ({ ok: true, value: 'C:\\project\\prepared.mp4' }),
+    useResource: vi.fn(() => ({ status: 'live' as const, value: { absolutePath: 'C:\\project\\authorized.mp4', version: 'fresh 2' }, failure: undefined })) as CanvasVideoFiles['useResource'],
+  }
+  mount(VideoNode, { readFile, node: node('video', { versions: [{ id: brandString<VersionId>('v1'), path: 'large.mp4', createdAt: 'now', origin: 'user' }], activeVersion: brandString<VersionId>('v1') }), videoFiles: files })
+  fireEvent.mouseEnter(document.querySelector('[data-canvas-video-preview]')!)
+  await waitFor(() => { expect(document.querySelector('video')?.getAttribute('src')).toContain('authorized.mp4') })
+  expect(document.querySelector('video')?.getAttribute('src')).toContain('version=fresh%202')
+  expect(document.querySelector('video')?.getAttribute('src')).not.toContain('prepared.mp4')
+  expect(readFile).not.toHaveBeenCalled()
+})
 
 const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
   id: id as never, title: id, shotSize: 'medium', visual: `画面 ${id}`, motion: '动作', camera: '固定', durationSec: 3,
@@ -53,6 +86,14 @@ it('draws an image card and reports a failed media read', async () => {
   await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('media.failed') })
 })
 
+it('labels the first candidate without adopting it during preview', () => {
+  const { edit } = mount(ImageNode, { node: node('image', { versions: [{ id: 'candidate' as never, path: '/candidate.png', origin: 'agent', createdAt: 'now' }] }) })
+  expect(screen.getByText('media.candidate')).toBeTruthy()
+  expect(edit).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: /media.adoptVersion/u }))
+  expect(edit).toHaveBeenCalledWith([{ op: 'set_version', node: 'n1', version: 'candidate' }])
+})
+
 it('draws a video card with its duration and segment badge', () => {
   mount(VideoNode, {
     node: node('video', {
@@ -62,6 +103,99 @@ it('draws a video card with its duration and segment badge', () => {
     }),
   })
   expect(screen.getByText(/badge.duration/)).toBeTruthy()
+})
+
+it('prepares a WebM fallback after a decode error, without replacing the original canvas version', async () => {
+  const create = vi.fn((_blob: Blob) => 'blob:video')
+  Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() })
+  let finish: (file: { ok: true; data: Uint8Array<ArrayBuffer> }) => void = () => {}
+  const pending = new Promise<{ ok: true; data: Uint8Array<ArrayBuffer> }>((resolve) => { finish = resolve })
+  const previewVideo = vi.fn(() => pending)
+  const h = mount(VideoNode, {
+    readFile: async () => ({ ok: true, data: new Uint8Array([1]) }), previewVideo,
+    node: node('video', { activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, path: '/original.mp4', createdAt: 'now', origin: 'user' }] }),
+  })
+  await waitFor(() => { expect(document.querySelector('video')).toBeTruthy() })
+  fireEvent.error(document.querySelector('video')!)
+  await waitFor(() => { expect(previewVideo).toHaveBeenCalledWith('n1', 'v1', expect.any(AbortSignal)) })
+  expect(screen.getByRole('status').getAttribute('aria-label')).toBe('media.preparingPreview')
+  finish({ ok: true, data: new Uint8Array([2]) })
+  await waitFor(() => { expect(document.querySelector('video')?.controls).toBe(true) })
+  expect(create.mock.calls.at(-1)?.[0].type).toBe('video/webm')
+  expect(h.edit).not.toHaveBeenCalled()
+})
+
+it.each(['loadeddata', 'canplay'])('prepares a compatibility preview on %s without video frames, even when the audio is playable', async (event) => {
+  const create = vi.fn((_blob: Blob) => 'blob:video-2').mockReturnValueOnce('blob:video-1')
+  Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() })
+  const previewVideo = vi.fn(async () => ({ ok: true, data: new Uint8Array([2]) }))
+  const h = mount(VideoNode, {
+    readFile: async () => ({ ok: true, data: new Uint8Array([1]) }), previewVideo,
+    node: node('video', { activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, path: '/original.mp4', createdAt: 'now', origin: 'user' }] }),
+  })
+  await waitFor(() => { expect(document.querySelector('video')?.getAttribute('src')).toBe('blob:video-1') })
+  const original = document.querySelector('video')!
+  Object.defineProperties(original, {
+    readyState: { value: 4 }, duration: { value: 5.175 }, error: { value: null },
+    videoWidth: { value: 0 }, videoHeight: { value: 0 },
+  })
+  expect(original.error).toBeNull()
+  expect(original.videoWidth).toBe(0)
+  expect(original.videoHeight).toBe(0)
+  fireEvent(original, new Event(event))
+  await waitFor(() => { expect(document.querySelector('video')?.getAttribute('src')).toBe('blob:video-2') })
+  expect(previewVideo).toHaveBeenCalledExactlyOnceWith('n1', 'v1', expect.any(AbortSignal))
+  expect(create.mock.calls[1]?.[0].type).toBe('video/webm')
+  expect(h.edit).not.toHaveBeenCalled()
+})
+
+it('keeps a video with decoded dimensions on its original source', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:original'), revokeObjectURL: vi.fn() })
+  const previewVideo = vi.fn(async () => ({ ok: true, data: new Uint8Array([2]) }))
+  mount(VideoNode, {
+    readFile: async () => ({ ok: true, data: new Uint8Array([1]) }), previewVideo,
+    node: node('video', { activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, path: '/original.mp4', createdAt: 'now', origin: 'user' }] }),
+  })
+  await waitFor(() => { expect(document.querySelector('video')).toBeTruthy() })
+  const video = document.querySelector('video')!
+  fireEvent.loadedMetadata(video)
+  expect(previewVideo).not.toHaveBeenCalled()
+  Object.defineProperties(video, { videoWidth: { value: 1280 }, videoHeight: { value: 720 } })
+  fireEvent.loadedData(video)
+  fireEvent.canPlay(video)
+  expect(video.getAttribute('src')).toBe('blob:original')
+  expect(previewVideo).not.toHaveBeenCalled()
+})
+
+it('reports an unusable compatibility preview instead of repeatedly transcoding it', async () => {
+  const create = vi.fn((_blob: Blob) => 'blob:video-2').mockReturnValueOnce('blob:video-1')
+  Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() })
+  const previewVideo = vi.fn(async () => ({ ok: true, data: new Uint8Array([2]) }))
+  mount(VideoNode, {
+    readFile: async () => ({ ok: true, data: new Uint8Array([1]) }), previewVideo,
+    node: node('video', { activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, path: '/original.mp4', createdAt: 'now', origin: 'user' }] }),
+  })
+  await waitFor(() => { expect(document.querySelector('video')).toBeTruthy() })
+  fireEvent.error(document.querySelector('video')!)
+  await waitFor(() => { expect(document.querySelector('video')?.getAttribute('src')).toBe('blob:video-2') })
+  fireEvent.canPlay(document.querySelector('video')!)
+  await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('media.previewFailed') })
+  expect(screen.getByRole('button', { name: 'retry' })).toBeTruthy()
+  expect(previewVideo).toHaveBeenCalledTimes(1)
+})
+
+it('offers a local retry when video preparation fails', async () => {
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:video'), revokeObjectURL: vi.fn() })
+  const previewVideo = vi.fn(async () => ({ ok: false, message: 'encoder unavailable' }))
+  mount(VideoNode, {
+    readFile: async () => ({ ok: true, data: new Uint8Array([1]) }), previewVideo,
+    node: node('video', { activeVersion: 'v1' as never, versions: [{ id: 'v1' as never, path: '/original.mp4', createdAt: 'now', origin: 'user' }] }),
+  })
+  await waitFor(() => { expect(document.querySelector('video')).toBeTruthy() })
+  fireEvent.error(document.querySelector('video')!)
+  await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('media.previewFailed') })
+  fireEvent.click(screen.getByRole('button', { name: 'retry' }))
+  await waitFor(() => { expect(previewVideo).toHaveBeenCalledTimes(2) })
 })
 
 it('shows updated-input and changed-storyboard badges on media cards', () => {
@@ -104,7 +238,17 @@ it('draws text, script, storyboard, and timeline content', () => {
   expect(screen.getByText(/storyboard.summary/).textContent).toContain('storyboard.segments.other')
   cleanup()
   mount(TimelineNode, { node: node('timeline', { timeline: { file: 't.json', durationMs: 12_000, exports: [] } }) })
-  expect(screen.getByText(/timeline.clips/)).toBeTruthy()
+  expect(screen.getByText('editor.open')).toBeTruthy()
+})
+
+it('counts saved timeline clips rather than legacy exports, and never shows another timeline summary', () => {
+  const cut = node('timeline', { timeline: { file: 'cut.json', durationMs: 0, exports: [] } })
+  mount(TimelineNode, { node: cut, t: englishT, timelineSummary: { node: cut.id, clips: 5, durationMs: 8000 } })
+  expect(screen.getByText('5 clips · 8.0s')).toBeTruthy()
+  cleanup()
+  mount(TimelineNode, { node: cut, t: chineseT, timelineSummary: { node: brandString<CanvasNodeId>('n2'), clips: 5, durationMs: 8000 } })
+  expect(screen.queryByText(/5.*8\.0/u)).toBeNull()
+  expect(screen.getByText(zh['editor.open'])).toBeTruthy()
 })
 
 it('uses singular and plural English storyboard counts', () => {
@@ -146,7 +290,7 @@ it('switches version from the version bar', () => {
       activeVersion: 'v2' as never,
     }),
   })
-  fireEvent.click(screen.getByRole('button', { name: 'v1' }))
+  fireEvent.click(screen.getByRole('button', { name: 'media.adoptVersion:{"label":"v1"}' }))
   expect(h.edit).toHaveBeenCalledWith([{ op: 'set_version', node: 'n1', version: 'v1' }])
 })
 
@@ -189,7 +333,7 @@ it('plans and starts generation from a retry card through the shared budget flow
     gen: { kind: 'video', prompt: 'prompt', params: {} },
     status: { state: 'failed', at: 'now', error: 'failed', retryable: true },
   })
-  const document: CanvasDocument = { version: 2, revision: 0, nextId: 2, nodes: [failedVideo], edges: [] }
+  const document: CanvasDocument = { version: 3, revision: 0, nextId: 2, nodes: [failedVideo], edges: [] }
   const RetryCard = () => {
     const generation = useGenerationControls({ document, planNodes, generateNodes, t })
     return <>
@@ -299,7 +443,8 @@ it('plays the video preview on hover and pauses it when the pointer leaves', asy
 it('draws decoded peaks into the waveform canvas and survives an undecodable file', async () => {
   Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
   const fillRect = vi.fn(), clearRect = vi.fn()
-  const context = { clearRect, fillRect, fillStyle: '' }
+  const context = { clearRect, fillRect, setTransform: vi.fn(), fillStyle: '' }
+  vi.stubGlobal('ResizeObserver', class { observe(): void {} disconnect(): void {} })
   Object.assign(HTMLCanvasElement.prototype, { getContext: vi.fn(() => context) })
   class Decoding {
     decodeAudioData = vi.fn(async () => ({ length: 4096, getChannelData: () => new Float32Array(4096).fill(0.5) }))
@@ -381,10 +526,10 @@ it('switches version from an inactive chip and ignores the active one', async ()
       activeVersion: 'v2' as never,
     }),
   })
-  await waitFor(() => { expect(screen.getByTitle('version.switch:{"label":"v1"}')).toBeTruthy() })
-  fireEvent.click(screen.getByTitle('version.switch:{"label":"v2"}'))
+  await waitFor(() => { expect(screen.getByTitle('media.adoptVersion:{"label":"v1"}')).toBeTruthy() })
+  fireEvent.click(screen.getByTitle('media.adoptVersion:{"label":"v2"}'))
   expect(edit).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByTitle('version.switch:{"label":"v1"}'))
+  fireEvent.click(screen.getByTitle('media.adoptVersion:{"label":"v1"}'))
   expect(edit).toHaveBeenCalledWith([{ op: 'set_version', node: 'n1', version: 'v1' }])
 })
 
@@ -446,7 +591,7 @@ it('draws a script without scene headings and a timeline without exports', () =>
   expect(screen.getAllByText('只是一段文字').length).toBeGreaterThan(0)
   cleanup()
   mount(TimelineNode, { node: node('timeline', { timeline: { file: 'x.json', durationMs: 1500, exports: [] } }) })
-  expect(screen.getByText(/timeline.clips/)).toBeTruthy()
+  expect(screen.getByText('editor.open')).toBeTruthy()
 })
 
 it('shows queued and non-retryable failed status without a retry button', () => {
@@ -500,7 +645,7 @@ it('survives an undecodable audio file and a video without a segment badge', asy
 
 it('draws a timeline without a timeline body and a video with a segment badge', async () => {
   mount(TimelineNode, { node: node('timeline') })
-  expect(screen.getByText(/timeline.clips/)).toBeTruthy()
+  expect(screen.getByText('editor.open')).toBeTruthy()
   cleanup()
   Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:media'), revokeObjectURL: vi.fn() })
   mount(VideoNode, { readFile: readyFile, node: node('video', {

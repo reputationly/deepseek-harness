@@ -157,11 +157,14 @@ function parseEntry(value: unknown, index: number): BibleEntry {
 
 /**
  * Serialize a bible file.
- * @param bible - validated bible.
+ * @param bible - candidate bible, validated before serialization returns.
  * @returns pretty-printed JSON ending in a newline.
+ * @throws Error when the serialized candidate fails the normal reader's validation.
  */
 export function serializeBible(bible: Bible): string {
-  return `${JSON.stringify(bible, null, 2)}\n`
+  const content = `${JSON.stringify(bible, null, 2)}\n`
+  parseBible(content)
+  return content
 }
 
 /**

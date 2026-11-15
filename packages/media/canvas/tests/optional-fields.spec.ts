@@ -108,11 +108,11 @@ describe('deployment bounds on versions', () => {
     const document = parseCanvas(documentOf({
       versions: [{ id: 'v1', prompt: 'long prompt', createdAt: 'now', origin: 'user' }],
     }))
-    expect(() => assertWithinLimits(document, resolveConfig({ maxPromptLength: 3 }))).toThrow('version v1 prompt')
+    expect(() => { assertWithinLimits(document, resolveConfig({ maxPromptLength: 3 })) }).toThrow('version v1 prompt')
     const board = parseCanvas(documentOf({
       versions: [{ id: 'v1', shots: [shot, shot], createdAt: 'now', origin: 'user' }],
     }))
-    expect(() => assertWithinLimits(board, resolveConfig({ maxShotsPerStoryboard: 1 }))).toThrow('storyboard exceeds')
+    expect(() => { assertWithinLimits(board, resolveConfig({ maxShotsPerStoryboard: 1 })) }).toThrow('storyboard exceeds')
   })
 })
 

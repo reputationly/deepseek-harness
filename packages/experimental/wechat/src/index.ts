@@ -46,6 +46,9 @@ const HISTORY_LIMIT = 500
 const DEFAULT_WECHAT_TITLE = '微信 · 新会话'
 const FILE_TOOL_DESCRIPTION = "Send a file from the workspace to the user's WeChat. Only available in sessions that came from WeChat. Images are sent as images, videos as videos, anything else as a file. Images, videos and audio produced by generation tools in this turn are sent automatically at turn end; do not send them again. Limit 20 MB per file; larger videos are compressed first and otherwise rejected."
 
+/** The production plugin has no deployment options. */
+type Config = Record<string, never>
+
 interface WechatServiceDependencies {
   readonly store?: Store
   readonly createClient?: (baseUrl: string, token?: string) => IlinkClient
@@ -103,7 +106,7 @@ export class WechatService extends TypertRemoteService {
   private readonly schedule: (callback: () => void, milliseconds: number) => ReturnType<typeof setTimeout>
   private readonly runFfmpeg: (arguments_: readonly string[]) => Promise<void>
 
-  constructor(ctx: Context, dependencies: WechatServiceDependencies = {}) {
+  constructor(ctx: Context, _config: Config = {}, dependencies: WechatServiceDependencies = {}) {
     super(ctx, 'wechat')
     this.store = dependencies.store ?? new Store()
     this.createClient = dependencies.createClient ?? ((baseUrl, token) => new IlinkClient(baseUrl, token))
@@ -115,14 +118,20 @@ export class WechatService extends TypertRemoteService {
     ctx.on('approval/request', (request, next) => this.onApproval(request, next), { prepend: true })
   }
 
-  /** Read the sanitized current state for the local settings page. */
+  /**
+   * Read the sanitized current state for the local settings page.
+   * @returns Sanitized current status and workspace snapshot.
+   */
   @Remote
   async getStatus(): Promise<WechatSnapshot> {
     await this.ensureLoaded()
     return this.snapshot()
   }
 
-  /** Open a new local QR login and begin polling its status. */
+  /**
+   * Open a new local QR login and begin polling its status.
+   * @returns Sanitized current status and workspace snapshot.
+   */
   @Remote
   async startLogin(): Promise<WechatSnapshot> {
     await this.ensureLoaded()
@@ -143,7 +152,10 @@ export class WechatService extends TypertRemoteService {
     return this.snapshot()
   }
 
-  /** Cancel the pending QR login without removing saved credentials. */
+  /**
+   * Cancel the pending QR login without removing saved credentials.
+   * @returns Sanitized current status and workspace snapshot.
+   */
   @Remote
   async cancelLogin(): Promise<WechatSnapshot> {
     await this.stopLogin()
@@ -152,7 +164,10 @@ export class WechatService extends TypertRemoteService {
     return this.snapshot()
   }
 
-  /** Reconnect using the saved iLink credentials. */
+  /**
+   * Reconnect using the saved iLink credentials.
+   * @returns Sanitized current status and workspace snapshot.
+   */
   @Remote
   async reconnect(): Promise<WechatSnapshot> {
     await this.ensureLoaded()
@@ -165,7 +180,10 @@ export class WechatService extends TypertRemoteService {
     return this.snapshot()
   }
 
-  /** Stop polling while retaining credentials for a later reconnect. */
+  /**
+   * Stop polling while retaining credentials for a later reconnect.
+   * @returns Sanitized current status and workspace snapshot.
+   */
   @Remote
   async disconnect(): Promise<WechatSnapshot> {
     await this.stopTransport()
@@ -173,7 +191,10 @@ export class WechatService extends TypertRemoteService {
     return this.snapshot()
   }
 
-  /** Delete the saved iLink token and cursor and stop the local connection. */
+  /**
+   * Delete the saved iLink token and cursor and stop the local connection.
+   * @returns Sanitized current status and workspace snapshot.
+   */
   @Remote
   async logout(): Promise<WechatSnapshot> {
     await this.stopLogin()
@@ -187,7 +208,11 @@ export class WechatService extends TypertRemoteService {
     return this.snapshot()
   }
 
-  /** Select an existing registered project as the default WeChat workspace. */
+  /**
+   * Select an existing registered project as the default WeChat workspace.
+   * @param projectPath - Path of an existing registered workspace.
+   * @returns Sanitized current status and workspace snapshot.
+   */
   @Remote
   async setDefaultProject(projectPath: string): Promise<WechatSnapshot> {
     const project = await this.ctx.workspaceRegistry.resolveByPath(projectPath)
@@ -211,7 +236,11 @@ export class WechatService extends TypertRemoteService {
     return this.snapshot()
   }
 
-  /** Stream sanitized status changes to the settings page. */
+  /**
+   * Stream sanitized status changes to the settings page.
+   * @param signal - Cancels this request or subscription.
+   * @returns Sanitized status updates until the subscription is cancelled.
+   */
   @Remote({ mode: 'stream' })
   async *watchStatus(signal: AbortSignal): AsyncIterable<WechatStatus> {
     const pending: WechatStatus[] = []

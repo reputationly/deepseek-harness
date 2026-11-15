@@ -5,9 +5,20 @@
  */
 
 import {
-  activeVersionOf, gateBibleFirst, gateStoryboardQuality, planShotSegments,
-  type Bible, type CanvasDocument, type CanvasEdge, type CanvasEdgeRole, type CanvasNode, type CanvasNodeId,
-  type CanvasOperation, type Shot, type StoryboardSegment, type VersionId,
+  activeVersionOf,
+  gateBibleFirst,
+  gateStoryboardQuality,
+  planShotSegments,
+  type Bible,
+  type CanvasDocument,
+  type CanvasEdge,
+  type CanvasEdgeRole,
+  type CanvasNode,
+  type CanvasNodeId,
+  type CanvasOperation,
+  type Shot,
+  type StoryboardSegment,
+  type VersionId,
 } from '@deepseek-ai/dsh-canvas'
 import type { GenerationPlan, PlannedNode } from './budget.ts'
 
@@ -40,6 +51,8 @@ export interface NodeInputs {
   readonly prompt: string
   /** Reference images in edge order. */
   readonly refs: readonly ResolvedInput[]
+  /** Audio source and reference edges consumed by music or speech generation. */
+  readonly audio: readonly ResolvedInput[]
   readonly firstFrame?: ResolvedInput
   readonly lastFrame?: ResolvedInput
 }
@@ -59,6 +72,39 @@ export interface NodePlan extends GenerationPlan {
   readonly entries: readonly PlannedGeneration[]
 }
 
+/**
+ * Find a tail extracted from the adopted video, never from another candidate.
+ * @param document - canvas holding video and tail versions.
+ * @param video - segment whose adopted tail is needed.
+ * @returns the exact tail input, or undefined until an adopted source has a tail.
+ */
+export function adoptedTailOf(document: CanvasDocument, video: CanvasNode | undefined): ResolvedInput | undefined {
+  const source = video === undefined ? undefined : activeVersionOf(video)
+  if (video === undefined || source === undefined) return undefined
+  const held = video.tailOf
+  if (held?.sourceVersion === source.id) {
+    const version = document.nodes
+      .find(node => node.id === held.node)
+      ?.versions?.find(version => version.id === held.version)
+    if (version?.path !== undefined)
+      return { node: held.node, version: version.id, path: version.path, role: 'first_frame' }
+  }
+  const derived = new Set(
+    document.edges.filter(edge => edge.kind === 'derivation' && edge.source === video.id).map(edge => edge.target),
+  )
+  for (const frame of document.nodes) {
+    if (frame.type !== 'image' || !derived.has(frame.id)) continue
+    const version = frame.versions?.find(
+      version =>
+        version.path !== undefined &&
+        version.inputs?.some(input => input.node === video.id && input.version === source.id) === true,
+    )
+    if (version?.path !== undefined)
+      return { node: frame.id, version: version.id, path: version.path, role: 'first_frame' }
+  }
+  return undefined
+}
+
 /** Character name a dialogue line names, for the prompt template. */
 function speakerName(bible: Bible | undefined, line: Shot['dialogue'][number]): string {
   const speaker = line.speaker
@@ -73,7 +119,7 @@ function shotPromptLine(shot: Shot, offsetSec: number, bible: Bible | undefined)
   const dialogue = shot.dialogue.map(line => `${speakerName(bible, line)}：${line.line}`).join('；')
   const parts = [
     `${String(start)}–${String(end)}s [${shot.shotSize}] ${shot.visual}。动作：${shot.motion}。运镜：${shot.camera}`,
-    ...dialogue === '' ? [] : [`台词（${dialogue}）`],
+    ...(dialogue === '' ? [] : [`台词（${dialogue}）`]),
     `避免：${shot.negative}`,
   ]
   return parts.join('。')
@@ -107,7 +153,17 @@ function resolveInput(document: CanvasDocument, edge: CanvasEdge): ResolvedInput
   const source = document.nodes.find(node => node.id === edge.source)
   if (source === undefined) return undefined
   const version = activeVersionOf(source)
-  if (version?.path === undefined) return undefined
+  if (version?.path === undefined) {
+    if (
+      edge.kind === 'reference' &&
+      edge.role !== undefined &&
+      edge.role !== 'prompt' &&
+      (source.type === 'image' || source.type === 'video' || source.type === 'audio')
+    ) {
+      throw new Error(`Node ${source.id} has no adopted media; adopt a version before using it as ${edge.role}`)
+    }
+    return undefined
+  }
   return { node: source.id, version: version.id, path: version.path, role: edge.role ?? 'source' }
 }
 
@@ -121,7 +177,10 @@ function expandMentions(prompt: string, bible: Bible | undefined): string {
 }
 
 /** First image node a bible entry points at, resolved to its current file. */
-function entryReference(document: CanvasDocument, entry: { readonly imageNodes: readonly string[] }): ResolvedInput | undefined {
+function entryReference(
+  document: CanvasDocument,
+  entry: { readonly imageNodes: readonly string[] },
+): ResolvedInput | undefined {
   const node = document.nodes.find(candidate => candidate.id === entry.imageNodes[0])
   const version = node === undefined ? undefined : activeVersionOf(node)
   if (node === undefined || version?.path === undefined) return undefined
@@ -133,11 +192,20 @@ function entryReference(document: CanvasDocument, entry: { readonly imageNodes: 
  * @param document - the episode's canvas.
  * @param node - node being generated.
  * @param bible - bible that names speakers and locates storyboard prompts.
+ * @param firstFrameOverride - exact tail version supplied by this production run.
  * @returns the prompt, reference images in edge order, and the frame slots.
  */
-export function collectInputs(document: CanvasDocument, node: CanvasNode, bible: Bible | undefined): NodeInputs {
+export function collectInputs(
+  document: CanvasDocument,
+  node: CanvasNode,
+  bible: Bible | undefined,
+  firstFrameOverride?: ResolvedInput,
+): NodeInputs {
   const edges = incoming(document, node.id)
-  const sources = edges.map(edge => ({ edge, source: document.nodes.find(candidate => candidate.id === edge.source) }))
+  const sources = edges.map(edge => ({
+    edge,
+    source: document.nodes.find(candidate => candidate.id === edge.source),
+  }))
   const textPrompts = sources
     .filter(entry => entry.source?.type === 'text' || entry.source?.type === 'script')
     .filter(entry => entry.edge.role === 'prompt')
@@ -149,27 +217,48 @@ export function collectInputs(document: CanvasDocument, node: CanvasNode, bible:
       const covered = node.gen?.shot?.shots
       return segmentPrompt(covered === undefined ? shots : shots.filter(shot => covered.includes(shot.id)), bible)
     })
-  const joined = [...textPrompts, ...storyboardPrompts, node.gen?.prompt ?? ''].filter(part => part !== '').join('\n\n')
+  const joined = [...textPrompts, ...storyboardPrompts, node.gen?.prompt ?? '']
+    .filter(part => part !== '')
+    .join('\n\n')
   const prompt = expandMentions(joined, bible)
-  const resolved = edges.map(edge => ({ edge, input: resolveInput(document, edge) }))
-  const edgeRefs = resolved.filter(entry => entry.edge.role === 'ref' && entry.input !== undefined).map(entry => entry.input as ResolvedInput)
-  const mentioned = bible === undefined
-    ? []
-    : bible.entries
-      .filter(entry => joined.includes(`@${entry.name}`) || entry.aliases.some(alias => joined.includes(`@${alias}`)))
-      .map(entry => entryReference(document, entry))
-      .filter((input): input is ResolvedInput => input !== undefined)
+  const resolved = edges.map(edge => ({
+    edge,
+    input:
+      edge.role === 'first_frame' && firstFrameOverride !== undefined
+        ? firstFrameOverride
+        : resolveInput(document, edge),
+  }))
+  const edgeRefs = resolved
+    .filter(entry => entry.edge.role === 'ref' && entry.input !== undefined)
+    .map(entry => entry.input as ResolvedInput)
+  const mentioned =
+    bible === undefined
+      ? []
+      : bible.entries
+        .filter(
+          entry => joined.includes(`@${entry.name}`) || entry.aliases.some(alias => joined.includes(`@${alias}`)),
+        )
+        .map(entry => entryReference(document, entry))
+        .filter((input): input is ResolvedInput => input !== undefined)
   const refs = [...edgeRefs]
   for (const input of mentioned) {
     if (!refs.some(ref => ref.node === input.node)) refs.push(input)
   }
-  const firstFrame = resolved.find(entry => entry.edge.role === 'first_frame')?.input
+  const firstFrame = firstFrameOverride ?? resolved.find(entry => entry.edge.role === 'first_frame')?.input
   const lastFrame = resolved.find(entry => entry.edge.role === 'last_frame')?.input
+  const audio = resolved
+    .filter(
+      entry =>
+        (entry.edge.role === 'audio' || entry.edge.role === 'source') &&
+        document.nodes.some(source => source.id === entry.edge.source && source.type === 'audio'),
+    )
+    .flatMap(entry => (entry.input === undefined ? [] : [entry.input]))
   return {
     prompt,
     refs,
-    ...firstFrame === undefined ? {} : { firstFrame },
-    ...lastFrame === undefined ? {} : { lastFrame },
+    audio,
+    ...(firstFrame === undefined ? {} : { firstFrame }),
+    ...(lastFrame === undefined ? {} : { lastFrame }),
   }
 }
 
@@ -180,12 +269,19 @@ function shotsOfSegment(shots: readonly Shot[], segment: StoryboardSegment): rea
 }
 
 /** Existing video node that already stands for one segment. */
-function videoForSegment(document: CanvasDocument, storyboard: CanvasNodeId, segment: StoryboardSegment): CanvasNode | undefined {
+function videoForSegment(
+  document: CanvasDocument,
+  storyboard: CanvasNodeId,
+  segment: StoryboardSegment,
+): CanvasNode | undefined {
   const wanted = [...segment.shots].sort().join(',')
-  return document.nodes.find(node => node.type === 'video'
-    && node.gen?.shot?.storyboard === storyboard
-    && [...node.gen.shot.shots].sort().join(',') === wanted
-    && node.stale !== true)
+  return document.nodes.find(
+    node =>
+      node.type === 'video' &&
+      node.gen?.shot?.storyboard === storyboard &&
+      [...node.gen.shot.shots].sort().join(',') === wanted &&
+      node.stale !== true,
+  )
 }
 
 /** Model default for one node's kind. */
@@ -223,16 +319,30 @@ export function planNodes(
   for (const id of requested) {
     const node = document.nodes.find(candidate => candidate.id === id)
     if (node === undefined) throw new Error(`canvas node ${id} does not exist`)
+    if (node.status?.state === 'failed' && node.status.recoveryRequired === true) {
+      return refused({ gate: 'media_recovery', missing: [node.status.error] })
+    }
+    if (
+      node.type === 'image' ||
+      node.type === 'video' ||
+      node.type === 'storyboard' ||
+      node.gen?.prompt.includes('@') === true
+    ) {
+      const bibleGate = gateBibleFirst(bible)
+      if (bibleGate !== undefined) return refused(bibleGate)
+    }
     if (node.type === 'storyboard') {
       const quality = gateStoryboardQuality(document, bible)
       if (quality !== undefined) return refused(quality)
       const shots = activeVersionOf(node)?.shots ?? []
       const plan = planShotSegments(shots, { maxSegmentSec: limits.maxVideoSeconds })
-      let previous: {
-        readonly node: CanvasNodeId
-        readonly generated: boolean
-        readonly tail?: { readonly node: CanvasNodeId; readonly version: VersionId }
-      } | undefined
+      let previous:
+        | {
+          readonly node: CanvasNodeId
+          readonly generated: boolean
+          readonly tail?: { readonly node: CanvasNodeId; readonly version: VersionId }
+        }
+        | undefined
       for (const [index, segment] of plan.segments.entries()) {
         const existing = videoForSegment(document, node.id, segment)
         const covered = shotsOfSegment(shots, segment)
@@ -241,7 +351,7 @@ export function planNodes(
         const createdRef = `segment-${String(index)}`
         const chosen: PlannedGeneration = {
           node: (existing?.id ?? createdRef) as CanvasNodeId,
-          ...existing === undefined ? { ref: createdRef } : {},
+          ...(existing === undefined ? { ref: createdRef } : {}),
           kind: 'video',
           model: existing?.gen?.model ?? model,
           calls: 1,
@@ -249,8 +359,10 @@ export function planNodes(
           seconds: Math.min(segment.durationSec, limits.maxVideoSeconds),
           shots: covered.map(shot => shot.title),
           storyboard: node.id,
-          ...segment.needsTailChain ? { chain: true } : {},
-          ...segment.needsTailChain && previous?.tail !== undefined ? { tailChain: previous.tail } : {},
+          ...(segment.needsTailChain && existing?.gen?.tailChain !== false ? { chain: true } : {}),
+          ...(segment.needsTailChain && existing?.gen?.tailChain !== false && previous?.tail !== undefined
+            ? { tailChain: previous.tail }
+            : {}),
         }
         if (existing === undefined) {
           create.push({
@@ -271,14 +383,16 @@ export function planNodes(
         }
         entries.push(chosen)
         segments.push({ storyboard: node.id, index, shots: segment.shots })
+        const tail = adoptedTailOf(document, existing)
         previous = {
           node: chosen.node,
           generated: existing === undefined,
-          ...existing?.tailOf === undefined ? {} : { tail: existing.tailOf },
+          ...(tail === undefined ? {} : { tail }),
         }
       }
       for (const candidate of document.nodes) {
-        if (candidate.type !== 'video' || candidate.gen?.shot?.storyboard !== node.id || candidate.stale === true) continue
+        if (candidate.type !== 'video' || candidate.gen?.shot?.storyboard !== node.id || candidate.stale === true)
+          continue
         const wanted = [...candidate.gen.shot.shots].sort().join(',')
         if (!plan.segments.some(segment => [...segment.shots].sort().join(',') === wanted)) stale.push(candidate.id)
       }
@@ -287,23 +401,57 @@ export function planNodes(
     if (node.gen === undefined || (node.type !== 'image' && node.type !== 'video' && node.type !== 'audio')) {
       throw new Error(`canvas node ${node.id} does not generate media`)
     }
-    if (node.gen.prompt.includes('@')) {
-      const bibleGate = gateBibleFirst(bible)
-      if (bibleGate !== undefined) return refused(bibleGate)
+    if (node.type === 'video') {
+      if (node.gen.shot !== undefined) {
+        const board = document.nodes.find(
+          candidate => candidate.id === node.gen?.shot?.storyboard && candidate.type === 'storyboard',
+        )
+        if (board === undefined)
+          return refused({
+            gate: 'G2_storyboard_quality',
+            missing: [`${node.id} storyboard ${node.gen.shot.storyboard} does not exist`],
+          })
+        const shots = new Set((activeVersionOf(board)?.shots ?? []).map(shot => shot.id))
+        const missing = node.gen.shot.shots.filter(shot => !shots.has(shot))
+        if (missing.length > 0)
+          return refused({
+            gate: 'G2_storyboard_quality',
+            missing: missing.map(shot => `${board.id} shot ${shot} does not exist`),
+          })
+      }
+      const boards = new Set([
+        ...(node.gen.shot === undefined ? [] : [node.gen.shot.storyboard]),
+        ...incoming(document, node.id)
+          .filter(edge => edge.role === 'prompt')
+          .map(edge => edge.source),
+      ])
+      const quality = gateStoryboardQuality(
+        {
+          ...document,
+          nodes: document.nodes.filter(candidate => candidate.type !== 'storyboard' || boards.has(candidate.id)),
+        },
+        bible,
+      )
+      if (quality !== undefined) return refused(quality)
     }
-    if (node.type === 'video' && node.gen.shot !== undefined) {
+    let tailChain: ResolvedInput | undefined
+    if (node.type === 'video' && node.gen.shot !== undefined && node.gen.tailChain !== false) {
       const board = document.nodes.find(candidate => candidate.id === node.gen?.shot?.storyboard)
-      const ordered = board === undefined
-        ? []
-        : planShotSegments(activeVersionOf(board)?.shots ?? [], { maxSegmentSec: limits.maxVideoSeconds }).segments
+      const ordered =
+        board === undefined
+          ? []
+          : planShotSegments(activeVersionOf(board)?.shots ?? [], { maxSegmentSec: limits.maxVideoSeconds }).segments
       const wanted = [...node.gen.shot.shots].sort().join(',')
       const position = ordered.findIndex(segment => [...segment.shots].sort().join(',') === wanted)
-      if (position > 0) {
+      if (position > 0 && ordered[position]?.needsTailChain === true) {
         const before = videoForSegment(document, node.gen.shot.storyboard, ordered[position - 1] as StoryboardSegment)
-        if (before?.tailOf === undefined) {
+        tailChain = adoptedTailOf(document, before)
+        if (tailChain === undefined) {
           return refused({
             gate: 'tail_chain',
-            missing: [`${node.id} needs the tail frame of segment ${String(position - 1)}, which has not been generated`],
+            missing: [
+              `${node.id} needs the tail frame of segment ${String(position - 1)}, which has not been generated`,
+            ],
           })
         }
       }
@@ -315,10 +463,13 @@ export function planNodes(
       model,
       calls: 1,
       lines: 1,
-      ...node.gen.kind === 'video' ? { seconds: Number(node.gen.params.duration ?? limits.videoDefaultDuration) } : {},
-      ...node.gen.kind === 'speech' ? { lines: 1 } : {},
+      ...(tailChain === undefined ? {} : { chain: true, tailChain }),
+      ...(node.gen.kind === 'video'
+        ? { seconds: Number(node.gen.params.duration ?? limits.videoDefaultDuration) }
+        : {}),
+      ...(node.gen.kind === 'speech' ? { lines: 1 } : {}),
     })
   }
 
-  return { nodes: entries, create, ...edits.length === 0 ? {} : { edits }, stale, segments, entries }
+  return { nodes: entries, create, ...(edits.length === 0 ? {} : { edits }), stale, segments, entries }
 }

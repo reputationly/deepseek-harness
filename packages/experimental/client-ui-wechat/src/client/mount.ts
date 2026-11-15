@@ -5,7 +5,13 @@ import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 /** Services needed to mount the WeChat Client contribution. */
 export const inject = ['remote', 'slots', 'locale']
 
-/** Mount the generated Host Remote before rendering its settings page. */
+/**
+ * Mount the generated Host Remote before rendering its settings page.
+ * @param ctx - Owning Cordis context.
+ * @param contribution - Generated Host Remote contribution.
+ * @param registerUi - Registers the settings UI in its scoped context.
+ * @returns Disposer that releases the settings UI before unmounting its Remote.
+ */
 export async function mountWechat(
   ctx: Context,
   contribution: TypertRemoteContribution,

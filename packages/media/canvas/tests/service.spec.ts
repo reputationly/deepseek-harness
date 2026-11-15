@@ -13,7 +13,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import CanvasService, { CanvasCorruptError, CanvasInputError } from '../src/index.ts'
 import { canvasFile } from '../src/store.ts'
-import type { CanvasChange } from '../src/types.ts'
+import type { CanvasChange, CanvasOperation } from '../src/types.ts'
 
 let directory: string
 let ctx: Context
@@ -51,8 +51,55 @@ async function call(name: string, args: unknown): Promise<{ text: string; isErro
 }
 
 describe('CanvasService', () => {
+  it('normalizes same-entry aliases and leaves rejected cross-entry aliases recoverable', async () => {
+    const character = { id: 'c1', kind: 'character', name: '林夏', description: '夜班店员', aliases: ['林夏', 'Lin', 'LIN'] }
+    const location = { id: 'l1', kind: 'location', name: '便利店', description: '雨夜的便利店', aliases: [] }
+    const saved = await call('studio_bible_update', { upsert: [character, location] })
+    expect(saved.isError).toBe(false)
+    const initial = await ctx.canvas.bibleOf(session)
+    expect(initial.bible.entries[0]?.aliases).toEqual(['Lin'])
+    const file = join(directory, '.canvas', 'bible.json')
+    const original = await readFile(file, 'utf8')
+    const count = changes.length
+    const stranger = { id: 'c2', kind: 'character', name: '陌生男人', description: '深夜买伞的顾客', aliases: ['LIN'] }
+    const rejected = await call('studio_bible_update', { upsert: [stranger], baseRevision: initial.revision })
+    expect(rejected.isError).toBe(true)
+    expect(rejected.text).toContain('repeats the name lin')
+    expect(await readFile(file, 'utf8')).toBe(original)
+    expect(await ctx.canvas.bibleOf(session)).toEqual(initial)
+    expect(changes).toHaveLength(count)
+    const retried = await call('studio_bible_update', {
+      upsert: [{ ...stranger, aliases: ['陌生人'] }], baseRevision: initial.revision,
+    })
+    expect(retried.isError).toBe(false)
+    expect((await ctx.canvas.bibleOf(session)).bible).toMatchObject({ revision: initial.revision + 1, entries: [
+      { id: 'c1' }, { id: 'l1' }, { id: 'c2' },
+    ] })
+  })
+
+  it.each([
+    { shotSize: null },
+    { dialogue: [{ id: 'd1', speaker: 'linxia', line: 'hello' }] },
+  ])('rejects malformed wire updates before writing any part of the operation batch: %j', async (patch) => {
+    await call('canvas_edit', {
+      baseRevision: 0,
+      operations: [{ op: 'add', type: 'storyboard', shots: [{ id: 's1', visual: 'a street' }] }],
+    })
+    const file = canvasFile(directory)
+    const before = await readFile(file, 'utf8')
+    const operations = JSON.parse(JSON.stringify([
+      { op: 'update', node: 'n1', title: 'must not persist' },
+      { op: 'update_shot', node: 'n1', shot: 's1', patch },
+    ])) as CanvasOperation[]
+    await expect(ctx.canvas.edit(session, operations, { baseRevision: 1, origin: 'user' }))
+      .rejects.toBeInstanceOf(CanvasCorruptError)
+    expect(await readFile(file, 'utf8')).toBe(before)
+    expect((await ctx.canvas.read(session)).revision).toBe(1)
+    expect(changes).toHaveLength(1)
+  })
+
   it('reads an empty canvas for a project without a canvas file and writes nothing', async () => {
-    expect(await ctx.canvas.read(session)).toEqual({ version: 2, revision: 0, nextId: 1, nodes: [], edges: [] })
+    expect(await ctx.canvas.read(session)).toEqual({ version: 3, revision: 0, nextId: 1, nodes: [], edges: [] })
     await expect(readFile(canvasFile(directory))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
@@ -176,7 +223,7 @@ describe('canvas tools', () => {
     expect(edit.isError).toBe(false)
     expect(edit.text).toBe('Revision 1.\nCreated n1 (brief), n2 (a), n3 (b), g4 (refs).\nSkipped operation 4 (connect): node ghost does not exist.')
     const listing = await call('canvas_get', {})
-    expect(listing.text.replaceAll(directory, '<project>')).toMatchSnapshot()
+    expect(listing.text.replaceAll(directory, '<project>').replaceAll('\\', '/')).toMatchSnapshot()
     const one = await call('canvas_get', { nodes: ['n1', 'n7'] })
     expect(one.text).toContain(`text="${'x'.repeat(200)}"`)
     expect(one.text).toContain('Not on the canvas: n7')

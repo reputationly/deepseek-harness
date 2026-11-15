@@ -11,6 +11,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { registerEditTools } from '../src/edit-tools.ts'
 import { FfmpegRunner } from '../src/ffmpeg.ts'
 
@@ -25,7 +26,7 @@ let outputIndex = 0
 let callIndex = 0
 
 afterEach(async () => {
-  runner?.dispose()
+  await runner?.dispose()
   if (ctx !== undefined) await ctx.fiber.dispose()
   if (root !== undefined) await rm(root, { recursive: true, force: true })
 })
@@ -37,8 +38,9 @@ describe('local FFmpeg editing', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
+    await ctx.plugin(LocalSubprocessRuntime)
     provideWorkingDirectoryFixture(ctx, root)
-    runner = new FfmpegRunner(ffmpeg, ffprobe, 120_000)
+    runner = new FfmpegRunner(ctx.subprocess, ffmpeg, ffprobe, 120_000)
     session = Session.create(SessionId('local-ffmpeg-session'))
     const input = join(root, 'source.mp4')
     const silent = join(root, 'silent.mp4')

@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "revision": 1,
+  "spec": {
+    "width": 720,
+    "height": 1280,
+    "fps": 24
+  },
+  "tracks": [
+    {
+      "id": "t1",
+      "kind": "text",
+      "muted": false,
+      "volume": 1,
+      "clips": [
+        {
+          "id": "k1",
+          "startMs": 0,
+          "durationMs": 1000,
+          "text": {
+            "content": "First",
+            "position": "bottom",
+            "size": 32
+          }
+        }
+      ]
+    },
+    {
+      "id": "t2",
+      "kind": "video",
+      "muted": false,
+      "volume": 1,
+      "clips": [
+        {
+          "id": "k2",
+          "startMs": 0,
+          "durationMs": 1000,
+          "source": {
+            "node": "n2",
+            "version": "v_import_52748536834ae71c5a843897",
+            "inMs": 0
+          }
+        }
+      ]
+    }
+  ],
+  "history": {}
+}

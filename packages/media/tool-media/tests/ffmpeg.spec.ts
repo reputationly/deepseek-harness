@@ -2,20 +2,27 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Context } from '@deepseek-ai/cordis'
+import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { FfmpegError, FfmpegRunner } from '../src/ffmpeg.ts'
 
 const runners = new Set<FfmpegRunner>()
 const directories = new Set<string>()
+const contexts = new Set<Context>()
 
 function runner(ffmpegPath = process.execPath, ffprobePath = process.execPath, timeoutMs = 5_000): FfmpegRunner {
-  const instance = new FfmpegRunner(ffmpegPath, ffprobePath, timeoutMs)
+  const ctx = new Context()
+  contexts.add(ctx)
+  const instance = new FfmpegRunner(new LocalSubprocessRuntime(ctx), ffmpegPath, ffprobePath, timeoutMs)
   runners.add(instance)
   return instance
 }
 
 afterEach(async () => {
-  for (const instance of runners) instance.dispose()
+  await Promise.all([...runners].map(instance => instance.dispose()))
   runners.clear()
+  await Promise.all([...contexts].map(ctx => ctx.fiber.dispose()))
+  contexts.clear()
   await Promise.all([...directories].map(directory => rm(directory, { recursive: true, force: true })))
   directories.clear()
 })
@@ -74,12 +81,12 @@ describe('FfmpegRunner', () => {
     expect(result.stdout.endsWith('b'.repeat(100))).toBe(true)
   })
 
-  it('maps non-ENOENT spawn failures to process-exit errors', async () => {
+  it('rejects configured directories as missing executables and catches invalid arguments', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'dsh-ffmpeg-directory-'))
     directories.add(directory)
     await expect(runner(directory).exec([])).rejects.toMatchObject({
-      code: 'process-exit',
-      message: /could not start/u,
+      code: 'binary-not-found',
+      message: /未找到 ffmpeg/u,
     })
     await expect(runner().exec(['\u0000'])).rejects.toMatchObject({
       code: 'process-exit',
@@ -91,7 +98,7 @@ describe('FfmpegRunner', () => {
     const instance = runner()
     const pending = instance.exec(['-e', 'setTimeout(() => {}, 5000)'])
     await new Promise<void>(resolve => setImmediate(resolve))
-    instance.dispose()
+    await instance.dispose()
     await expect(pending).rejects.toBeInstanceOf(FfmpegError)
     await expect(instance.exec(['-e', 'process.exit(0)'])).rejects.toMatchObject({ code: 'disposed' })
   })
@@ -109,7 +116,7 @@ describe('FfmpegRunner', () => {
 
     const disposed = runner()
     const neverSpawned = disposed.exec([])
-    disposed.dispose()
+    await disposed.dispose()
     await expect(neverSpawned).rejects.toMatchObject({ code: 'disposed' })
   })
 
@@ -135,7 +142,7 @@ describe('FfmpegRunner', () => {
     await new Promise<void>(resolve => setImmediate(resolve))
     controller.abort('cancel queued work')
     await expect(waiting).rejects.toMatchObject({ code: 'aborted' })
-    instance.dispose()
+    await instance.dispose()
     await expect(Promise.all([activeOne, activeTwo])).rejects.toBeInstanceOf(FfmpegError)
   })
 
@@ -145,7 +152,7 @@ describe('FfmpegRunner', () => {
     const second = instance.exec(['-e', 'setTimeout(() => {}, 5000)'])
     const waiting = instance.exec(['-e', 'process.exit(0)'])
     await new Promise<void>(resolve => setImmediate(resolve))
-    instance.dispose()
+    await instance.dispose()
     await expect(waiting).rejects.toMatchObject({ code: 'disposed' })
     await expect(Promise.all([first, second])).rejects.toBeInstanceOf(FfmpegError)
   })
@@ -157,7 +164,7 @@ describe('FfmpegRunner', () => {
     const controller = new AbortController()
     const waiting = instance.exec(['-e', 'process.exit(0)'], { signal: controller.signal })
     await new Promise<void>(resolve => setImmediate(resolve))
-    instance.dispose()
+    await instance.dispose()
     await expect(waiting).rejects.toMatchObject({ code: 'disposed' })
     controller.abort('disposed')
     await expect(Promise.all([first, second])).rejects.toBeInstanceOf(FfmpegError)

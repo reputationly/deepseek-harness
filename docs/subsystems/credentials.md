@@ -62,6 +62,10 @@ AccountDetails.balance projects recharge wallets in value and promotional wallet
 
 Bonus notification queries return an AccountBonusBatch with the current Platform account id and eligible orders in server order. AccountBonusNotification retains the server message and expiry without projecting credentials. Acknowledgment carries the expected account id and order id; the Host refuses it after an account change. Both notification operations use the initiating UI language through x-client-locale, without a language query parameter.
 
+## Gateway connection status
+
+The [gateway status service](../../packages/api/gateway-status/README.md) reports whether the configured gateway accepts the stored key. `read` returns the cached observation; `refresh` resolves the credential reference again and shares any probe already in flight. The observation distinguishes a missing or rejected key from an unreachable endpoint.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -366,6 +370,28 @@ abstract getDeviceIdentity(): Promise<{ deviceId?: string; userId?: AccountUserI
 ```
 
 Source: [`packages/credentials/deepseek-account/src/index.ts`](../../packages/credentials/deepseek-account/src/index.ts)
+
+<a id="ctxgatewaystatus--gatewaystatusservice"></a>
+
+### `ctx.gatewayStatus` — `GatewayStatusService`
+
+Host service backing the generated `ctx.remote.gatewayStatus` namespace.
+
+```ts cordis-catalog
+/**
+ * Report the latest observation without asking the gateway.
+ * @returns the cached status; `checking` until the first probe settles.
+ */
+@Remote read(): GatewayStatus
+
+/**
+ * Probe the gateway now, sharing any probe already in flight.
+ * @returns the settled observation.
+ */
+@Remote refresh(): Promise<GatewayStatus>
+```
+
+Source: [`packages/api/gateway-status/src/index.ts`](../../packages/api/gateway-status/src/index.ts)
 
 <a id="authorization-events"></a>
 

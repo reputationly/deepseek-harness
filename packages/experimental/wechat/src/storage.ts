@@ -5,6 +5,9 @@ import { dirname, join } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { WechatRecentSession } from './types.ts'
 
+/**
+ * Local login credential record for the linked iLink account.
+ */
 export interface WechatCredentials {
   readonly token: string
   readonly baseUrl: string
@@ -12,6 +15,9 @@ export interface WechatCredentials {
   readonly ownerUserId: string
 }
 
+/**
+ * Saved default workspace, current session and bounded message/session history.
+ */
 export interface WechatState {
   readonly defaultProjectPath?: string
   readonly currentSessionId?: SessionId
@@ -23,9 +29,21 @@ const EMPTY_STATE: WechatState = { recentSessions: [], processedMessageIds: [] }
 
 /** Private, atomic persistence for one local WeChat account. */
 export class WechatStore {
+  /**
+   * Directory containing local WeChat state.
+   */
   readonly directory: string
+  /**
+   * Path of the local iLink credential record.
+   */
   readonly credentialsPath: string
+  /**
+   * Path of the durable iLink poll cursor.
+   */
   readonly cursorPath: string
+  /**
+   * Path of the saved workspace and session state.
+   */
   readonly statePath: string
 
   constructor(home = process.env.DSH_HOME || join(homedir(), '.dsh')) {
@@ -35,11 +53,18 @@ export class WechatStore {
     this.statePath = join(this.directory, 'state.json')
   }
 
+  /**
+   * Create the local store and request owner-only directory permissions.
+   */
   async ensureDirectory(): Promise<void> {
     await mkdir(this.directory, { recursive: true, mode: 0o700 })
     await chmod(this.directory, 0o700)
   }
 
+  /**
+   * Read and validate saved iLink credentials.
+   * @returns Saved credentials, or undefined before linking.
+   */
   async readCredentials(): Promise<WechatCredentials | undefined> {
     try {
       const value: unknown = JSON.parse(await readFile(this.credentialsPath, 'utf8'))
@@ -60,10 +85,18 @@ export class WechatStore {
     }
   }
 
+  /**
+   * Persist the linked account credentials locally.
+   * @param value - Value to transform or persist.
+   */
   async writeCredentials(value: WechatCredentials): Promise<void> {
     await this.writeJson(this.credentialsPath, value)
   }
 
+  /**
+   * Read the saved message-poll cursor.
+   * @returns Saved cursor, or an empty string before the first poll.
+   */
   async readCursor(): Promise<string> {
     try {
       const value: unknown = JSON.parse(await readFile(this.cursorPath, 'utf8'))
@@ -76,10 +109,18 @@ export class WechatStore {
     }
   }
 
+  /**
+   * Persist the latest accepted message-poll cursor.
+   * @param cursor - Last accepted iLink update cursor.
+   */
   async writeCursor(cursor: string): Promise<void> {
     await this.writeJson(this.cursorPath, { get_updates_buf: cursor })
   }
 
+  /**
+   * Read the saved workspace/session state or its initial value.
+   * @returns Saved state, or its initial empty value.
+   */
   async readState(): Promise<WechatState> {
     try {
       const value: unknown = JSON.parse(await readFile(this.statePath, 'utf8'))
@@ -99,6 +140,10 @@ export class WechatStore {
     }
   }
 
+  /**
+   * Persist workspace selection and bounded session/message history.
+   * @param state - Workspace selection and bounded history to save.
+   */
   async writeState(state: WechatState): Promise<void> {
     await this.writeJson(this.statePath, {
       ...state,
@@ -107,6 +152,9 @@ export class WechatStore {
     })
   }
 
+  /**
+   * Remove the saved login and poll cursor when unlinking.
+   */
   async removeCredentialsAndCursor(): Promise<void> {
     await Promise.all([
       rm(this.credentialsPath, { force: true }),
@@ -140,6 +188,10 @@ function isErrno(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code
 }
 
+/**
+ * Resolve the DSH home directory used by the WeChat store.
+ * @returns Resolved DSH home directory.
+ */
 export function resolveWechatHome(): string {
   return dirname(new WechatStore().directory)
 }

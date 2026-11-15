@@ -27,6 +27,11 @@ describe('bible', () => {
     expect(parsed.narrator).toEqual({ voice: 'narrator-1' })
   })
 
+  it('refuses to serialize a candidate that its reader would reject', () => {
+    expect(() => serializeBible({ ...bible, entries: [...bible.entries, ...bible.entries] }))
+      .toThrow('duplicate entry id c1')
+  })
+
   it('migrates a bible without a narrator or aliases', () => {
     const parsed = parseBible(JSON.stringify({
       version: 1, revision: 0, logline: '', style: { visual: '', aspect: '16:9' },

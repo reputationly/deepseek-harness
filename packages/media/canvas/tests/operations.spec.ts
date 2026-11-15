@@ -269,7 +269,7 @@ describe('applyOperations', () => {
     }
     // The newest-versions rule would keep v3 and v4; v1 survives because it is active.
     const rewritten = applyOperations(base, [{ op: 'move', node: 'n1', x: 10, y: 10 }], { limits: narrow, now }).document
-    expect(rewritten.nodes[0]?.versions?.map(version => version.id)).toEqual(['v1', 'v4'])
+    expect(rewritten.nodes[0]?.versions?.map(version => version.id)).toEqual(['v1', 'v3', 'v4'])
     const keptActive = applyOperations(
       { ...base, nodes: [{ ...base.nodes[0]!, versions: versions.slice(0, 4), activeVersion: 'v1' as never }] },
       [{ op: 'set_text', node: 'n1', text: 'body 5' }],
@@ -347,8 +347,8 @@ describe('applyOperations', () => {
 
 describe('checkRevision', () => {
   it('accepts the current revision and rejects a stale one', () => {
-    expect(() => checkRevision({ ...EMPTY_CANVAS, revision: 4 }, 4)).not.toThrow()
-    expect(() => checkRevision({ ...EMPTY_CANVAS, revision: 4 }, undefined)).not.toThrow()
-    expect(() => checkRevision({ ...EMPTY_CANVAS, revision: 4 }, 3)).toThrow(CanvasConflictError)
+    expect(() => { checkRevision({ ...EMPTY_CANVAS, revision: 4 }, 4) }).not.toThrow()
+    expect(() => { checkRevision({ ...EMPTY_CANVAS, revision: 4 }, undefined) }).not.toThrow()
+    expect(() => { checkRevision({ ...EMPTY_CANVAS, revision: 4 }, 3) }).toThrow(CanvasConflictError)
   })
 })

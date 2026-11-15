@@ -43,7 +43,7 @@
               "properties": {
                 "op": {
                   "type": "string",
-                  "description": "add creates a node from type plus text, path, shots, or prompt. update changes title, text, or path. set_gen changes how a media node generates and takes params where null deletes a parameter. set_text and set_shots store a new version; update_shot, insert_shot, remove_shot, and move_shot edit one shot. set_version switches the active version. connect and disconnect take from and to, with an optional role. reorder_refs rewrites the reference order. group frames nodes under title; ungroup dissolves the group.",
+                  "description": "add creates a node from type plus text, path, shots, or prompt. update changes title, text, or path. set_gen changes how a media node generates and takes params where null deletes a parameter. set_text and set_shots store a new version; update_shot, insert_shot, remove_shot, and move_shot edit one shot. set_version adopts a version, or clears adoption when version is null. connect and disconnect take from and to, with an optional role. reorder_refs rewrites the reference order. group frames nodes under title; ungroup dissolves the group.",
                   "enum": [
                     "add",
                     "update",
@@ -247,17 +247,110 @@
                 },
                 "patch": {
                   "type": "object",
-                  "description": "Shot fields update_shot replaces.",
-                  "additionalProperties": true,
-                  "properties": {}
+                  "description": "Shot fields update_shot replaces. Omitted fields stay unchanged. Required fields cannot be null.",
+                  "additionalProperties": false,
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "Short title of the shot, at most 24 characters."
+                    },
+                    "shotSize": {
+                      "type": "string",
+                      "description": "Camera framing; gate G2 needs it before a video is generated.",
+                      "enum": [
+                        "extreme_wide",
+                        "wide",
+                        "full",
+                        "medium",
+                        "medium_close",
+                        "close",
+                        "extreme_close",
+                        "insert"
+                      ]
+                    },
+                    "visual": {
+                      "type": "string",
+                      "description": "What the frame shows."
+                    },
+                    "motion": {
+                      "type": "string",
+                      "description": "What the characters do in the shot."
+                    },
+                    "camera": {
+                      "type": "string",
+                      "description": "Camera movement, or 固定 when the camera holds."
+                    },
+                    "durationSec": {
+                      "type": "number",
+                      "description": "Shot length in seconds."
+                    },
+                    "characters": {
+                      "type": "array",
+                      "description": "Bible entry ids of the characters on screen.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "scene": {
+                      "type": "string",
+                      "description": "Bible entry id of the location."
+                    },
+                    "props": {
+                      "type": "array",
+                      "description": "Bible entry ids of the props on screen.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "dialogue": {
+                      "type": "array",
+                      "description": "Spoken lines of the shot, in order.",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Line id such as d1; omit to number the lines of the shot."
+                          },
+                          "speaker": {
+                            "type": "string",
+                            "description": "Bible entry id of the speaker; omit the field for narration."
+                          },
+                          "line": {
+                            "type": "string",
+                            "description": "What the speaker says, as written."
+                          }
+                        },
+                        "required": [
+                          "line"
+                        ]
+                      }
+                    },
+                    "sfx": {
+                      "type": "string",
+                      "description": "Sound effects of the shot."
+                    },
+                    "negative": {
+                      "type": "string",
+                      "description": "What this shot must not show."
+                    }
+                  }
                 },
                 "after": {
                   "type": "string",
                   "description": "Shot id the moved or inserted shot follows; omit to append."
                 },
                 "version": {
-                  "type": "string",
-                  "description": "Version id set_version activates."
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Version id set_version adopts, or null to clear adoption."
                 },
                 "role": {
                   "type": "string",
@@ -324,7 +417,7 @@
     },
     {
       "name": "canvas_get",
-      "description": "Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges. Nodes report their active version, generation inputs, and whether their storyboard or inputs changed since they were made.",
+      "description": "Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges. Nodes report their adopted version, generation inputs, and whether their storyboard or inputs changed since they were made. A full or narrowed read includes version ids and recipes. Generated media remains a candidate until set_version explicitly adopts it.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -509,7 +602,7 @@
           },
           "lyrics": {
             "type": "string",
-            "description": "Optional lyrics for a music request."
+            "description": "Song lyrics; required by MiniMax Music3. Omit for instrumental creation with a model such as ACE-Step."
           }
         },
         "required": [
@@ -682,6 +775,72 @@
       "parameters": {
         "type": "object",
         "properties": {}
+      }
+    },
+    {
+      "name": "media_edit",
+      "description": "Edit an exact media version locally with FFmpeg. audio_edit trims audio and applies gain and fades; extract_audio makes an audio node from a video; first_frame and last_frame capture images; refresh_tail refreshes the adopted video’s exact-version tail. Read canvas_get first and copy directory, episode, node, and version. Times are milliseconds, volume is linear (0–4). Results are unadopted candidates; use canvas_edit set_version only after the user chooses one. Identical requests reuse their candidate. Local interrupted edits may be explicitly retried; completed files survive failed attachment. No cloud model is called.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "directory": {
+            "type": "string",
+            "description": "Exact project directory from canvas_get."
+          },
+          "episode": {
+            "type": "string",
+            "description": "Captured episode id from canvas_get."
+          },
+          "node": {
+            "type": "string",
+            "description": "Audio or video source node id."
+          },
+          "version": {
+            "type": "string",
+            "description": "Exact retained source version, whether adopted or a candidate."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "audio_edit",
+              "extract_audio",
+              "first_frame",
+              "last_frame",
+              "refresh_tail"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Required for extracts and frames: title of their new node."
+          },
+          "inMs": {
+            "type": "integer",
+            "description": "Audio trim start; omitted means zero."
+          },
+          "outMs": {
+            "type": "integer",
+            "description": "Audio trim end; omitted means the measured source end."
+          },
+          "volume": {
+            "type": "number",
+            "description": "Linear audio gain from 0 to 4; omitted means 1."
+          },
+          "fadeInMs": {
+            "type": "integer",
+            "description": "Fade in over the edited audio; omitted means zero."
+          },
+          "fadeOutMs": {
+            "type": "integer",
+            "description": "Fade out over the edited audio; omitted means zero."
+          }
+        },
+        "required": [
+          "directory",
+          "episode",
+          "node",
+          "version",
+          "operation"
+        ]
       }
     },
     {
@@ -1181,6 +1340,1032 @@
         "required": [
           "description",
           "prompt"
+        ]
+      }
+    },
+    {
+      "name": "timeline_edit",
+      "description": "Edit a timeline using the same commands as the visual editor. Read timeline_get first and pass its revision; a conflict refuses the complete batch. Reread and revise the intended changes instead of retrying an old snapshot. Create the timeline node with canvas_edit. On first edit pass spec and add_track; then add_clip with pinned node/version or text. startMs is position in the timeline; source.inMs is position in the media. ripple_delete shifts later clips on that track only. set_clip replaces the supplied fields, and times must stay within source media duration.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string"
+          },
+          "episode": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "baseRevision": {
+            "type": "integer"
+          },
+          "spec": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "fps": {
+                "type": "integer",
+                "enum": [
+                  24,
+                  25,
+                  30
+                ]
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "fps"
+            ]
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "add_track"
+                    },
+                    "track": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "video",
+                            "audio",
+                            "text"
+                          ]
+                        },
+                        "muted": {
+                          "type": "boolean"
+                        },
+                        "volume": {
+                          "type": "number"
+                        },
+                        "clips": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "startMs": {
+                                "type": "integer"
+                              },
+                              "durationMs": {
+                                "type": "integer"
+                              },
+                              "source": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "node": {
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "type": "string"
+                                  },
+                                  "inMs": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "node",
+                                  "version",
+                                  "inMs"
+                                ]
+                              },
+                              "text": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "content": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string",
+                                    "enum": [
+                                      "top",
+                                      "center",
+                                      "bottom"
+                                    ]
+                                  },
+                                  "size": {
+                                    "type": "integer"
+                                  },
+                                  "color": {
+                                    "type": "string"
+                                  },
+                                  "strokeColor": {
+                                    "type": "string"
+                                  },
+                                  "strokeWidth": {
+                                    "type": "number"
+                                  },
+                                  "fontFamily": {
+                                    "type": "string"
+                                  },
+                                  "lineHeight": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "content",
+                                  "position",
+                                  "size"
+                                ]
+                              },
+                              "volume": {
+                                "type": "number"
+                              },
+                              "opacity": {
+                                "type": "number"
+                              },
+                              "fadeInMs": {
+                                "type": "integer"
+                              },
+                              "fadeOutMs": {
+                                "type": "integer"
+                              },
+                              "fit": {
+                                "type": "string",
+                                "enum": [
+                                  "contain",
+                                  "cover"
+                                ]
+                              },
+                              "transform": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "width": {
+                                    "type": "integer"
+                                  },
+                                  "height": {
+                                    "type": "integer"
+                                  },
+                                  "rotation": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "width",
+                                  "height",
+                                  "rotation"
+                                ]
+                              },
+                              "still": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "static",
+                                      "zoom_in",
+                                      "zoom_out",
+                                      "pan_left",
+                                      "pan_right",
+                                      "pan_up",
+                                      "pan_down"
+                                    ]
+                                  },
+                                  "strength": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "strength"
+                                ]
+                              },
+                              "transitionIn": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "cut",
+                                      "dissolve",
+                                      "fade_black"
+                                    ]
+                                  },
+                                  "durationMs": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "durationMs"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "startMs",
+                              "durationMs"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "muted",
+                        "volume",
+                        "clips"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "track"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "remove_track"
+                    },
+                    "track": {
+                      "type": "string",
+                      "description": "Track id such as t1."
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "track"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "set_track"
+                    },
+                    "track": {
+                      "type": "string",
+                      "description": "Track id such as t1."
+                    },
+                    "muted": {
+                      "type": "boolean"
+                    },
+                    "volume": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "track"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "add_clip"
+                    },
+                    "track": {
+                      "type": "string",
+                      "description": "Track id such as t1."
+                    },
+                    "clip": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "startMs": {
+                          "type": "integer"
+                        },
+                        "durationMs": {
+                          "type": "integer"
+                        },
+                        "source": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "node": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "string"
+                            },
+                            "inMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "version",
+                            "inMs"
+                          ]
+                        },
+                        "text": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "content": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string",
+                              "enum": [
+                                "top",
+                                "center",
+                                "bottom"
+                              ]
+                            },
+                            "size": {
+                              "type": "integer"
+                            },
+                            "color": {
+                              "type": "string"
+                            },
+                            "strokeColor": {
+                              "type": "string"
+                            },
+                            "strokeWidth": {
+                              "type": "number"
+                            },
+                            "fontFamily": {
+                              "type": "string"
+                            },
+                            "lineHeight": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "content",
+                            "position",
+                            "size"
+                          ]
+                        },
+                        "volume": {
+                          "type": "number"
+                        },
+                        "opacity": {
+                          "type": "number"
+                        },
+                        "fadeInMs": {
+                          "type": "integer"
+                        },
+                        "fadeOutMs": {
+                          "type": "integer"
+                        },
+                        "fit": {
+                          "type": "string",
+                          "enum": [
+                            "contain",
+                            "cover"
+                          ]
+                        },
+                        "transform": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "x": {
+                              "type": "number"
+                            },
+                            "y": {
+                              "type": "number"
+                            },
+                            "width": {
+                              "type": "integer"
+                            },
+                            "height": {
+                              "type": "integer"
+                            },
+                            "rotation": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y",
+                            "width",
+                            "height",
+                            "rotation"
+                          ]
+                        },
+                        "still": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "static",
+                                "zoom_in",
+                                "zoom_out",
+                                "pan_left",
+                                "pan_right",
+                                "pan_up",
+                                "pan_down"
+                              ]
+                            },
+                            "strength": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "strength"
+                          ]
+                        },
+                        "transitionIn": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "cut",
+                                "dissolve",
+                                "fade_black"
+                              ]
+                            },
+                            "durationMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "durationMs"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "startMs",
+                        "durationMs"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "track",
+                    "clip"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "move_clip"
+                    },
+                    "track": {
+                      "type": "string",
+                      "description": "Track id such as t1."
+                    },
+                    "clip": {
+                      "type": "string",
+                      "description": "Clip id such as k1, unique across all tracks."
+                    },
+                    "startMs": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "track",
+                    "clip",
+                    "startMs"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "trim_clip"
+                    },
+                    "clip": {
+                      "type": "string",
+                      "description": "Clip id such as k1, unique across all tracks."
+                    },
+                    "inMs": {
+                      "type": "integer"
+                    },
+                    "durationMs": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "clip",
+                    "inMs",
+                    "durationMs"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "split_clip"
+                    },
+                    "clip": {
+                      "type": "string",
+                      "description": "Clip id such as k1, unique across all tracks."
+                    },
+                    "atMs": {
+                      "type": "integer"
+                    },
+                    "rightId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "clip",
+                    "atMs",
+                    "rightId"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "remove_clip"
+                    },
+                    "clip": {
+                      "type": "string",
+                      "description": "Clip id such as k1, unique across all tracks."
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "clip"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "ripple_delete"
+                    },
+                    "clip": {
+                      "type": "string",
+                      "description": "Clip id such as k1, unique across all tracks."
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "clip"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "set_clip"
+                    },
+                    "clip": {
+                      "type": "string",
+                      "description": "Clip id such as k1, unique across all tracks."
+                    },
+                    "patch": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "startMs": {
+                          "type": "integer"
+                        },
+                        "durationMs": {
+                          "type": "integer"
+                        },
+                        "source": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "node": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "string"
+                            },
+                            "inMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "version",
+                            "inMs"
+                          ]
+                        },
+                        "text": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "content": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string",
+                              "enum": [
+                                "top",
+                                "center",
+                                "bottom"
+                              ]
+                            },
+                            "size": {
+                              "type": "integer"
+                            },
+                            "color": {
+                              "type": "string"
+                            },
+                            "strokeColor": {
+                              "type": "string"
+                            },
+                            "strokeWidth": {
+                              "type": "number"
+                            },
+                            "fontFamily": {
+                              "type": "string"
+                            },
+                            "lineHeight": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "content",
+                            "position",
+                            "size"
+                          ]
+                        },
+                        "volume": {
+                          "type": "number"
+                        },
+                        "opacity": {
+                          "type": "number"
+                        },
+                        "fadeInMs": {
+                          "type": "integer"
+                        },
+                        "fadeOutMs": {
+                          "type": "integer"
+                        },
+                        "fit": {
+                          "type": "string",
+                          "enum": [
+                            "contain",
+                            "cover"
+                          ]
+                        },
+                        "transform": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "x": {
+                              "type": "number"
+                            },
+                            "y": {
+                              "type": "number"
+                            },
+                            "width": {
+                              "type": "integer"
+                            },
+                            "height": {
+                              "type": "integer"
+                            },
+                            "rotation": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y",
+                            "width",
+                            "height",
+                            "rotation"
+                          ]
+                        },
+                        "still": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "static",
+                                "zoom_in",
+                                "zoom_out",
+                                "pan_left",
+                                "pan_right",
+                                "pan_up",
+                                "pan_down"
+                              ]
+                            },
+                            "strength": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "strength"
+                          ]
+                        },
+                        "transitionIn": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "cut",
+                                "dissolve",
+                                "fade_black"
+                              ]
+                            },
+                            "durationMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "durationMs"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "clip",
+                    "patch"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "set_spec"
+                    },
+                    "spec": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "width": {
+                          "type": "integer"
+                        },
+                        "height": {
+                          "type": "integer"
+                        },
+                        "fps": {
+                          "type": "integer",
+                          "enum": [
+                            24,
+                            25,
+                            30
+                          ]
+                        }
+                      },
+                      "required": [
+                        "width",
+                        "height",
+                        "fps"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "spec"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "node",
+          "episode",
+          "directory",
+          "baseRevision",
+          "operations"
+        ]
+      }
+    },
+    {
+      "name": "timeline_export",
+      "description": "Export the ready preview bytes as a new immutable video on the canvas. Requires the current timeline revision. The result survives cache cleanup. Existing versions remain unchanged and adopting the exported version is a separate decision.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "Timeline node id from canvas_get."
+          },
+          "revision": {
+            "type": "integer",
+            "description": "Current revision returned by timeline_get."
+          },
+          "episode": {
+            "type": "string",
+            "description": "Episode id from canvas_get; copy it explicitly to keep edits on that episode."
+          },
+          "directory": {
+            "type": "string",
+            "description": "Exact project directory from canvas_get."
+          }
+        },
+        "required": [
+          "node",
+          "revision",
+          "episode",
+          "directory"
+        ]
+      }
+    },
+    {
+      "name": "timeline_get",
+      "description": "Read a timeline node before editing it. Clips pin specific source versions. Times are integer milliseconds; video and text layers paint in track order. An uninitialized timeline needs an explicit output spec on its first edit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string"
+          },
+          "episode": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "episode",
+          "directory"
+        ]
+      }
+    },
+    {
+      "name": "timeline_history",
+      "description": "List saved timeline revisions, newest first. undo and redo name available cursor targets. Restoration creates a new revision and preserves older generations.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string"
+          },
+          "episode": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "episode",
+          "directory"
+        ]
+      }
+    },
+    {
+      "name": "timeline_render",
+      "description": "Build the current timeline full-quality preview with the shared compositor. Read timeline_get first and pass its revision. This queues a local media job; a connected application renders it. queued/rendering/assembling do not mean ready. No cloud model is called. Check timeline_render_status, then timeline_export when ready. Editing invalidates the old preview.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "Timeline node id from canvas_get."
+          },
+          "revision": {
+            "type": "integer",
+            "description": "Current revision returned by timeline_get."
+          },
+          "episode": {
+            "type": "string",
+            "description": "Episode id from canvas_get; copy it explicitly to keep edits on that episode."
+          },
+          "directory": {
+            "type": "string",
+            "description": "Exact project directory from canvas_get."
+          }
+        },
+        "required": [
+          "node",
+          "revision",
+          "episode",
+          "directory"
+        ]
+      }
+    },
+    {
+      "name": "timeline_render_status",
+      "description": "Read the current timeline preview state. Only ready exposes a complete MP4 matching the current revision and pinned source versions. An interrupted job resumes local cache work after reconnect; failed and cancelled are terminal until explicitly retried.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "Timeline node id from canvas_get."
+          },
+          "episode": {
+            "type": "string",
+            "description": "Episode id from canvas_get; copy it explicitly to keep edits on that episode."
+          },
+          "directory": {
+            "type": "string",
+            "description": "Exact project directory from canvas_get."
+          }
+        },
+        "required": [
+          "node",
+          "episode",
+          "directory"
+        ]
+      }
+    },
+    {
+      "name": "timeline_restore",
+      "description": "Restore a saved revision, or follow the current undo/redo target from timeline_history. Pass the reviewed live baseRevision. Conflicts refuse the whole operation; reread and review before trying again.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string"
+          },
+          "episode": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "baseRevision": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "restore",
+              "undo",
+              "redo"
+            ]
+          }
+        },
+        "required": [
+          "node",
+          "episode",
+          "directory",
+          "revision",
+          "baseRevision",
+          "mode"
         ]
       }
     },

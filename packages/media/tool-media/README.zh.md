@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-Agent 可通过 OpenAI 兼容网关生成图片、语音、音乐和视频，也可使用 FFmpeg 剪辑本地音视频。生成和剪辑的媒体可添加到当前项目画布。本地剪辑需要可用的 FFmpeg 程序；媒体生成需要配置网关凭据。
+Agent 可通过 OpenAI 兼容网关生成图片、语音、音乐和视频，也可使用 FFmpeg 剪辑本地音视频。生成和剪辑的媒体可添加到当前项目画布。Host 必须通过 `@deepseek-ai/dsh-subprocess-local` 提供本地 `subprocess` 执行能力。本地剪辑需要可用的 FFmpeg 程序；媒体生成需要配置网关凭据。
 
 ## 目录
 
@@ -47,9 +47,17 @@ Agent 可通过 OpenAI 兼容网关生成图片、语音、音乐和视频，也
 
 生成的文件写入 `outputDir`，该路径相对进程工作目录解析。异步的音乐和视频请求会轮询，直到完成或超过 `taskTimeoutMs`。
 
-网关发布能力目录（`GET /v1/ov/capabilities`）时，`generate_image` 和 `generate_video` 从目录取模型和可接受的参数值，而不使用 `imageModel` 和 `videoModel`。目录按 key 读取，在内存中缓存 60 秒，并以 key 摘要为索引镜像到 `catalogCacheFile`（默认 `<DSH_HOME>/cache/ov-catalog.json`），因此网关中断时回退到该 key 上次看到的目录。设置 `catalog: false` 则只使用配置的模型。`videoDefaultDuration`（默认 5）是用户未指定时推荐的时长。
+在画布会话中，四种 `generate_*` 工具均先创建输出节点，再通过与 `canvas_generate` 相同的持久运行器执行；组合必须提供 Host 任务服务和控制器。视觉生成要求已填写的项目设定集。工具返回成功表示版本已挂载、节点已退出排队或运行状态。没有画布的部署保留独立文件生成模式。
 
-`canvas_generate` 为指定节点规划并执行生成：一张分镜表按切段结果每段一个视频节点，已有节点覆盖同一段时复用，需要承接上一段画面的段用它的尾帧作首帧。超过 `confirmVideoCalls`、`confirmVideoSeconds`、`confirmImageCalls`、`confirmSpeechLines` 或 `confirmMusicCalls` 时，工具返回预算单与令牌而不花钱；模型把预算给用户看，再带令牌调用一次。确认后的运行在任务登记完成后立即返回，并给出任务 id；每个任务自己发完成通知，并把节点状态保持在 `queued`、`running`、清空或 `failed` 之间同步。已有 `queued`/`running` 状态的节点会以 `already_running` 拒绝；上一个进程遗留的状态会变成 `failed`，原因是 `interrupted by a restart`。`storyboard_voice` 为每句台词建一个音频节点，并按台词 id 复用。每次调用注册为 `media` 任务，可以像其他后台任务一样取消与查看。`@名字` 提及隐含的参考图会加进调用并连成 `ref` 边；项目分辨率会换算成网关目录提供的档位。
+打开画布会对账 `.canvas/<episode-file>.media/` 检查点：已完成文件幂等挂载，已知远端任务 id 继续查询而不重新提交。准备阶段失败可重试；付费提交结果未知或远端请求被本地取消时，需要先核实供应商历史记录。修改生成参数不会清除 `recoveryRequired`。备份应保留检查点与 `outputDir`。自定义组合参见[升级指南](../../../docs/upgrade-guide/v0.2.2-rc.1/canvas-media-recovery/guide.zh.md)。
+
+Host 退出时会保留已知远端任务和已有文件，供重新打开后恢复。显式取消的检查点保持终止；在区分退出与用户取消之前创建的取消记录也保持终止。
+
+Windows 盘符路径、UNC 路径及 `file:` URL 均按本地媒体引用处理。本地参考语音编码为 data URI 上传；HTTP(S) 和 data 语音引用原样传递。FFmpeg 输入只接受本地文件。浏览器不能解码已记录的视频时，`media.videoPreview` 使用本地 FFmpeg 在 `.canvas/previews/` 创建 WebM/VP9/Opus 缓存，保留原始文件且不请求云端。
+
+网关发布能力目录（`GET /v1/ov/capabilities`）时，`generate_image` 和 `generate_video` 从目录取模型和可接受的参数值，而不使用 `imageModel` 和 `videoModel`。音频请求同样按目录校验模型可用性、模式和传输方式；查询失败且没有可用缓存目录时，会拒绝音频提交。目录按 key 读取，在内存中缓存 60 秒，并以 key 摘要为索引镜像到 `catalogCacheFile`（默认 `<DSH_HOME>/cache/ov-catalog.json`），因此网关中断时回退到该 key 上次看到的目录。设置 `catalog: false` 则只使用配置的模型。`videoDefaultDuration`（默认 5）是用户未指定时推荐的时长。
+
+`canvas_generate` 为指定节点规划并执行生成：一张分镜表按切段结果每段一个视频节点，已有节点覆盖同一段时复用，需要承接上一段画面的段用它的尾帧作首帧。超过 `confirmVideoCalls`、`confirmVideoSeconds`、`confirmImageCalls`、`confirmSpeechLines` 或 `confirmMusicCalls` 时，工具返回预算单与令牌而不花钱；模型把预算给用户看，再带令牌调用一次。确认后的运行在任务登记完成后立即返回，并给出任务 id；每个任务自己发完成通知，并把节点状态保持在 `queued`、`running`、清空或 `failed` 之间同步。已有 `queued`/`running` 状态的节点会以 `already_running` 拒绝；没有可恢复记录的遗留状态会变成 `failed`，原因是 `interrupted by a restart`。`storyboard_voice` 为每句台词建一个音频节点，并按台词 id 复用。每次调用注册为 `media` 任务，可以像其他后台任务一样取消与查看。`@名字` 提及隐含的参考图会加进调用并连成 `ref` 边；项目分辨率会换算成网关目录提供的档位。
 
 FFmpeg 和 FFprobe 默认从 `PATH` 查找。macOS arm64 和 Windows x64 的 Desktop 安装包自带这两个程序；其他部署必须安装它们或设置对应路径。使用非 ASCII 的 `drawtext` 时，需将 `fontFile` 设为绝对字体路径。
 
@@ -83,7 +91,7 @@ FFmpeg 和 FFprobe 默认从 `PATH` 查找。macOS arm64 和 Windows x64 的 Des
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-`generate_image` 和 `generate_speech` 是同步的：网关内联返回媒体，或返回一个会过期的 URL，工具在返回前下载它。`generate_music` 和 `generate_video` 提交任务并轮询其状态，因为这些模型要运行数分钟。音乐请求把提示词作为 `instructions` 发送，网关需要它来决定编曲。
+音乐和视频使用异步任务。语音遵循目录声明的传输方式：`videos_task` 保存远端任务 id 以便恢复，`audio_speech` 保留旧的 `/audio/speech` 请求。Music3 将歌词作为提示词，风格作为 instructions。YuE2 保存规划参数和返回的 ABC 乐谱以便继续创作；ACE-Step 支持新建、参考改编和区间重绘。Breeze TTS 2 使用音色设计指令和表达事件；当前传输未开放参考克隆，因此会明确拒绝。解析后的音频输入保存来源节点、版本、角色和路径。
 
 语音和音乐返回 `{ path, model }`，并在可用时把文件添加为画布音频节点；网关的媒体 URL 会过期，因此工具在返回前写入文件。
 
@@ -155,8 +163,8 @@ FFmpeg 和 FFprobe 默认从 `PATH` 查找。macOS arm64 和 Windows x64 的 Des
 
 媒体生成和本地剪辑依赖不同的网关与本地程序。
 
-- 语音合成需要参考音色来源；网关拒绝预设音色名，因此必须给模型一个音频 URL 或 data URI。
-- 语音和音乐模型来自配置而不是发现；只有图片和视频遵循能力目录。
+- IndexTTS 需要参考音频；Breeze 使用音色设计指令，不使用预设音色名或参考克隆。
+- 开启目录发现时，音频模型必须由该 key 的目录提供。独立工具的默认模型仍来自部署配置；画布节点可以明确选择目录中的模型。
 - 视频和音乐在工具预算内运行，因此很长的渲染需要更大的 `taskTimeoutMs`，而不是后台任务。
 - 本地剪辑需要可用的 FFmpeg 和 FFprobe 程序。非 ASCII 的 `drawtext` 需要配置字体文件。
 

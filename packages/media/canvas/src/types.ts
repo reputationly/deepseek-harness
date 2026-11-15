@@ -92,7 +92,7 @@ export interface BeatGrid {
 
 /** One stored version of a node's content. */
 export interface NodeVersion {
-  /** `v<k>`, increasing within the node. */
+  /** Opaque version identity within its node. */
   readonly id: VersionId
   /** Absolute media file path; present on image, video, and audio versions. */
   readonly path?: string
@@ -147,7 +147,7 @@ export interface GenerationSpec {
 export type NodeStatus =
   | { readonly state: 'queued'; readonly jobId: JobId; readonly at: string }
   | { readonly state: 'running'; readonly jobId: JobId; readonly at: string; readonly progress?: number }
-  | { readonly state: 'failed'; readonly at: string; readonly error: string; readonly retryable: boolean }
+  | { readonly state: 'failed'; readonly jobId?: JobId; readonly at: string; readonly error: string; readonly retryable: boolean; readonly recoveryRequired?: boolean }
 
 /** Timeline data of a `timeline` node, stored beside the canvas. */
 export interface TimelineRef {
@@ -186,9 +186,9 @@ export interface CanvasNode {
   readonly group?: CanvasNodeId
   /** Whether a user positioned the node; layout never moves a placed node. */
   readonly placed?: boolean
-  /** Stored versions, oldest first; the active version is never evicted by the version limit. */
+  /** Stored versions, oldest first; adopted and referenced versions survive history trimming. */
   readonly versions?: readonly NodeVersion[]
-  /** Version whose content the node currently shows. */
+  /** Explicitly adopted version; absent means candidates exist without an adopted selection. */
   readonly activeVersion?: VersionId
   /** How the node generates its content. */
   readonly gen?: GenerationSpec
@@ -198,8 +198,8 @@ export interface CanvasNode {
   readonly bible?: BibleEntryId
   /** Timeline data; present on `timeline` nodes. */
   readonly timeline?: TimelineRef
-  /** Video version a tail-frame image was taken from. */
-  readonly tailOf?: { readonly node: CanvasNodeId; readonly version: VersionId }
+  /** Cached tail image and originating video version; absent sourceVersion is legacy metadata. */
+  readonly tailOf?: { readonly node: CanvasNodeId; readonly version: VersionId; readonly sourceVersion?: VersionId }
   /** The shots this video stands for no longer exist in its storyboard. */
   readonly stale?: boolean
   /** An input edge now points at a newer version than the one this node was generated from. */
@@ -222,7 +222,7 @@ export interface CanvasEdge {
 
 /** The persisted canvas of one episode. */
 export interface CanvasDocument {
-  readonly version: 2
+  readonly version: 3
   /** Incremented by every successful edit. */
   readonly revision: number
   /** Next numeric id suffix; never reused after removals. */
@@ -304,6 +304,12 @@ export type CanvasOperation =
     readonly title?: string
     readonly text?: string
     readonly path?: string
+    /** Host-side artifact placement; true leaves the initial version unadopted. */
+    readonly candidate?: true
+    /** Captured file inputs of the initial version. */
+    readonly inputs?: readonly NodeInput[]
+    /** Host-side identity, recipe, and measured metadata for the initial artifact. Content remains in path/text/shots. */
+    readonly initialVersion?: Pick<NodeVersion, 'id' | 'params' | 'durationMs' | 'width' | 'height'>
     readonly gen?: GenerationSpec
     readonly shots?: readonly Shot[]
     readonly bible?: BibleEntryId
@@ -311,14 +317,14 @@ export type CanvasOperation =
   }
   | { readonly op: 'update'; readonly node: string; readonly title?: string; readonly text?: string; readonly path?: string }
   | { readonly op: 'remove'; readonly node: string }
-  | { readonly op: 'set_gen'; readonly node: string; readonly gen: Partial<Omit<GenerationSpec, 'params'>> & { readonly params?: Readonly<Record<string, string | number | boolean | null>> } }
+  | { readonly op: 'set_gen'; readonly node: string; readonly gen: Partial<Omit<GenerationSpec, 'params' | 'model'>> & { readonly model?: string | null; readonly params?: Readonly<Record<string, string | number | boolean | null>> } }
   | { readonly op: 'set_text'; readonly node: string; readonly text: string }
   | { readonly op: 'set_shots'; readonly node: string; readonly shots: readonly Shot[] }
   | { readonly op: 'update_shot'; readonly node: string; readonly shot: string; readonly patch: Partial<Omit<Shot, 'id'>> }
   | { readonly op: 'insert_shot'; readonly node: string; readonly after?: string; readonly shot: Omit<Shot, 'id'> }
   | { readonly op: 'remove_shot'; readonly node: string; readonly shot: string }
   | { readonly op: 'move_shot'; readonly node: string; readonly shot: string; readonly after?: string }
-  | { readonly op: 'set_version'; readonly node: string; readonly version: string }
+  | { readonly op: 'set_version'; readonly node: string; readonly version: string | null }
   | {
     /** Host-side: append a version a generation produced. Callers never build this from a model request. */
     readonly op: 'append_version'
@@ -341,7 +347,7 @@ export type CanvasOperation =
     /** Host-side: record the frame a video node stores as its tail; `null` clears it. */
     readonly op: 'set_tail'
     readonly node: string
-    readonly tailOf: { readonly node: CanvasNodeId; readonly version: VersionId } | null
+    readonly tailOf: { readonly node: CanvasNodeId; readonly version: VersionId; readonly sourceVersion?: VersionId } | null
   }
   | {
     /** Host-side: mirror a generation task's state on the node; `null` clears it. */
@@ -388,12 +394,35 @@ export interface CanvasRevisions {
   readonly project?: number
   readonly bible?: number
   readonly production?: number
+  /** Timeline nodes whose independent editing documents changed. */
+  readonly timelines?: readonly { readonly node: CanvasNodeId; readonly revision: number }[]
 }
 
 /** One episode as the Client lists it. */
 export interface CanvasEpisode {
   readonly id: EpisodeId
   readonly title: string
+}
+
+/** Captured project and episode owning one canvas interaction. */
+export interface CanvasScope {
+  readonly directory: string
+  readonly episode: EpisodeId
+}
+
+/** Reported editor selection; drafts are hints and never replace saved project data. */
+export interface CanvasEditorContext {
+  readonly scope: CanvasScope
+  readonly application: 'canvas' | 'timeline' | 'music' | 'speech'
+  readonly revision: number
+  readonly available: boolean
+  /** Omitted when this surface does not report its unsaved form state. */
+  readonly dirty?: boolean
+  readonly node?: CanvasNodeId
+  readonly version?: VersionId
+  readonly timelineRevision?: number
+  readonly clips?: readonly TimelineClipId[]
+  readonly playheadMs?: number
 }
 
 /** One project's canvas as a Client reads it. */
@@ -440,5 +469,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'canvas/unsupported-version': { readonly file: string; readonly version: number }
     /** The caller's base revision is behind the document; nothing was written. */
     'canvas/conflict': { readonly expected: number; readonly actual: number }
+    /** The requested command or project scope was rejected before applying a timeline edit. */
+    'canvas/invalid-input': { readonly reason: string }
   }
 }

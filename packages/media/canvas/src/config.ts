@@ -25,6 +25,8 @@ export interface Config {
   maxSegmentSeconds?: number
   /** Edits kept in the undo journal of one episode. */
   journalLimit?: number
+  /** Previous timeline revisions kept per node, in addition to its live revision. */
+  timelineHistoryLimit?: number
 }
 
 /** Bounds with deployment defaults applied. */
@@ -41,6 +43,7 @@ export const Config: z<Config> = z.object({
   maxShotsPerStoryboard: z.number().default(24),
   maxSegmentSeconds: z.number().default(15),
   journalLimit: z.number().default(200),
+  timelineHistoryLimit: z.number().default(100),
 })
 
 /**
@@ -60,6 +63,7 @@ export function resolveConfig(config: Config): ResolvedConfig {
     maxShotsPerStoryboard: config.maxShotsPerStoryboard ?? 24,
     maxSegmentSeconds: config.maxSegmentSeconds ?? 15,
     journalLimit: config.journalLimit ?? 200,
+    timelineHistoryLimit: config.timelineHistoryLimit ?? 100,
   }
   for (const [field, value] of Object.entries(resolved)) {
     if (!Number.isInteger(value) || value < 1) throw new Error(`canvas Config ${field} must be a positive integer`)

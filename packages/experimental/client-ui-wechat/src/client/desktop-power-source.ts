@@ -1,11 +1,17 @@
 /** WeChat's independent subscription to the Desktop power bridge. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 
+/**
+ * Desktop-owned keep-awake preference and its transition state.
+ */
 export interface WechatPowerState {
   readonly preventSleep: boolean
   readonly changing: boolean
 }
 
+/**
+ * Versioned Desktop power operations exposed to the WeChat settings card.
+ */
 export interface WechatPowerBridge {
   /** @returns The current shell-owned power preference. */
   get(): Promise<WechatPowerState>
@@ -15,6 +21,9 @@ export interface WechatPowerBridge {
   subscribe(listener: (state: WechatPowerState) => void): () => void
 }
 
+/**
+ * Power preference, pending request and failure state observed by settings.
+ */
 export interface WechatPowerSnapshot {
   state?: WechatPowerState
   failed: boolean
@@ -23,6 +32,9 @@ export interface WechatPowerSnapshot {
 
 /** Client adapter for one WeChat settings card. */
 export class WechatDesktopPowerSource {
+  /**
+   * Observable snapshot read by the power settings controls.
+   */
   readonly store = createSnapshotStore<WechatPowerSnapshot>({ failed: false })
   private live = true
   private revision = 0
@@ -47,6 +59,7 @@ export class WechatDesktopPowerSource {
   }
 
   /**
+   * Apply a keep-awake preference through the available Desktop bridge.
    * @param preventSleep - Whether the app should prevent system suspension.
    */
   async setPreventSleep(preventSleep: boolean): Promise<void> {

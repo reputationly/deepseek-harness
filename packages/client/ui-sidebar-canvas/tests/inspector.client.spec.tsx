@@ -29,7 +29,7 @@ const video: CanvasNode = {
 }
 
 const document: CanvasDocument = {
-  version: 2, revision: 1, nextId: 5, edges: [
+  version: 3, revision: 1, nextId: 5, edges: [
     { id: 'a->v1:ref', source: 'a' as never, target: 'v1' as never, kind: 'reference', role: 'ref', order: 0 },
     { id: 'b->v1:ref', source: 'b' as never, target: 'v1' as never, kind: 'reference', role: 'ref', order: 1 },
     { id: 'f->v1:first_frame', source: 'f' as never, target: 'v1' as never, kind: 'reference', role: 'first_frame' },
@@ -95,11 +95,11 @@ function GenerationProbe({ document, planNodes, generateNodes, t }: GenerationPr
 it('lists the model, its catalog parameters, and the node prompt', async () => {
   mount()
   await waitFor(() => { expect(capabilities).toHaveBeenCalledWith('generate_video') })
-  expect((screen.getByLabelText('inspector.model') as HTMLSelectElement).value).toBe('video-model')
+  expect(screen.getByLabelText<HTMLSelectElement>('inspector.model').value).toBe('video-model')
   const duration = screen.getByLabelText('duration') as HTMLSelectElement
   expect(duration.value).toBe('6')
-  expect((screen.getByLabelText('resolution') as HTMLSelectElement).value).toBe('2K')
-  expect((screen.getByLabelText('inspector.prompt') as HTMLTextAreaElement).value).toBe('雨夜')
+  expect(screen.getByLabelText<HTMLSelectElement>('resolution').value).toBe('2K')
+  expect(screen.getByLabelText<HTMLTextAreaElement>('inspector.prompt').value).toBe('雨夜')
 })
 
 it('applies model, prompt, and numeric parameters as one generation update', async () => {
@@ -109,8 +109,8 @@ it('applies model, prompt, and numeric parameters as one generation update', asy
   fireEvent.change(screen.getByLabelText('inspector.prompt'), { target: { value: '新提示' } })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
   expect(h.edit).toHaveBeenCalledWith([{
-    op: 'set_gen', node: 'v1', gen: { model: 'video-model', prompt: '新提示', params: { duration: 10 } },
-  }])
+    op: 'set_gen', node: 'v1', gen: { prompt: '新提示', params: { duration: 10 } },
+  }], expect.objectContaining({ baseRevision: 1 }))
 })
 
 it('resets an applied parameter draft when local history restores the persisted value', async () => {
@@ -134,7 +134,7 @@ it('resets an applied parameter draft when local history restores the persisted 
   fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
   expect(fieldValue('duration')).toBe('10')
   rendered.rerender(<Inspector {...props} node={restored} historyEpoch={1} />)
-  expect(fieldValue('duration')).toBe('5')
+  await waitFor(() => { expect(fieldValue('duration')).toBe('5') })
 })
 
 it('keeps an unsaved inspector draft when an external document refreshes', async () => {
@@ -158,6 +158,55 @@ it('keeps an unsaved inspector draft when an external document refreshes', async
   expect(fieldValue('duration')).toBe('10')
 })
 
+it('retains a conflicting prompt draft until the user explicitly overwrites the changed field', async () => {
+  const edit = vi.fn<InspectorProps['edit']>(async () => {})
+  const props: InspectorProps = { document, node: video, placement: 'sidebar', capabilities, edit, close: vi.fn(), t }
+  const rendered = render(<Inspector {...props} />)
+  fireEvent.change(screen.getByLabelText('inspector.prompt'), { target: { value: '用户草稿' } })
+  const external = { ...video, gen: { ...video.gen!, prompt: 'Agent 新提示' } }
+  rendered.rerender(<Inspector {...props} document={{ ...document, revision: 2 }} node={external} />)
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  expect(edit).not.toHaveBeenCalled()
+  expect(fieldValue('inspector.prompt')).toBe('用户草稿')
+  expect(screen.getByRole('alert').textContent).toContain('inspector.conflict')
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.overwriteDraft' }))
+  expect(edit).toHaveBeenCalledWith([{ op: 'set_gen', node: 'v1', gen: { prompt: '用户草稿' } }], expect.objectContaining({ baseRevision: 2 }))
+})
+
+it('saves an edited duration without replaying an older prompt over an external edit', async () => {
+  const edit = vi.fn<InspectorProps['edit']>(async () => {})
+  const props: InspectorProps = { document, node: video, placement: 'sidebar', capabilities, edit, close: vi.fn(), t }
+  const rendered = render(<Inspector {...props} />)
+  await waitFor(() => { expect(screen.getByLabelText('duration')).toBeTruthy() })
+  fireEvent.change(screen.getByLabelText('duration'), { target: { value: '10' } })
+  rendered.rerender(<Inspector {...props} document={{ ...document, revision: 2 }} node={{ ...video, gen: { ...video.gen!, prompt: 'Agent 新提示' } }} />)
+  expect(fieldValue('inspector.prompt')).toBe('Agent 新提示')
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  expect(edit).toHaveBeenCalledWith([{ op: 'set_gen', node: 'v1', gen: { params: { duration: 10 } } }], expect.objectContaining({ baseRevision: 2 }))
+})
+
+it('captures a fresh baseline when editing a field that changed while the form was pristine', async () => {
+  const edit = vi.fn<InspectorProps['edit']>(async () => {})
+  const props: InspectorProps = { document, node: video, placement: 'sidebar', capabilities, edit, close: vi.fn(), t }
+  const rendered = render(<Inspector {...props} />)
+  rendered.rerender(<Inspector {...props} document={{ ...document, revision: 2 }} node={{ ...video, gen: { ...video.gen!, prompt: 'Agent 新提示' } }} />)
+  expect(fieldValue('inspector.prompt')).toBe('Agent 新提示')
+  fireEvent.change(screen.getByLabelText('inspector.prompt'), { target: { value: '在新提示上修改' } })
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
+  expect(edit).toHaveBeenCalledWith([{ op: 'set_gen', node: 'v1', gen: { prompt: '在新提示上修改' } }], expect.objectContaining({ baseRevision: 2 }))
+  expect(screen.queryByRole('alert')).toBeNull()
+})
+
+it('discards a conflicting draft only after the user chooses to reload it', async () => {
+  const props: InspectorProps = { document, node: video, placement: 'sidebar', capabilities, edit: vi.fn(async () => {}), close: vi.fn(), t }
+  const rendered = render(<Inspector {...props} />)
+  fireEvent.change(screen.getByLabelText('inspector.prompt'), { target: { value: '用户草稿' } })
+  rendered.rerender(<Inspector {...props} node={{ ...video, gen: { ...video.gen!, prompt: 'Agent 新提示' } }} />)
+  fireEvent.click(screen.getByRole('button', { name: 'inspector.reloadDraft' }))
+  expect(fieldValue('inspector.prompt')).toBe('Agent 新提示')
+  expect(screen.queryByRole('alert')).toBeNull()
+})
+
 it('reorders references by drag and removes one', async () => {
   const h = mount()
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
@@ -170,11 +219,35 @@ it('reorders references by drag and removes one', async () => {
   expect(h.edit).toHaveBeenCalledWith([{ op: 'disconnect', from: 'a', to: 'v1', role: 'ref' }])
 })
 
+it('offers ready images as frame inputs, excludes derived tails, and replaces slots with a captured revision', () => {
+  const ready: CanvasNode = {
+    ...document.nodes[1]!, activeVersion: 'image' as never,
+    versions: [{ id: 'image' as never, path: '/ref.png', createdAt: 'now', origin: 'user' }],
+  }
+  const tail: CanvasNode = { ...ready, id: 'tail' as never, title: 'Generated tail' }
+  const next = {
+    ...document, nodes: [video, ready, document.nodes[2]!, document.nodes[3]!, tail],
+    edges: [...document.edges, { id: 'v1->tail', source: video.id, target: tail.id, kind: 'derivation' as const }],
+  }
+  const h = mount({ document: next })
+  const first = screen.getByLabelText('inspector.firstFrame') as HTMLSelectElement
+  expect(first.querySelector<HTMLOptionElement>('option[value="tail"]')?.disabled).toBe(true)
+  expect(first.querySelector<HTMLOptionElement>('option[value="b"]')?.disabled).toBe(true)
+  expect(first.querySelector<HTMLOptionElement>('option[value="a"]')?.disabled).toBe(false)
+  fireEvent.change(first, { target: { value: 'a' } })
+  expect(h.edit).toHaveBeenCalledWith([
+    { op: 'disconnect', from: 'f', to: 'v1', role: 'first_frame' },
+    { op: 'connect', from: 'a', to: 'v1', kind: 'reference', role: 'first_frame' },
+  ], { baseRevision: 1 })
+  fireEvent.change(screen.getByLabelText('inspector.lastFrame'), { target: { value: 'a' } })
+  expect(h.edit).toHaveBeenCalledWith([{ op: 'connect', from: 'a', to: 'v1', kind: 'reference', role: 'last_frame' }], { baseRevision: 1 })
+})
+
 it('clears a frame slot and switches the shown version', async () => {
   const h = mount()
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.clearFrame' }))
-  expect(h.edit).toHaveBeenCalledWith([{ op: 'disconnect', from: 'f', to: 'v1', role: 'first_frame' }])
+  expect(h.edit).toHaveBeenCalledWith([{ op: 'disconnect', from: 'f', to: 'v1', role: 'first_frame' }], { baseRevision: 1 })
   fireEvent.click(screen.getAllByRole('button', { name: 'inspector.useVersion' })[0] as HTMLElement)
   expect(h.edit).toHaveBeenCalledWith([{ op: 'set_version', node: 'v1', version: 'v1' }])
 })
@@ -337,8 +410,8 @@ it('edits a free-text parameter and switches the model choice', async () => {
   fireEvent.change(screen.getByLabelText('inspector.model'), { target: { value: 'second-model' } })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
   expect(edit).toHaveBeenCalledWith([{
-    op: 'set_gen', node: 'v1', gen: { model: 'second-model', prompt: '雨夜', params: { duration: 6, note: '自由文本' } },
-  }])
+    op: 'set_gen', node: 'v1', gen: { model: 'second-model', params: { note: '自由文本' } },
+  }], expect.objectContaining({ baseRevision: 1 }))
 })
 
 it('cancels the budget dialog and reports a failure to start generation', async () => {
@@ -402,7 +475,7 @@ it('shows a numeric parameter control and a missing reference name', async () =>
   }])
   mount({ capabilities })
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
-  expect((screen.getByLabelText('seed') as HTMLInputElement).type).toBe('number')
+  expect(screen.getByLabelText<HTMLInputElement>('seed').type).toBe('number')
 })
 
 it('applies the deployment default model when none was chosen', async () => {
@@ -411,7 +484,7 @@ it('applies the deployment default model when none was chosen', async () => {
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })
   fireEvent.change(screen.getByLabelText('inspector.model'), { target: { value: '' } })
   fireEvent.click(screen.getByRole('button', { name: 'inspector.apply' }))
-  expect(edit).toHaveBeenCalledWith([{ op: 'set_gen', node: 'v1', gen: { prompt: '雨夜', params: { duration: 6 } } }])
+  expect(edit).toHaveBeenCalledWith([{ op: 'set_gen', node: 'v1', gen: { model: null } }], expect.objectContaining({ baseRevision: 1 }))
 })
 
 it('shows the reference source id when the document lost that node', async () => {
@@ -419,7 +492,7 @@ it('shows the reference source id when the document lost that node', async () =>
     document: {
       ...document,
       nodes: document.nodes.filter(node => node.id !== 'a'),
-    } as never,
+    },
     capabilities,
   })
   await waitFor(() => { expect(capabilities).toHaveBeenCalled() })

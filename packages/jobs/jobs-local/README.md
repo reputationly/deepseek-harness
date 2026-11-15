@@ -104,7 +104,7 @@ This section explains the design decisions behind the registry and points at the
 
 ### Teardown
 
-Owner disposal (`disposeOwned`) cancels the owner's jobs, awaits their settlement, removes their records, and announces each removal — the one visible-set change no per-job record carries. Service disposal (`disposeAll`) cancels all live jobs, awaits settlement, removes every record (announcing each removal, so a subscriber mounted outside the service drops its rows), then detaches the cross-fiber owner-cleanup effects.
+Owner disposal (`disposeOwned`) cancels the owner's jobs, awaits their settlement, removes their records, and announces each removal — the one visible-set change no per-job record carries. Service disposal (`disposeAll`) cancels all live jobs, awaits settlement, removes every record (announcing each removal, so a subscriber mounted outside the service drops its rows), then detaches the cross-fiber owner-cleanup effects. Both supply `teardown` to the producer's cancel hook; `kill` supplies `kill`.
 
 </details>
 

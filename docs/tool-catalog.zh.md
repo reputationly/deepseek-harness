@@ -54,8 +54,8 @@
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@deepseek-ai/dsh-canvas` | `canvas_edit`、`canvas_get` | `ctx.workingDirectory`、`ctx.tools`、`an owning Agent session` | `tool/call`、`tool/result`、`the project canvas file` | - | 画布属于调用方 Session 的项目目录；Web 的 ui-sidebar-canvas 负责显示。 |
-| `@deepseek-ai/dsh-tool-media` | `generate_image`、`generate_music`、`generate_speech`、`generate_video` | `ctx.tools`、`ctx.credentials`、`ctx.canvas for node inputs and result nodes` | `tool/call`、`tool/result`、`generated media files`、`the project canvas file` | - | 模型和可接受的参数值在调用时取自网关能力目录，而不是 schema。 |
+| `@deepseek-ai/dsh-canvas` | `canvas_edit`, `canvas_get`, `studio_bible_update`, `studio_episode_create`, `studio_episode_use`, `studio_expand_script`, `studio_project_create`, `studio_stage`, `timeline_edit`, `timeline_get`, `timeline_history`, `timeline_restore` | `ctx.workingDirectory`, `ctx.tools`, `an owning Agent session` | `tool/call`, `tool/result`, `the project canvas file` | - | 画布属于调用方 Session 的项目目录；Web 的 ui-sidebar-canvas 负责显示。 |
+| `@deepseek-ai/dsh-tool-media` | `canvas_generate`, `ffmpeg`, `generate_image`, `generate_music`, `generate_speech`, `generate_video`, `media_edit`, `media_probe`, `merge_videos`, `storyboard_voice`, `timeline_export`, `timeline_render`, `timeline_render_status` | `ctx.tools`, `ctx.subprocess`, `ctx.credentials`, `ctx.canvas for node inputs and result nodes` | `tool/call`, `tool/result`, `generated media files`, `the project canvas file` | - | 模型和可接受的参数值在调用时取自网关能力目录，而不是 schema。 |
 
 <a id="deepseek-aidsh-plugin-manager"></a>
 
@@ -2729,20 +2729,29 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
         "properties": {
           "op": {
             "type": "string",
-            "description": "add creates a node from type plus text or path. update changes title, text, or path of node. remove deletes node. connect and disconnect take from and to. group frames nodes under title. ungroup dissolves the group node and keeps its members.",
+            "description": "add creates a node from type plus text, path, shots, or prompt. update changes title, text, or path. set_gen changes how a media node generates and takes params where null deletes a parameter. set_text and set_shots store a new version; update_shot, insert_shot, remove_shot, and move_shot edit one shot. set_version adopts a version, or clears adoption when version is null. connect and disconnect take from and to, with an optional role. reorder_refs rewrites the reference order. group frames nodes under title; ungroup dissolves the group.",
             "enum": [
               "add",
               "update",
               "remove",
+              "set_gen",
+              "set_text",
+              "set_shots",
+              "update_shot",
+              "insert_shot",
+              "remove_shot",
+              "move_shot",
+              "set_version",
               "connect",
               "disconnect",
+              "reorder_refs",
               "group",
               "ungroup"
             ]
           },
           "ref": {
             "type": "string",
-            "description": "Name for the node that add or group creates, usable wherever a node id is expected in later operations of this call."
+            "description": "Name for the node that add or group creates, usable wherever a node id is expected later in this call."
           },
           "type": {
             "type": "string",
@@ -2750,7 +2759,10 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
               "image",
               "video",
               "audio",
-              "text"
+              "text",
+              "script",
+              "storyboard",
+              "timeline"
             ]
           },
           "title": {
@@ -2759,7 +2771,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
           },
           "text": {
             "type": "string",
-            "description": "Content of a text node."
+            "description": "Content of a text or script node."
           },
           "path": {
             "type": "string",
@@ -2767,23 +2779,284 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
           },
           "group": {
             "type": "string",
-            "description": "Existing group that the added node joins."
+            "description": "Existing group the added node joins."
           },
           "node": {
             "type": "string",
-            "description": "Node that update, remove, or ungroup acts on."
+            "description": "Node that the operation acts on."
           },
           "from": {
             "type": "string",
-            "description": "Node or group the edge starts at: the input or source material."
+            "description": "Node the edge starts at: the input or source material."
           },
           "to": {
             "type": "string",
-            "description": "Node or group the edge points to: what was made from, or depends on, from."
+            "description": "Node the edge points to: what was made from, or depends on."
           },
           "nodes": {
             "type": "array",
             "description": "Nodes that the new group frames.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bible": {
+            "type": "string",
+            "description": "Bible entry this image belongs to."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt of a generated node; may mention bible entries as @name."
+          },
+          "model": {
+            "type": "string",
+            "description": "Model id for generation."
+          },
+          "genKind": {
+            "type": "string",
+            "description": "What the node generates.",
+            "enum": [
+              "image",
+              "video",
+              "speech",
+              "music"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "description": "Generation parameters; null deletes one.",
+            "additionalProperties": true,
+            "properties": {}
+          },
+          "shots": {
+            "type": "array",
+            "description": "Shots of a storyboard, or the shot insert_shot adds.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Shot id such as s1; omit to number the shots of the table."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Short title of the shot, at most 24 characters."
+                },
+                "shotSize": {
+                  "type": "string",
+                  "description": "Camera framing; gate G2 needs it before a video is generated.",
+                  "enum": [
+                    "extreme_wide",
+                    "wide",
+                    "full",
+                    "medium",
+                    "medium_close",
+                    "close",
+                    "extreme_close",
+                    "insert"
+                  ]
+                },
+                "visual": {
+                  "type": "string",
+                  "description": "What the frame shows."
+                },
+                "motion": {
+                  "type": "string",
+                  "description": "What the characters do in the shot."
+                },
+                "camera": {
+                  "type": "string",
+                  "description": "Camera movement, or 固定 when the camera holds."
+                },
+                "durationSec": {
+                  "type": "number",
+                  "description": "Shot length in seconds."
+                },
+                "characters": {
+                  "type": "array",
+                  "description": "Bible entry ids of the characters on screen.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "scene": {
+                  "type": "string",
+                  "description": "Bible entry id of the location."
+                },
+                "props": {
+                  "type": "array",
+                  "description": "Bible entry ids of the props on screen.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "dialogue": {
+                  "type": "array",
+                  "description": "Spoken lines of the shot, in order.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Line id such as d1; omit to number the lines of the shot."
+                      },
+                      "speaker": {
+                        "type": "string",
+                        "description": "Bible entry id of the speaker; omit the field for narration."
+                      },
+                      "line": {
+                        "type": "string",
+                        "description": "What the speaker says, as written."
+                      }
+                    },
+                    "required": [
+                      "line"
+                    ]
+                  }
+                },
+                "sfx": {
+                  "type": "string",
+                  "description": "Sound effects of the shot."
+                },
+                "negative": {
+                  "type": "string",
+                  "description": "What this shot must not show."
+                }
+              }
+            }
+          },
+          "shot": {
+            "type": "string",
+            "description": "Shot id that the operation acts on."
+          },
+          "patch": {
+            "type": "object",
+            "description": "Shot fields update_shot replaces. Omitted fields stay unchanged. Required fields cannot be null.",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "Short title of the shot, at most 24 characters."
+              },
+              "shotSize": {
+                "type": "string",
+                "description": "Camera framing; gate G2 needs it before a video is generated.",
+                "enum": [
+                  "extreme_wide",
+                  "wide",
+                  "full",
+                  "medium",
+                  "medium_close",
+                  "close",
+                  "extreme_close",
+                  "insert"
+                ]
+              },
+              "visual": {
+                "type": "string",
+                "description": "What the frame shows."
+              },
+              "motion": {
+                "type": "string",
+                "description": "What the characters do in the shot."
+              },
+              "camera": {
+                "type": "string",
+                "description": "Camera movement, or 固定 when the camera holds."
+              },
+              "durationSec": {
+                "type": "number",
+                "description": "Shot length in seconds."
+              },
+              "characters": {
+                "type": "array",
+                "description": "Bible entry ids of the characters on screen.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scene": {
+                "type": "string",
+                "description": "Bible entry id of the location."
+              },
+              "props": {
+                "type": "array",
+                "description": "Bible entry ids of the props on screen.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "dialogue": {
+                "type": "array",
+                "description": "Spoken lines of the shot, in order.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Line id such as d1; omit to number the lines of the shot."
+                    },
+                    "speaker": {
+                      "type": "string",
+                      "description": "Bible entry id of the speaker; omit the field for narration."
+                    },
+                    "line": {
+                      "type": "string",
+                      "description": "What the speaker says, as written."
+                    }
+                  },
+                  "required": [
+                    "line"
+                  ]
+                }
+              },
+              "sfx": {
+                "type": "string",
+                "description": "Sound effects of the shot."
+              },
+              "negative": {
+                "type": "string",
+                "description": "What this shot must not show."
+              }
+            }
+          },
+          "after": {
+            "type": "string",
+            "description": "Shot id the moved or inserted shot follows; omit to append."
+          },
+          "version": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Version id set_version adopts, or null to clear adoption."
+          },
+          "role": {
+            "type": "string",
+            "description": "What the edge supplies. Inferred from node types when omitted.",
+            "enum": [
+              "prompt",
+              "ref",
+              "first_frame",
+              "last_frame",
+              "audio",
+              "source"
+            ]
+          },
+          "order": {
+            "type": "integer",
+            "description": "Position among the reference inputs."
+          },
+          "sources": {
+            "type": "array",
+            "description": "Reference sources in the order reorder_refs applies.",
             "items": {
               "type": "string"
             }
@@ -2793,10 +3066,15 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
           "op"
         ]
       }
+    },
+    "baseRevision": {
+      "type": "integer",
+      "description": "Revision canvas_get returned for the canvas this call edits."
     }
   },
   "required": [
-    "operations"
+    "operations",
+    "baseRevision"
   ]
 }
 ```
@@ -2813,12 +3091,1304 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
   "properties": {
     "nodes": {
       "type": "array",
-      "description": "Node or group ids to read in full. Omit to list the whole canvas with long text and prompts shortened.",
+      "description": "Node or group ids to read in full. Omit to list the whole canvas with long text shortened.",
       "items": {
         "type": "string"
       }
+    },
+    "detail": {
+      "type": "string",
+      "description": "summary shortens long text; full keeps it and returns the shots of each storyboard.",
+      "enum": [
+        "summary",
+        "full"
+      ]
+    },
+    "include": {
+      "type": "array",
+      "description": "bible adds the shared style and entries; project adds the production format and episodes; production adds the stage reached.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "bible",
+          "project",
+          "production"
+        ]
+      }
     }
   }
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_bible_update`
+
+更新所有分集共用的设定集，包括故事梗概、视觉风格、角色、场景和道具。条目按 id 匹配；仍被分镜引用的条目不能删除。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "logline": {
+      "type": "string",
+      "description": "One-sentence premise of the production."
+    },
+    "style": {
+      "type": "object",
+      "description": "Style fields to replace.",
+      "additionalProperties": false,
+      "properties": {
+        "visual": {
+          "type": "string"
+        },
+        "palette": {
+          "type": "string"
+        },
+        "aspect": {
+          "type": "string",
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1",
+            "4:3",
+            "3:4"
+          ]
+        },
+        "director": {
+          "type": "string"
+        },
+        "genre": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string"
+        }
+      }
+    },
+    "upsert": {
+      "type": "array",
+      "description": "Full entries to add or replace. An entry with an existing id replaces it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "character",
+              "location",
+              "prop"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "imageNodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voice": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "voice": {
+                "type": "string"
+              },
+              "sampleNode": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "description"
+        ]
+      }
+    },
+    "remove": {
+      "type": "array",
+      "description": "Entry ids to delete.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "baseRevision": {
+      "type": "integer",
+      "description": "Bible revision the caller read; a stale one is refused."
+    }
+  }
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_episode_create`
+
+向项目添加一集，并将其写入独立的画布文件。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Episode title."
+    }
+  },
+  "required": [
+    "title"
+  ]
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_episode_use`
+
+切换本次对话正在编辑的分集；后续画布调用作用于该分集。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "episode": {
+      "type": "string",
+      "description": "Episode id from canvas_get or studio_episode_create."
+    }
+  },
+  "required": [
+    "episode"
+  ]
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_expand_script`
+
+将剧本铺到画布上：每场建立一个分组，包含保存场景正文的文本节点和以该文本为提示词输入的空分镜表。已铺开的场景会跳过。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "script": {
+      "type": "string",
+      "description": "Script node id whose active version holds the scenes."
+    },
+    "scenes": {
+      "type": "array",
+      "description": "Scene numbers to lay out; omit for every scene.",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "baseRevision": {
+      "type": "integer",
+      "description": "Canvas revision the caller read."
+    }
+  },
+  "required": [
+    "script",
+    "baseRevision"
+  ]
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_project_create`
+
+创建制作项目的元数据，包括内容类型、标题和输出规格。现有画布直接成为第 1 集，文件位置不变。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "description": "Kind of production.",
+      "enum": [
+        "drama",
+        "comic",
+        "mv",
+        "free"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Project title shown in the studio header."
+    },
+    "aspect": {
+      "type": "string",
+      "description": "Frame aspect of every episode.",
+      "enum": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4"
+      ]
+    },
+    "resolution": {
+      "type": "string",
+      "description": "Output resolution, such as 1080p."
+    },
+    "fps": {
+      "type": "number",
+      "description": "Frames per second of the final cut.",
+      "enum": [
+        24,
+        25,
+        30
+      ]
+    }
+  },
+  "required": [
+    "format",
+    "title",
+    "aspect",
+    "resolution",
+    "fps"
+  ]
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_stage`
+
+读取或推进本次对话正在编辑的分集的制作阶段。阶段依次为 brief、bible、assets、script、storyboard、generating、post 和 delivered。回退或跳过阶段必须填写覆盖原因。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "status reports the stage; advance moves it.",
+      "enum": [
+        "status",
+        "advance"
+      ]
+    },
+    "to": {
+      "type": "string",
+      "description": "Stage to advance to.",
+      "enum": [
+        "brief",
+        "bible",
+        "assets",
+        "script",
+        "storyboard",
+        "generating",
+        "post",
+        "delivered"
+      ]
+    },
+    "gate": {
+      "type": "string",
+      "description": "Gate to record as overridden when the stage move needs one.",
+      "enum": [
+        "G1_bible_first",
+        "G2_storyboard_quality",
+        "G3_one_video_per_shots",
+        "G4_stage_order",
+        "G5_destructive",
+        "tail_chain"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why the override is acceptable; recorded with the gate."
+    },
+    "baseRevision": {
+      "type": "integer",
+      "description": "Production revision the caller read; a stale one is refused."
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `timeline_edit`
+
+使用与可视化编辑器相同的命令编辑时间线。先读取 timeline_get 并传入其修订号；发生冲突时整批修改均被拒绝。重新读取后调整预期修改，不要重试旧快照。通过 canvas_edit 创建时间线节点，首次编辑时传入 spec 并使用 add_track，再通过 add_clip 加入固定节点／版本引用的素材或文字。startMs 是时间线上的位置，source.inMs 是素材内的位置。ripple_delete 只移动同轨后续片段。set_clip 替换所提供的字段，时间范围必须在源素材时长内。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string"
+    },
+    "episode": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string"
+    },
+    "baseRevision": {
+      "type": "integer"
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "fps": {
+          "type": "integer",
+          "enum": [
+            24,
+            25,
+            30
+          ]
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "fps"
+      ]
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "add_track"
+              },
+              "track": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "video",
+                      "audio",
+                      "text"
+                    ]
+                  },
+                  "muted": {
+                    "type": "boolean"
+                  },
+                  "volume": {
+                    "type": "number"
+                  },
+                  "clips": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "startMs": {
+                          "type": "integer"
+                        },
+                        "durationMs": {
+                          "type": "integer"
+                        },
+                        "source": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "node": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "string"
+                            },
+                            "inMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "version",
+                            "inMs"
+                          ]
+                        },
+                        "text": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "content": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string",
+                              "enum": [
+                                "top",
+                                "center",
+                                "bottom"
+                              ]
+                            },
+                            "size": {
+                              "type": "integer"
+                            },
+                            "color": {
+                              "type": "string"
+                            },
+                            "strokeColor": {
+                              "type": "string"
+                            },
+                            "strokeWidth": {
+                              "type": "number"
+                            },
+                            "fontFamily": {
+                              "type": "string"
+                            },
+                            "lineHeight": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "content",
+                            "position",
+                            "size"
+                          ]
+                        },
+                        "volume": {
+                          "type": "number"
+                        },
+                        "opacity": {
+                          "type": "number"
+                        },
+                        "fadeInMs": {
+                          "type": "integer"
+                        },
+                        "fadeOutMs": {
+                          "type": "integer"
+                        },
+                        "fit": {
+                          "type": "string",
+                          "enum": [
+                            "contain",
+                            "cover"
+                          ]
+                        },
+                        "transform": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "x": {
+                              "type": "number"
+                            },
+                            "y": {
+                              "type": "number"
+                            },
+                            "width": {
+                              "type": "integer"
+                            },
+                            "height": {
+                              "type": "integer"
+                            },
+                            "rotation": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y",
+                            "width",
+                            "height",
+                            "rotation"
+                          ]
+                        },
+                        "still": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "static",
+                                "zoom_in",
+                                "zoom_out",
+                                "pan_left",
+                                "pan_right",
+                                "pan_up",
+                                "pan_down"
+                              ]
+                            },
+                            "strength": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "strength"
+                          ]
+                        },
+                        "transitionIn": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "cut",
+                                "dissolve",
+                                "fade_black"
+                              ]
+                            },
+                            "durationMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "durationMs"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "startMs",
+                        "durationMs"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "muted",
+                  "volume",
+                  "clips"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "track"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "remove_track"
+              },
+              "track": {
+                "type": "string",
+                "description": "Track id such as t1."
+              }
+            },
+            "required": [
+              "op",
+              "track"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "set_track"
+              },
+              "track": {
+                "type": "string",
+                "description": "Track id such as t1."
+              },
+              "muted": {
+                "type": "boolean"
+              },
+              "volume": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "op",
+              "track"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "add_clip"
+              },
+              "track": {
+                "type": "string",
+                "description": "Track id such as t1."
+              },
+              "clip": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "startMs": {
+                    "type": "integer"
+                  },
+                  "durationMs": {
+                    "type": "integer"
+                  },
+                  "source": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "node": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "inMs": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "node",
+                      "version",
+                      "inMs"
+                    ]
+                  },
+                  "text": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "content": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "center",
+                          "bottom"
+                        ]
+                      },
+                      "size": {
+                        "type": "integer"
+                      },
+                      "color": {
+                        "type": "string"
+                      },
+                      "strokeColor": {
+                        "type": "string"
+                      },
+                      "strokeWidth": {
+                        "type": "number"
+                      },
+                      "fontFamily": {
+                        "type": "string"
+                      },
+                      "lineHeight": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "content",
+                      "position",
+                      "size"
+                    ]
+                  },
+                  "volume": {
+                    "type": "number"
+                  },
+                  "opacity": {
+                    "type": "number"
+                  },
+                  "fadeInMs": {
+                    "type": "integer"
+                  },
+                  "fadeOutMs": {
+                    "type": "integer"
+                  },
+                  "fit": {
+                    "type": "string",
+                    "enum": [
+                      "contain",
+                      "cover"
+                    ]
+                  },
+                  "transform": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "width": {
+                        "type": "integer"
+                      },
+                      "height": {
+                        "type": "integer"
+                      },
+                      "rotation": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "width",
+                      "height",
+                      "rotation"
+                    ]
+                  },
+                  "still": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "static",
+                          "zoom_in",
+                          "zoom_out",
+                          "pan_left",
+                          "pan_right",
+                          "pan_up",
+                          "pan_down"
+                        ]
+                      },
+                      "strength": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "strength"
+                    ]
+                  },
+                  "transitionIn": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "cut",
+                          "dissolve",
+                          "fade_black"
+                        ]
+                      },
+                      "durationMs": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "durationMs"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "startMs",
+                  "durationMs"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "track",
+              "clip"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "move_clip"
+              },
+              "track": {
+                "type": "string",
+                "description": "Track id such as t1."
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              },
+              "startMs": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "op",
+              "track",
+              "clip",
+              "startMs"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "trim_clip"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              },
+              "inMs": {
+                "type": "integer"
+              },
+              "durationMs": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "op",
+              "clip",
+              "inMs",
+              "durationMs"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "split_clip"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              },
+              "atMs": {
+                "type": "integer"
+              },
+              "rightId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "clip",
+              "atMs",
+              "rightId"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "remove_clip"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              }
+            },
+            "required": [
+              "op",
+              "clip"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "ripple_delete"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              }
+            },
+            "required": [
+              "op",
+              "clip"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "set_clip"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              },
+              "patch": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "startMs": {
+                    "type": "integer"
+                  },
+                  "durationMs": {
+                    "type": "integer"
+                  },
+                  "source": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "node": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "inMs": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "node",
+                      "version",
+                      "inMs"
+                    ]
+                  },
+                  "text": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "content": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "center",
+                          "bottom"
+                        ]
+                      },
+                      "size": {
+                        "type": "integer"
+                      },
+                      "color": {
+                        "type": "string"
+                      },
+                      "strokeColor": {
+                        "type": "string"
+                      },
+                      "strokeWidth": {
+                        "type": "number"
+                      },
+                      "fontFamily": {
+                        "type": "string"
+                      },
+                      "lineHeight": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "content",
+                      "position",
+                      "size"
+                    ]
+                  },
+                  "volume": {
+                    "type": "number"
+                  },
+                  "opacity": {
+                    "type": "number"
+                  },
+                  "fadeInMs": {
+                    "type": "integer"
+                  },
+                  "fadeOutMs": {
+                    "type": "integer"
+                  },
+                  "fit": {
+                    "type": "string",
+                    "enum": [
+                      "contain",
+                      "cover"
+                    ]
+                  },
+                  "transform": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "width": {
+                        "type": "integer"
+                      },
+                      "height": {
+                        "type": "integer"
+                      },
+                      "rotation": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "width",
+                      "height",
+                      "rotation"
+                    ]
+                  },
+                  "still": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "static",
+                          "zoom_in",
+                          "zoom_out",
+                          "pan_left",
+                          "pan_right",
+                          "pan_up",
+                          "pan_down"
+                        ]
+                      },
+                      "strength": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "strength"
+                    ]
+                  },
+                  "transitionIn": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "cut",
+                          "dissolve",
+                          "fade_black"
+                        ]
+                      },
+                      "durationMs": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "durationMs"
+                    ]
+                  }
+                }
+              }
+            },
+            "required": [
+              "op",
+              "clip",
+              "patch"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "set_spec"
+              },
+              "spec": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "width": {
+                    "type": "integer"
+                  },
+                  "height": {
+                    "type": "integer"
+                  },
+                  "fps": {
+                    "type": "integer",
+                    "enum": [
+                      24,
+                      25,
+                      30
+                    ]
+                  }
+                },
+                "required": [
+                  "width",
+                  "height",
+                  "fps"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "spec"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory",
+    "baseRevision",
+    "operations"
+  ]
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `timeline_get`
+
+编辑前读取时间线节点。片段固定引用具体素材版本；时间单位为整数毫秒，视频和文字按轨道顺序绘制。尚未初始化的时间线必须在首次编辑时明确输出规格。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string"
+    },
+    "episode": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `timeline_history`
+
+列出已保存的时间线修订，最新的在前。undo 和 redo 指出当前可用的游标目标。恢复会创建新修订，并保留旧记录。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string"
+    },
+    "episode": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+来源：[`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `timeline_restore`
+
+恢复已保存的修订，或使用 timeline_history 当前给出的撤销／重做目标。传入审核过的当前 baseRevision；发生冲突时整次操作均被拒绝，重新读取并审核后再试。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string"
+    },
+    "episode": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer"
+    },
+    "baseRevision": {
+      "type": "integer"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "restore",
+        "undo",
+        "redo"
+      ]
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory",
+    "revision",
+    "baseRevision",
+    "mode"
+  ]
 }
 ```
 
@@ -2829,6 +4399,34 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 <a id="deepseek-aidsh-tool-media"></a>
 
 ## `@deepseek-ai/dsh-tool-media`
+
+### `canvas_generate`
+
+生成指定画布节点的媒体，并为每个节点添加新版本。一张分镜表会按分段生成多个视频节点。大型方案返回 needs_confirmation 和令牌；向用户展示总量，获得同意后带该令牌再次调用。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "description": "Image, video, audio, or storyboard node ids.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confirmToken": {
+      "type": "string",
+      "description": "Token from a previous needs_confirmation result, after the user agreed."
+    }
+  },
+  "required": [
+    "nodes"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/node-tools.ts`](../packages/media/tool-media/src/node-tools.ts)
 
 ### `ffmpeg`
 
@@ -2931,7 +4529,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "lyrics": {
       "type": "string",
-      "description": "Optional lyrics for a music request."
+      "description": "Song lyrics; required by MiniMax Music3. Omit for instrumental creation with a model such as ACE-Step."
     }
   },
   "required": [
@@ -3037,6 +4635,77 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 模型和可接受的参数值在调用时取自网关能力目录，而不是 schema。
 
+### `media_edit`
+
+使用 FFmpeg 在本机编辑明确指定的媒体版本。audio_edit 裁剪音频并应用增益、淡入和淡出；extract_audio 从视频创建音频节点；first_frame 和 last_frame 提取图片；refresh_tail 刷新已采用视频的精确版本尾帧。先读取 canvas_get，再复制 directory、episode、node 和 version。时间单位为毫秒，音量为线性值（0–4）。结果均为未采用的候选版本；仅在用户选定后通过 canvas_edit 的 set_version 采用。相同请求复用已有候选；中断的本机编辑可以显式重试，已完成的文件在挂载失败后仍保留。不调用云端模型。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "directory": {
+      "type": "string",
+      "description": "Exact project directory from canvas_get."
+    },
+    "episode": {
+      "type": "string",
+      "description": "Captured episode id from canvas_get."
+    },
+    "node": {
+      "type": "string",
+      "description": "Audio or video source node id."
+    },
+    "version": {
+      "type": "string",
+      "description": "Exact retained source version, whether adopted or a candidate."
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "audio_edit",
+        "extract_audio",
+        "first_frame",
+        "last_frame",
+        "refresh_tail"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Required for extracts and frames: title of their new node."
+    },
+    "inMs": {
+      "type": "integer",
+      "description": "Audio trim start; omitted means zero."
+    },
+    "outMs": {
+      "type": "integer",
+      "description": "Audio trim end; omitted means the measured source end."
+    },
+    "volume": {
+      "type": "number",
+      "description": "Linear audio gain from 0 to 4; omitted means 1."
+    },
+    "fadeInMs": {
+      "type": "integer",
+      "description": "Fade in over the edited audio; omitted means zero."
+    },
+    "fadeOutMs": {
+      "type": "integer",
+      "description": "Fade out over the edited audio; omitted means zero."
+    }
+  },
+  "required": [
+    "directory",
+    "episode",
+    "node",
+    "version",
+    "operation"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/local-edit-tools.ts`](../packages/media/tool-media/src/local-edit-tools.ts)
+
 ### `media_probe`
 
 剪辑前探测本地媒体文件或画布媒体节点，返回时长、容器、流编码以及视频和音频属性。
@@ -3104,3 +4773,134 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 ```
 
 来源：[`packages/media/tool-media/src/edit-tools.ts`](../packages/media/tool-media/src/edit-tools.ts)
+
+### `storyboard_voice`
+
+为指定分镜表中的每句台词创建音频节点并合成语音；已有对应台词的节点会复用。台词数超过部署限制时，返回 needs_confirmation 和令牌。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "storyboards": {
+      "type": "array",
+      "description": "Storyboard node ids.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confirmToken": {
+      "type": "string",
+      "description": "Token from a previous needs_confirmation result, after the user agreed."
+    }
+  },
+  "required": [
+    "storyboards"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/node-tools.ts`](../packages/media/tool-media/src/node-tools.ts)
+
+### `timeline_export`
+
+将已就绪的预览字节导出为画布上的新不可变视频。必须提供当前时间线修订号。结果不受缓存清理影响，现有版本不变；是否采用导出版本需另行决定。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "description": "Timeline node id from canvas_get."
+    },
+    "revision": {
+      "type": "integer",
+      "description": "Current revision returned by timeline_get."
+    },
+    "episode": {
+      "type": "string",
+      "description": "Episode id from canvas_get; copy it explicitly to keep edits on that episode."
+    },
+    "directory": {
+      "type": "string",
+      "description": "Exact project directory from canvas_get."
+    }
+  },
+  "required": [
+    "node",
+    "revision",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/timeline-tools.ts`](../packages/media/tool-media/src/timeline-tools.ts)
+
+### `timeline_render`
+
+使用共享合成器构建当前时间线的完整质量预览。先读取 timeline_get 并传入其修订号。此调用会排入本机媒体任务，由已连接的应用渲染。queued、rendering 和 assembling 均不代表就绪。不调用云端模型。查询 timeline_render_status，就绪后再调用 timeline_export；编辑会使旧预览失效。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "description": "Timeline node id from canvas_get."
+    },
+    "revision": {
+      "type": "integer",
+      "description": "Current revision returned by timeline_get."
+    },
+    "episode": {
+      "type": "string",
+      "description": "Episode id from canvas_get; copy it explicitly to keep edits on that episode."
+    },
+    "directory": {
+      "type": "string",
+      "description": "Exact project directory from canvas_get."
+    }
+  },
+  "required": [
+    "node",
+    "revision",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/timeline-tools.ts`](../packages/media/tool-media/src/timeline-tools.ts)
+
+### `timeline_render_status`
+
+读取当前时间线预览状态。只有 ready 状态提供与当前修订号及固定素材版本一致的完整 MP4。中断的任务在重新连接后恢复本机缓存工作；failed 和 cancelled 为终止状态，必须显式重试。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "description": "Timeline node id from canvas_get."
+    },
+    "episode": {
+      "type": "string",
+      "description": "Episode id from canvas_get; copy it explicitly to keep edits on that episode."
+    },
+    "directory": {
+      "type": "string",
+      "description": "Exact project directory from canvas_get."
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+来源：[`packages/media/tool-media/src/timeline-tools.ts`](../packages/media/tool-media/src/timeline-tools.ts)

@@ -1,0 +1,40 @@
+{
+  "version": 3,
+  "revision": 1,
+  "nextId": 3,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "timeline",
+      "title": "Demo timeline",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 280
+    },
+    {
+      "id": "n2",
+      "type": "video",
+      "title": "Uploaded candidate",
+      "x": 350,
+      "y": 0,
+      "width": 320,
+      "height": 280,
+      "gen": {
+        "kind": "video",
+        "prompt": "",
+        "params": {}
+      },
+      "versions": [
+        {
+          "id": "v_import_52748536834ae71c5a843897",
+          "path": "candidate.mp4",
+          "createdAt": "{{timestamp}}",
+          "origin": "user",
+          "durationMs": 4000
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

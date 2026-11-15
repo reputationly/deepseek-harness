@@ -8,7 +8,7 @@ const node = (id: string, type: CanvasNode['type'], extra: Partial<CanvasNode> =
   id: id as never, type, title: id, x: 0, y: 0, width: 100, height: 100, ...extra,
 })
 const document = (nodes: readonly CanvasNode[], edges: CanvasDocument['edges'] = []): CanvasDocument => ({
-  version: 2, revision: 1, nextId: nodes.length + 1, nodes, edges,
+  version: 3, revision: 1, nextId: nodes.length + 1, nodes, edges,
 })
 const key = (overrides: Partial<{ key: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }> = {}) => ({
   key: 'z', metaKey: false, ctrlKey: false, shiftKey: false, ...overrides,

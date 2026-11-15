@@ -753,11 +753,18 @@ const TOOL_PACKAGES: ToolPackage[] = [
       ffmpeg: 'packages/media/tool-media/src/edit-tools.ts',
       merge_videos: 'packages/media/tool-media/src/edit-tools.ts',
       media_probe: 'packages/media/tool-media/src/edit-tools.ts',
+      media_edit: 'packages/media/tool-media/src/local-edit-tools.ts',
+      canvas_generate: 'packages/media/tool-media/src/node-tools.ts',
+      storyboard_voice: 'packages/media/tool-media/src/node-tools.ts',
+      timeline_render: 'packages/media/tool-media/src/timeline-tools.ts',
+      timeline_render_status: 'packages/media/tool-media/src/timeline-tools.ts',
+      timeline_export: 'packages/media/tool-media/src/timeline-tools.ts',
     },
-    requires: ['ctx.tools', 'ctx.credentials', 'ctx.canvas for node inputs and result nodes'],
+    requires: ['ctx.tools', 'ctx.subprocess', 'ctx.credentials', 'ctx.canvas for node inputs and result nodes'],
     writes: ['tool/call', 'tool/result', 'generated media files', 'the project canvas file'],
     async mount(ctx) {
       // Schema harvest never contacts the gateway.
+      await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(ToolMedia, { baseURL: 'https://gateway.invalid/v1' })
     },
     note: 'Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema.',

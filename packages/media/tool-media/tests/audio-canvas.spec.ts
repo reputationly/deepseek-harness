@@ -1,19 +1,24 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MockInstance } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { provideWorkingDirectoryFixture, unsupportedInbox, unsupportedModel } from '@deepseek-ai/dsh-agent-loop-testkit'
+import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import CanvasService from '@deepseek-ai/dsh-canvas'
 import { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import JobsLocal from '@deepseek-ai/dsh-jobs-local'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as ToolMedia from '../src/index.ts'
+import { bibleFixture } from './bible-fixture.ts'
 
 let ctx: Context
 let session: Session
@@ -94,10 +99,25 @@ beforeEach(async () => {
   ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(LocalSubprocessRuntime)
   await ctx.plugin(NativeToolExecutor)
   provideWorkingDirectoryFixture(ctx, directory)
   await ctx.plugin(CanvasService)
+  await ctx.plugin(SessionProjectionRegistry)
+  await ctx.plugin(AgentRegistry)
+  await ctx.plugin(JobsLocal)
+  ctx.jobs.attachController('media-fixture')
   session = Session.create(SessionId('audio-canvas-session'))
+  const owner = {
+    id: session.id, session, options: {}, status: 'idle', ctx: ctx.plugin(() => {}).ctx,
+    model: unsupportedModel(), inbox: unsupportedInbox(),
+    send() {}, followup() {}, inject() {}, cancel() {},
+    steer: () => ({ outcome: Promise.resolve({ status: 'rejected' as const }) }),
+    runMaintenance: <T>(job: (signal: AbortSignal) => Promise<T>) => job(new AbortController().signal),
+    whenIdle: () => Promise.resolve(),
+  } satisfies Agent
+  await ctx.agents.register(owner)
+  await ctx.canvas.updateBible(session, { upsert: bibleFixture.entries })
   previousKey = process.env.DSH_MAAS_API_KEY
   process.env.DSH_MAAS_API_KEY = 'sk-test-media'
   fetchSpy = vi.spyOn(globalThis, 'fetch')
@@ -112,6 +132,31 @@ afterEach(async () => {
 })
 
 describe('generated audio canvas placement', () => {
+  it('uses the same Music3 lyrics mapping for file-only calls without an Agent', async () => {
+    let submitted: Record<string, unknown> | undefined
+    fetchSpy.mockImplementation(async (input, init) => {
+      const url = requestUrl(input)
+      if (url.endsWith('/videos') && init?.method === 'POST') { submitted = requestJson(init); return response({ id: 'music-task' }) }
+      if (url.endsWith('/videos/music-task')) return response({ status: 'completed', url: 'https://media.example/music.mp3' })
+      if (url === 'https://media.example/music.mp3') return response('music-bytes', { 'content-type': 'audio/mpeg' })
+      throw new Error(`Unexpected media request: ${url}`)
+    })
+    await ctx.plugin(ToolMedia, { baseURL: 'https://gateway.example/v1', catalog: false, outputDir: directory, pollIntervalMs: 1, taskTimeoutMs: 2_000 })
+    const result = await executeToolFixture(ctx, {
+      signal: new AbortController().signal, callId: ToolCallId('file-only-music'), name: 'generate_music',
+      arguments: { prompt: 'Gentle piano', lyrics: 'A quiet morning' },
+    })
+    expect(result.isError).not.toBe(true)
+    expect(submitted).toMatchObject({ model: 'minimax-music3', prompt: 'A quiet morning', metadata: { instructions: 'Gentle piano', task_type: 't2m' } })
+    expect(await readFile(artifactPath(result), 'utf8')).toBe('music-bytes')
+    fetchSpy.mockClear()
+    const missingLyrics = await executeToolFixture(ctx, {
+      signal: new AbortController().signal, callId: ToolCallId('file-only-music-missing-lyrics'), name: 'generate_music', arguments: { prompt: 'Gentle piano' },
+    })
+    expect(missingLyrics.isError).toBe(true)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   it('places speech and music files as audio nodes with their derivation metadata', async () => {
     fetchSpy.mockImplementation(async (input, init) => {
       const url = requestUrl(input)
@@ -137,14 +182,14 @@ describe('generated audio canvas placement', () => {
     const document = await ctx.canvas.read(session)
     expect(document.nodes).toMatchObject([
       {
-        id: 'n1', type: 'audio', title: 'Speech',
+        id: 'n1', type: 'audio', title: 'Hello there',
         gen: { kind: 'speech', prompt: 'Hello there', model: 'indextts-2.5' },
         versions: [{ prompt: 'Hello there', model: 'indextts-2.5' }],
       },
       {
-        id: 'n2', type: 'audio', title: 'Music',
+        id: 'n2', type: 'audio', title: 'Gentle piano and strings',
         gen: { kind: 'music', prompt: 'Gentle piano and strings', model: 'minimax-music3' },
-        versions: [{ prompt: 'Gentle piano and strings', model: 'minimax-music3' }],
+        versions: [{ prompt: 'A quiet morning', model: 'minimax-music3', params: { instructions: 'Gentle piano and strings', lyrics: 'A quiet morning' } }],
       },
     ])
     const speechPath = document.nodes[0]?.versions?.[0]?.path
@@ -155,7 +200,7 @@ describe('generated audio canvas placement', () => {
     const musicRequest = fetchSpy.mock.calls.find(([input, init]) =>
       requestUrl(input).endsWith('/videos') && init?.method === 'POST')
     expect(requestJson(musicRequest?.[1])).toMatchObject({
-      metadata: { instructions: 'Gentle piano and strings', lyrics: 'A quiet morning' },
+      prompt: 'A quiet morning', metadata: { instructions: 'Gentle piano and strings' },
     })
   })
 
@@ -170,6 +215,60 @@ describe('generated audio canvas placement', () => {
     })
     await call('generate_speech', { text: 'Hello', voice: 'https://voice.example/sample.wav' })
     expect(fetchSpy.mock.calls[0]?.[1]?.headers).toMatchObject({ authorization: 'Bearer sk-from-credentials' })
+  })
+
+  it('persists a legacy remote task before polling and returns success only after version attachment', async () => {
+    const target = await ctx.canvas.targetOf(session)
+    const journal = join(target.directory, '.canvas', `${target.file}.media`)
+    let observed = false
+    fetchSpy.mockImplementation(async (input, init) => {
+      const url = requestUrl(input)
+      if (url.endsWith('/videos') && init?.method === 'POST') return response({ id: 'durable-music' })
+      if (url.endsWith('/videos/durable-music')) {
+        const files = await readdir(journal)
+        expect(files).toHaveLength(1)
+        const saved = await readFile(join(journal, files[0]!), 'utf8')
+        expect(JSON.parse(saved)).toMatchObject({ state: 'running', remote: { id: 'durable-music', kind: 'music' } })
+        expect(saved).not.toContain('sk-test-media')
+        observed = true
+        return response({ status: 'completed', url: 'data:audio/mpeg;base64,bXVzaWM=' })
+      }
+      throw new Error(`Unexpected media request: ${url}`)
+    })
+    await ctx.plugin(ToolMedia, { baseURL: 'https://gateway.example/v1', catalog: false, outputDir: directory })
+    const result = await call('generate_music', { prompt: 'Quiet piano', lyrics: 'A quiet morning' })
+    expect(result.isError).toBe(false)
+    expect(observed).toBe(true)
+    const node = (await ctx.canvas.read(session)).nodes[0]!
+    expect(node.status).toBeUndefined()
+    expect(node.versions).toHaveLength(1)
+    expect(node.activeVersion).toBeUndefined()
+    expect(await readFile(node.versions![0]!.path!, 'utf8')).toBe('music')
+    expect(await readdir(journal)).toEqual([])
+    expect(ctx.jobs.list(session.id).map(job => job.status)).toEqual(['completed'])
+  })
+
+  it('keeps an active owned job running when another legacy generation reconciles the same canvas', async () => {
+    const polling = Promise.withResolvers<undefined>()
+    const finish = Promise.withResolvers<Response>()
+    fetchSpy.mockImplementation(async (input, init) => {
+      const url = requestUrl(input)
+      if (url.endsWith('/audio/speech')) return response('speech', { 'content-type': 'audio/mpeg' })
+      if (url.endsWith('/videos') && init?.method === 'POST') return response({ id: 'pending-music' })
+      if (url.endsWith('/videos/pending-music')) { polling.resolve(undefined); return finish.promise }
+      throw new Error(`Unexpected media request: ${url}`)
+    })
+    await ctx.plugin(ToolMedia, { baseURL: 'https://gateway.example/v1', catalog: false, outputDir: directory })
+    const music = call('generate_music', { prompt: 'Quiet piano', lyrics: 'A quiet morning' })
+    try {
+      await polling.promise
+      const speech = await call('generate_speech', { text: 'Hello', voice: 'https://voice.example/sample.wav' })
+      expect(speech.isError).toBe(false)
+      expect((await ctx.canvas.read(session)).nodes[0]?.status?.state).toBe('running')
+    } finally {
+      finish.resolve(response({ status: 'completed', url: 'data:audio/mpeg;base64,bXVzaWM=' }))
+      expect((await music).isError).toBe(false)
+    }
   })
 
   it('falls back to the ambient reference when the credentials service has no stored value', async () => {
@@ -324,7 +423,8 @@ describe('generated audio canvas placement', () => {
     }
   })
 
-  it('keeps generated audio available when canvas placement fails', async () => {
+  it('refuses paid audio generation before submission when its canvas cannot be written', async () => {
+    await rm(join(directory, '.canvas'), { recursive: true, force: true })
     await writeFile(join(directory, '.canvas'), 'not a directory')
     fetchSpy.mockImplementation(async (input, init) => {
       const url = requestUrl(input)
@@ -343,11 +443,12 @@ describe('generated audio canvas placement', () => {
     })
     const speech = await call('generate_speech', { text: 'Hello', voice: 'https://voice.example/sample.wav' })
     const music = await call('generate_music', { prompt: 'Quiet guitar' })
-    expect(toolText(speech)).toContain('Canvas placement failed:')
-    expect(toolText(music)).toContain('Canvas placement failed:')
+    expect(speech.isError).toBe(true)
+    expect(music.isError).toBe(true)
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('omits absent lyrics from music task metadata', async () => {
+  it('refuses Music3 without lyrics before making a paid submission', async () => {
     fetchSpy.mockImplementation(async (input, init) => {
       const url = requestUrl(input)
       if (url.endsWith('/videos') && init?.method === 'POST') return response({ id: 'music-no-lyrics' })
@@ -362,12 +463,9 @@ describe('generated audio canvas placement', () => {
       pollIntervalMs: 1,
       taskTimeoutMs: 2_000,
     })
-    await call('generate_music', { prompt: 'Quiet guitar' })
-    const request = fetchSpy.mock.calls.find(([input, init]) =>
-      requestUrl(input).endsWith('/videos') && init?.method === 'POST')
-    expect(requestJson(request?.[1])).toMatchObject({
-      metadata: { instructions: 'Quiet guitar' },
-    })
-    expect(requestJson(request?.[1]).metadata).not.toHaveProperty('lyrics')
+    const result = await call('generate_music', { prompt: 'Quiet guitar' })
+    expect(result.isError).toBe(true)
+    expect(toolText(result)).toContain('needs both lyrics and a style description')
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

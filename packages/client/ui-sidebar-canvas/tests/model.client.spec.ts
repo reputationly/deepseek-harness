@@ -24,7 +24,7 @@ const node = (id: string, type: CanvasNode['type'], extra: Partial<CanvasNode> =
 })
 
 const document = (nodes: readonly CanvasNode[], edges: CanvasDocument['edges'] = []): CanvasDocument => ({
-  version: 2, revision: 1, nextId: nodes.length + 1, nodes, edges,
+  version: 3, revision: 1, nextId: nodes.length + 1, nodes, edges,
 })
 
 describe('invertOperations', () => {
@@ -135,13 +135,13 @@ describe('invertOperations', () => {
       activeVersion: 'v1' as never,
     })
     const doc = document([board])
-    expect(invertOperations(doc, [{ op: 'remove_shot', node: 'n1', shot: 's2' as never }])).toEqual([
+    expect(invertOperations(doc, [{ op: 'remove_shot', node: 'n1', shot: 's2' }])).toEqual([
       { op: 'set_shots', node: 'n1', shots: [shot('s1'), shot('s2')] },
     ])
-    expect(invertOperations(doc, [{ op: 'remove_shot', node: 'n1', shot: 's1' as never }])).toEqual([
+    expect(invertOperations(doc, [{ op: 'remove_shot', node: 'n1', shot: 's1' }])).toEqual([
       { op: 'set_shots', node: 'n1', shots: [shot('s1'), shot('s2')] },
     ])
-    expect(invertOperations(doc, [{ op: 'move_shot', node: 'n1', shot: 's2' as never }])).toEqual([
+    expect(invertOperations(doc, [{ op: 'move_shot', node: 'n1', shot: 's2' }])).toEqual([
       { op: 'move_shot', node: 'n1', shot: 's2', after: 's1' },
     ])
   })
@@ -454,31 +454,31 @@ describe('invertOperations coverage of every operation', () => {
     expect(invertOperations(doc, [{ op: 'resize', node: 't1', width: 1, height: 1 }])).toEqual([
       { op: 'resize', node: 't1', width: 100, height: 80 },
     ])
-    expect(invertOperations(doc, [{ op: 'set_version', node: 't1', version: 'v9' as never }])).toEqual([
+    expect(invertOperations(doc, [{ op: 'set_version', node: 't1', version: 'v9' }])).toEqual([
       { op: 'set_version', node: 't1', version: 'v1' },
     ])
     expect(invertOperations(doc, [{ op: 'set_gen', node: 'i1', gen: { prompt: 'x', params: {} } }])).toEqual([
-      { op: 'set_gen', node: 'i1', gen: { kind: 'image', prompt: 'p', params: {} } },
+      { op: 'set_gen', node: 'i1', gen: { prompt: 'p', params: {} } },
     ])
     expect(invertOperations(doc, [{ op: 'set_text', node: 't1', text: 'new' }])).toEqual([
       { op: 'set_text', node: 't1', text: 'old' },
     ])
-    expect(invertOperations(doc, [{ op: 'update_shot', node: 'b1', shot: 's1' as never, patch: { durationSec: 5 } }]))
+    expect(invertOperations(doc, [{ op: 'update_shot', node: 'b1', shot: 's1', patch: { durationSec: 5 } }]))
       .toEqual([{ op: 'set_shots', node: 'b1', shots: [shot('s1'), shot('s2')] }])
     expect(invertOperations(doc, [{ op: 'insert_shot', node: 'b1', shot: shot('s3') }])).toEqual([
       { op: 'set_shots', node: 'b1', shots: [shot('s1'), shot('s2')] },
     ])
-    expect(invertOperations(doc, [{ op: 'remove_shot', node: 'b1', shot: 's2' as never }])).toEqual([
+    expect(invertOperations(doc, [{ op: 'remove_shot', node: 'b1', shot: 's2' }])).toEqual([
       { op: 'set_shots', node: 'b1', shots: [shot('s1'), shot('s2')] },
     ])
-    expect(invertOperations(doc, [{ op: 'move_shot', node: 'b1', shot: 's1' as never }])).toEqual([
+    expect(invertOperations(doc, [{ op: 'move_shot', node: 'b1', shot: 's1' }])).toEqual([
       { op: 'move_shot', node: 'b1', shot: 's1', after: 's2' },
       { op: 'move_shot', node: 'b1', shot: 's2', after: 's1' },
     ])
     expect(invertOperations(doc, [{ op: 'disconnect', from: 'i1', to: 'b1', role: 'first_frame' }])).toEqual([
       { op: 'connect', from: 'i1', to: 'b1', kind: 'reference', role: 'first_frame' },
     ])
-    expect(invertOperations(doc, [{ op: 'ungroup', node: 'g1' as never }])).toEqual([
+    expect(invertOperations(doc, [{ op: 'ungroup', node: 'g1' }])).toEqual([
       { op: 'group', title: '组', nodes: ['m1'] },
     ])
     expect(invertOperations(doc, [{ op: 'reorder_refs', node: 'b1', sources: [] }])).toEqual([
@@ -512,7 +512,7 @@ describe('invertOperations coverage of every operation', () => {
       op: 'insert_shot', node: 't1', shot: shot('s3'),
     }])).toBeUndefined()
     const noVersion = document([node('n', 'text')])
-    expect(invertOperations(noVersion, [{ op: 'set_version', node: 'n', version: 'v' }])).toBeUndefined()
+    expect(invertOperations(noVersion, [{ op: 'set_version', node: 'n', version: 'v' }])).toEqual([{ op: 'set_version', node: 'n', version: null }])
     expect(invertOperations(noVersion, [{ op: 'set_text', node: 'n', text: 'x' }])).toBeUndefined()
     expect(invertOperations(noVersion, [{ op: 'set_optional_group' } as never])).toBeUndefined()
     expect(invertOperations(doc, [{ op: 'group', title: 'new', nodes: ['t1', 'i1'] }])).toBeUndefined()
@@ -556,15 +556,15 @@ describe('invertOperations coverage of every operation', () => {
 
 describe('branch coverage of the view models', () => {
   it('reads the current version with and without an active marker', () => {
-    expect(currentVersion(node('n', 'image'))).toBe(0)
+    expect(currentVersion(node('n', 'image'))).toBe(-1)
     const withVersions = node('n', 'image', { versions: [
       { id: 'v1' as never, createdAt: 'now', origin: 'user' },
       { id: 'v2' as never, createdAt: 'now', origin: 'user' },
     ] })
-    expect(currentVersion(withVersions)).toBe(1)
+    expect(currentVersion(withVersions)).toBe(-1)
     expect(currentVersion({ ...withVersions, activeVersion: 'v1' as never })).toBe(0)
     expect(versionChoices(withVersions)).toEqual([
-      { id: 'v1', label: 'v1', active: false }, { id: 'v2', label: 'v2', active: true },
+      { id: 'v1', label: 'v1', active: false }, { id: 'v2', label: 'v2', active: false },
     ])
     expect(versionChoices(node('n', 'image'))).toEqual([])
   })
@@ -624,12 +624,12 @@ describe('branch coverage of the view models', () => {
     ])).toBeUndefined()
   })
 
-  it('prefers the last shot list when a storyboard has no active version', () => {
+  it('does not implicitly select a storyboard version', () => {
     const board = node('b', 'storyboard', { versions: [{
       id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [shot('s1')],
     }] })
-    expect(invertOperations(document([board]), [{ op: 'update_shot', node: 'b', shot: 's1' as never, patch: {} }])).toEqual([
-      { op: 'set_shots', node: 'b', shots: [shot('s1')] },
+    expect(invertOperations(document([board]), [{ op: 'update_shot', node: 'b', shot: 's1', patch: {} }])).toEqual([
+      { op: 'set_shots', node: 'b', shots: [] },
     ])
   })
 

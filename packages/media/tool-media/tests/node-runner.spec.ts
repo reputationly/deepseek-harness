@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Bible, CanvasDocument, CanvasNode, Shot } from '@deepseek-ai/dsh-canvas'
-import { collectInputs, planNodes, segmentPrompt, type PlanLimits } from '../src/node-runner.ts'
+import { adoptedTailOf, collectInputs, planNodes, segmentPrompt, type PlanLimits } from '../src/node-runner.ts'
 
 const limits: PlanLimits = {
   maxVideoSeconds: 15,
@@ -33,8 +33,10 @@ const imageNode = (id: string, path: string): CanvasNode => node(id, 'image', {
   activeVersion: 'v1' as never,
 })
 
-const boardNode = (id: string, shots: readonly Shot[]): CanvasNode => node(id, 'storyboard', {
-  versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots }],
+type StoredShot = Omit<Shot, 'shotSize'> & Partial<Pick<Shot, 'shotSize'>>
+
+const boardNode = (id: string, shots: readonly StoredShot[]): CanvasNode => node(id, 'storyboard', {
+  versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: shots as readonly Shot[] }],
   activeVersion: 'v1' as never,
 })
 
@@ -48,7 +50,26 @@ const videoNode = (id: string, storyboard: string, shotIds: readonly string[], e
   })
 
 const documentOf = (nodes: readonly CanvasNode[], edges: CanvasDocument['edges'] = []): CanvasDocument => ({
-  version: 2, revision: 0, nextId: nodes.length + 1, nodes, edges,
+  version: 3, revision: 0, nextId: nodes.length + 1, nodes, edges,
+})
+
+it('resolves the tail of the adopted video across newer candidates and explicit adoption', () => {
+  const video = videoNode('v1', 'board', ['s1'], {
+    activeVersion: 'old' as never,
+    versions: [
+      { id: 'old' as never, path: '/old.mp4', origin: 'agent', createdAt: 'now' },
+      { id: 'new' as never, path: '/new.mp4', origin: 'agent', createdAt: 'now' },
+    ],
+    tailOf: { node: 'tail' as never, version: 'new-tail' as never, sourceVersion: 'new' as never },
+  })
+  const frame = node('tail', 'image', { versions: [
+    { id: 'old-tail' as never, path: '/old.png', origin: 'agent', createdAt: 'now', inputs: [{ node: video.id, version: 'old' as never, path: '/old.mp4', role: 'source' }] },
+    { id: 'new-tail' as never, path: '/new.png', origin: 'agent', createdAt: 'now', inputs: [{ node: video.id, version: 'new' as never, path: '/new.mp4', role: 'source' }] },
+  ] })
+  const document = documentOf([video, frame], [{ id: 'derived', source: video.id, target: frame.id, kind: 'derivation' }])
+  expect(adoptedTailOf(document, video)).toMatchObject({ version: 'old-tail', path: '/old.png' })
+  expect(adoptedTailOf(document, { ...video, activeVersion: 'new' as never })).toMatchObject({ version: 'new-tail', path: '/new.png' })
+  expect(adoptedTailOf(document, node('v1', 'video', { versions: video.versions ?? [] }))).toBeUndefined()
 })
 
 describe('segmentPrompt', () => {
@@ -117,9 +138,7 @@ describe('input edge edge cases', () => {
       { id: 'n1->n2:ref', source: 'n1' as never, target: 'n2' as never, kind: 'reference', role: 'ref' },
       { id: 'n1->n2:last_frame', source: 'n1' as never, target: 'n2' as never, kind: 'reference', role: 'last_frame' },
     ])
-    const inputs = collectInputs(document, document.nodes[1] as CanvasNode, bible)
-    expect(inputs.refs).toEqual([])
-    expect(inputs.lastFrame).toBeUndefined()
+    expect(() => collectInputs(document, document.nodes[1] as CanvasNode, bible)).toThrow('no adopted media')
   })
 
   it('reads a storyboard without a version as covering no shots and keeps the whole table when the node names no shots', () => {
@@ -202,7 +221,7 @@ describe('planNodes', () => {
     expect(existing.gen?.prompt).toBe(oldPrompt)
   })
 
-  it('blocks a later segment until the segment before it has a tail frame', () => {
+  it('does not require a preceding tail for a scene cut', () => {
     const board = node('n2', 'storyboard', {
       versions: [{
         id: 'v1' as never, createdAt: 'now', origin: 'user',
@@ -212,10 +231,7 @@ describe('planNodes', () => {
     })
     const later = videoNode('v9', 'n2', ['s4', 's5', 's6'])
     const plan = planNodes(documentOf([board, later]), bible, ['v9'], limits)
-    expect(plan.blocked).toEqual({
-      gate: 'tail_chain',
-      missing: ['v9 needs the tail frame of segment 0, which has not been generated'],
-    })
+    expect(plan.blocked).toBeUndefined()
   })
 
   it('refuses a storyboard whose shots miss what a video needs', () => {
@@ -234,6 +250,20 @@ describe('planNodes', () => {
     expect(planNodes(documentOf([image]), undefined, ['n1'], limits).blocked).toEqual({
       gate: 'G1_bible_first',
       missing: ['bible.json has no entries'],
+    })
+  })
+
+  it.each(['image', 'video', 'storyboard'] as const)('refuses %s generation without a bible even when the prompt has no mention', (type) => {
+    const requested = node('n1', type, { gen: { kind: type === 'storyboard' ? 'video' : type, prompt: 'a street', params: {} } })
+    expect(planNodes(documentOf([requested]), undefined, ['n1'], limits).blocked?.gate).toBe('G1_bible_first')
+  })
+
+  it('rechecks storyboard quality when retrying its video node directly', () => {
+    const invalid: StoredShot = { ...shot('s1'), shotSize: undefined }
+    const board = boardNode('n2', [invalid])
+    const video = videoNode('v1', 'n2', ['s1'])
+    expect(planNodes(documentOf([board, video]), bible, ['v1'], limits).blocked).toEqual({
+      gate: 'G2_storyboard_quality', missing: ['n2 shot s1: shotSize'],
     })
   })
 
@@ -273,9 +303,9 @@ describe('planNodes', () => {
     const first = videoNode('v1', 'n2', ['s1'], {
       versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
       activeVersion: 'v1' as never,
-      tailOf: { node: 't1' as never, version: 'v1' as never },
+      tailOf: { node: 't1' as never, version: 'v1' as never, sourceVersion: 'v1' as never },
     })
-    const plan = planNodes(documentOf([board, first]), bible, ['n2'], limits)
+    const plan = planNodes(documentOf([board, first, imageNode('t1', '/tail.png')]), bible, ['n2'], limits)
     expect(plan.entries.map(entry => [entry.node, entry.model, entry.tailChain?.node])).toEqual([
       ['v1', 'video-ref-model', undefined],
       ['segment-1', 'video-model', 't1'],
@@ -292,12 +322,14 @@ describe('planNodes', () => {
     expect(collectInputs(document, document.nodes[0] as CanvasNode, bible).prompt).toBe('')
   })
 
-  it('lets a later video generate when the storyboard has no version or the previous segment already has a tail', () => {
+  it('refuses a video referring to shots that its storyboard no longer has', () => {
     const emptyBoard = node('n2', 'storyboard')
     const video = node('v9', 'video', {
       gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'n2' as never, shots: ['s1' as never] } },
     })
-    expect(planNodes(documentOf([emptyBoard, video]), bible, ['v9'], limits).blocked).toBeUndefined()
+    expect(planNodes(documentOf([emptyBoard, video]), bible, ['v9'], limits).blocked).toEqual({
+      gate: 'G2_storyboard_quality', missing: ['n2 shot s1 does not exist'],
+    })
   })
 
   it('lets a later video generate when the segment before it already has a tail', () => {
@@ -305,17 +337,21 @@ describe('planNodes', () => {
     const first = videoNode('v1', 'n2', ['s1'], {
       versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
       activeVersion: 'v1' as never,
-      tailOf: { node: 't1' as never, version: 'v1' as never },
+      tailOf: { node: 't1' as never, version: 'v1' as never, sourceVersion: 'v1' as never },
     })
     const later = videoNode('v9', 'n2', ['s2', 's3', 's4', 's5', 's6'])
-    expect(planNodes(documentOf([board, first, later]), bible, ['v9'], limits).blocked).toBeUndefined()
+    const plan = planNodes(documentOf([board, first, later, imageNode('t1', '/tail.png')]), bible, ['v9'], limits)
+    expect(plan.blocked).toBeUndefined()
+    expect(plan.entries[0]?.tailChain?.node).toBe('t1')
   })
 
   it('refuses a video whose storyboard is missing when it must chain', () => {
     const orphan = node('v9', 'video', {
       gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'n404' as never, shots: ['s1' as never] } },
     })
-    expect(planNodes(documentOf([orphan]), bible, ['v9'], limits).blocked).toBeUndefined()
+    expect(planNodes(documentOf([orphan]), bible, ['v9'], limits).blocked).toEqual({
+      gate: 'G2_storyboard_quality', missing: ['v9 storyboard n404 does not exist'],
+    })
   })
 
   it('refuses nodes that do not exist or do not generate media by name', () => {

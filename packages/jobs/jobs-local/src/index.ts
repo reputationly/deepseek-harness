@@ -19,7 +19,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import { JobRegistry, JobId } from '@deepseek-ai/dsh-jobs'
 import type {
-  JobAppendOptions, JobEvent, JobEvents, JobHandle, JobKind, JobOutcome, JobOutputRead, JobOutputSource,
+  JobAppendOptions, JobEvent, JobEvents, JobHandle, JobHooks, JobKind, JobOutcome, JobOutputRead, JobOutputSource,
   JobRead, JobRegisteredData, JobSettleCause, JobSettledData, JobSpec, JobStatus, JobToolCall, JobView,
 } from '@deepseek-ai/dsh-jobs'
 import { JobEventHub, JobLayer } from './events.ts'
@@ -80,9 +80,10 @@ interface TrackedJob {
   kind: JobKind
   label: string
   outputLimitBytes: number | undefined
+  completionNotice: JobView['completionNotice']
   /** Exact lifecycle owner; session-id authorization is derived from it. */
   owner: Agent | undefined
-  cancel: (reason?: string) => void
+  cancel: JobHooks['cancel']
   status: JobStatus
   ring: OutputRing
   /** The model's consuming cursor; {@link JobRegistry.readAt} never moves it. */
@@ -248,6 +249,7 @@ export class LocalJobRegistry extends JobRegistry {
       kind: spec.kind,
       label: spec.label,
       outputLimitBytes: spec.outputLimitBytes,
+      completionNotice: spec.completionNotice,
       owner,
       cancel: hooks.cancel.bind(hooks),
       status: 'running',
@@ -423,6 +425,7 @@ export class LocalJobRegistry extends JobRegistry {
       label: job.label,
       ...owner !== undefined ? { owner } : {},
       ...job.outputLimitBytes !== undefined ? { outputLimitBytes: job.outputLimitBytes } : {},
+      ...job.completionNotice === undefined ? {} : { completionNotice: job.completionNotice },
       status: job.status,
       ...job.state.progress !== undefined ? { progress: job.state.progress } : {},
       ...job.detail !== undefined ? { detail: job.detail } : {},
@@ -484,7 +487,7 @@ export class LocalJobRegistry extends JobRegistry {
   private killJob(job: TrackedJob, reason?: string): 'requested' | 'already-finished' {
     if (isTerminal(job.status)) return 'already-finished'
     // Cancel first so a throw leaves lifecycle state unchanged.
-    job.cancel(reason)
+    job.cancel(reason, 'kill')
     job.status = 'stopping'
     // Last writer wins on purpose: the detail reports the latest kill intent.
     if (reason !== undefined) job.killReason = reason
@@ -699,7 +702,7 @@ export class LocalJobRegistry extends JobRegistry {
       // reporter does not address a reader that no longer exists.
       job.settleCause = 'teardown'
       try {
-        job.cancel(reason)
+        job.cancel(reason, 'teardown')
         job.status = 'stopping'
         // Teardown reaches settlement only after the producer releases, which a
         // slow stop can defer; announcing the transition here is what keeps an

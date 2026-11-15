@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write scripts/release/README.md
+/suanli-assistant-releases-and-updates:
+  en: 388cc390d5b3cecf
+  zh: acf6a85294cfed8a
+/suanli-assistant-releases-and-updates/summary:
+  en: 8f3690ad582f1515
+  zh: 85fdb02762e5d386
+/suanli-assistant-releases-and-updates/table-of-contents:
+  en: db59d900ad9636b5
+  zh: 114b94f0da84e46e
+/suanli-assistant-releases-and-updates/version-numbering:
+  en: e96bbd94dc290ea0
+  zh: 8eec32f0f9608bce
+/suanli-assistant-releases-and-updates/publishing:
+  en: 19d406bb2c1d8000
+  zh: 476d77dd0fe8008b
+/suanli-assistant-releases-and-updates/bucket-layout:
+  en: cbee235b7c49a884
+  zh: 55c9a6257de81685
+/suanli-assistant-releases-and-updates/bucket-layout/three-entry-points:
+  en: 714f613439a6d704
+  zh: 6412ea13c21431a6
+/suanli-assistant-releases-and-updates/bucket-layout/cache-headers:
+  en: f77a13617d5db13f
+  zh: 6b0a93cea400d085
+/suanli-assistant-releases-and-updates/after-publishing-refresh-pointers:
+  en: 66a3ce64efb64dd6
+  zh: abe3f03b966ae05a
+/suanli-assistant-releases-and-updates/client-update-discovery:
+  en: fb8555951679fa3d
+  zh: 8ee165ad63a3f8ab
+/suanli-assistant-releases-and-updates/unsigned-package-limitations:
+  en: 58bf3013082fc33e
+  zh: f5d96a7432c894ce
+/suanli-assistant-releases-and-updates/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

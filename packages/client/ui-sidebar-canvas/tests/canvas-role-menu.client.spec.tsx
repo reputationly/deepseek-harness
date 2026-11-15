@@ -8,7 +8,7 @@ import { CanvasRoleMenu } from '../src/client/CanvasRoleMenu.tsx'
 afterEach(() => { cleanup() })
 const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${String(params.n)}`
 const doc: CanvasDocument = {
-  version: 2, revision: 1, nextId: 3, edges: [{
+  version: 3, revision: 1, nextId: 3, edges: [{
     id: 'a->b:ref', source: 'a' as never, target: 'b' as never, kind: 'reference', role: 'ref',
   }],
   nodes: [

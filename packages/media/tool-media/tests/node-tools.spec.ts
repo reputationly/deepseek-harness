@@ -12,7 +12,8 @@ import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { registerNodeTools } from '../src/node-tools.ts'
-import type { MediaGenerator } from '../src/runner.ts'
+import { createRunnerState, type GeneratedMedia, type MediaGenerator } from '../src/runner.ts'
+import { bibleFixture } from './bible-fixture.ts'
 
 const limits = {
   maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
@@ -34,6 +35,8 @@ describe('generation tools', () => {
   let session: Session
   let generated: string[]
   let liveJobs: string[]
+  let runningJobs: Promise<GeneratedMedia>[]
+  let nextJob: number
 
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), 'dsh-node-tools-'))
@@ -44,8 +47,11 @@ describe('generation tools', () => {
     provideWorkingDirectoryFixture(ctx, directory)
     await ctx.plugin(CanvasService)
     session = Session.create(SessionId('node-tools-session'))
+    await (ctx.get('canvas') as CanvasService).updateBible(session, { upsert: bibleFixture.entries })
     generated = []
     liveJobs = []
+    runningJobs = []
+    nextJob = 0
     const generator: MediaGenerator = {
       image: async (call) => {
         generated.push(`image:${call.node.id}`)
@@ -59,7 +65,8 @@ describe('generation tools', () => {
       music: async () => ({ path: join(directory, 'music.mp3'), model: 'music-model' }),
     }
     registerNodeTools(ctx, {
-      canvas: () => ctx.get('canvas') as CanvasService | undefined,
+      state: createRunnerState(),
+      canvas: () => ctx.get('canvas'),
       limits,
       confirmLimits,
       concurrency: 1,
@@ -67,7 +74,13 @@ describe('generation tools', () => {
       jobs: () => ({
         start: (spec) => {
           const controller = new AbortController()
-          return { id: `media-${String(generated.length)}` as never, done: spec.run(controller.signal), signal: controller.signal }
+          const id = `media-${String(++nextJob)}`
+          liveJobs.push(id)
+          const done = spec.run(controller.signal)
+          runningJobs.push(done)
+          const forget = () => { liveJobs = liveJobs.filter(job => job !== id) }
+          void done.then(forget, forget)
+          return { id: id as never, done, signal: controller.signal }
         },
         live: () => liveJobs,
       }),
@@ -77,16 +90,9 @@ describe('generation tools', () => {
   })
 
   afterEach(async () => {
+    await Promise.allSettled(runningJobs)
     await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
   })
-
-  async function waitFor(predicate: () => Promise<boolean>): Promise<void> {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (await predicate()) return
-      await new Promise(resolve => setTimeout(resolve, 10))
-    }
-    throw new Error('timed out waiting for the generation to finish')
-  }
 
   async function call(name: string, args: unknown): Promise<{ text: string; isError: boolean }> {
     const result = await executeToolFixture(ctx, {
@@ -109,8 +115,8 @@ describe('generation tools', () => {
     const result = await call('canvas_generate', { nodes: ['n1'] })
     expect(result.isError).toBe(false)
     expect(result.text).toContain('Started 1 generation job')
+    await Promise.all(runningJobs)
     expect(generated).toEqual(['image:n1'])
-    await waitFor(async () => (await (ctx.get('canvas') as CanvasService).read(session)).nodes[0]?.versions?.length === 1)
     const node = (await (ctx.get('canvas') as CanvasService).read(session)).nodes[0] as CanvasNode
     expect(node.versions?.[0]?.path).toBe(join(directory, 'image.png'))
   })
@@ -124,7 +130,8 @@ describe('generation tools', () => {
     provideWorkingDirectoryFixture(ctxStrict, directory)
     await ctxStrict.plugin(CanvasService)
     registerNodeTools(ctxStrict, {
-      canvas: () => ctxStrict.get('canvas') as CanvasService | undefined,
+      state: createRunnerState(),
+      canvas: () => ctxStrict.get('canvas'),
       limits,
       confirmLimits: { ...confirmLimits, confirmImageCalls: 1, confirmSpeechLines: 1 },
       concurrency: 1,
@@ -203,9 +210,8 @@ describe('generation tools', () => {
     const result = await call('storyboard_voice', { storyboards: ['n1'] })
     expect(result.isError).toBe(false)
     expect(result.text).toContain('Started 1 generation job')
+    await Promise.all(runningJobs)
     expect(generated).toEqual(['speech:欢迎光临'])
-    await waitFor(async () => (await (ctx.get('canvas') as CanvasService).read(session)).nodes
-      .filter(node => node.type === 'audio').every(node => (node.versions ?? []).length > 0))
     const document = await (ctx.get('canvas') as CanvasService).read(session)
     const audio = document.nodes.filter(node => node.type === 'audio')
     expect(audio).toHaveLength(1)
@@ -218,13 +224,16 @@ describe('generation tools', () => {
       gen: { kind: 'video', prompt: '', params: {} },
       shots: [shot('s1', [{ id: 'd1' as never, speaker: { kind: 'narrator' }, line: '欢迎光临' }])],
     }] as never)
-    await call('storyboard_voice', { storyboards: ['n1'] })
-    await waitFor(async () => (await (ctx.get('canvas') as CanvasService).read(session)).nodes
-      .filter(node => node.type === 'audio').every(node => (node.versions ?? []).length > 0))
+    const first = await call('storyboard_voice', { storyboards: ['n1'] })
+    expect(first.isError, first.text).toBe(false)
+    await Promise.all(runningJobs)
+    expect((await (ctx.get('canvas') as CanvasService).read(session)).nodes
+      .filter(node => node.type === 'audio').map(node => node.versions?.length)).toEqual([1])
     generated = []
     const again = await call('storyboard_voice', { storyboards: ['n1'] })
     expect(again.isError).toBe(false)
     expect(again.text).toContain('Started 1 generation job')
+    await Promise.all(runningJobs)
     expect(generated).toEqual(['speech:欢迎光临'])
   })
 
@@ -241,8 +250,7 @@ describe('generation tools', () => {
       shots: [shot('s1', [{ id: 'd1' as never, speaker: { kind: 'narrator' }, line: '欢迎光临' }])],
     }] as never)
     await call('storyboard_voice', { storyboards: ['n1'] })
-    await waitFor(async () => (await (ctx.get('canvas') as CanvasService).read(session)).nodes
-      .filter(node => node.type === 'audio').every(node => (node.versions ?? []).length > 0))
+    await Promise.all(runningJobs)
     const audio = (await (ctx.get('canvas') as CanvasService).read(session)).nodes.find(node => node.type === 'audio')
     liveJobs = ['media-1']
     await edit([{ op: 'set_status', node: String(audio?.id), status: { state: 'running', jobId: 'media-1', at: 'now' } }] as never)

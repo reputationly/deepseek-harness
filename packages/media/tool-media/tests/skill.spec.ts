@@ -6,9 +6,16 @@ import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as ToolMedia from '../src/index.ts'
 
 let ctx: Context
+
+function mediaContext(): Context {
+  const owner = new Context()
+  new LocalSubprocessRuntime(owner)
+  return owner
+}
 
 afterEach(async () => {
   await ctx.fiber.dispose()
@@ -16,7 +23,7 @@ afterEach(async () => {
 
 describe('bundled media-editing skill', () => {
   it('is discoverable and loadable when the optional skills service is present', async () => {
-    ctx = new Context()
+    ctx = mediaContext()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SkillRegistry)
@@ -30,7 +37,8 @@ describe('bundled media-editing skill', () => {
       source: 'bundled',
       invocation: { modelInvocable: true, userInvocable: true },
     })
-    expect(skill?.content).toContain('调用 `media_probe`')
+    expect(skill?.content).toContain('`media_probe`')
+    expect(skill?.content).toContain('`timeline_edit`')
     expect(skill?.content).toContain('`merge_videos`')
     expect(skill?.resourceBase?.kind).toBe('directory')
   })
@@ -38,7 +46,7 @@ describe('bundled media-editing skill', () => {
   it('resolves SKILL.md and registers the provider from the bundled lib', async () => {
     const builtIndex = '../lib/index.js'
     const bundled = await import(builtIndex) as typeof ToolMedia
-    ctx = new Context()
+    ctx = mediaContext()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SkillRegistry)
@@ -52,12 +60,13 @@ describe('bundled media-editing skill', () => {
       source: 'bundled',
       invocation: { modelInvocable: true, userInvocable: true },
     })
-    expect(skill?.content).toContain('调用 `media_probe`')
+    expect(skill?.content).toContain('`media_probe`')
+    expect(skill?.content).toContain('`timeline_edit`')
     expect(skill?.content).toContain('`merge_videos`')
   })
 
   it('rejects a provider candidate whose opaque locator is not a file path', async () => {
-    ctx = new Context()
+    ctx = mediaContext()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SkillRegistry)
@@ -77,7 +86,7 @@ describe('bundled media-editing skill', () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-media-skill-'))
     try {
       await cp(join(process.cwd(), 'packages/media/tool-media/assets'), root, { recursive: true })
-      ctx = new Context()
+      ctx = mediaContext()
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(SkillRegistry)
@@ -89,7 +98,7 @@ describe('bundled media-editing skill', () => {
       const skill = await ctx.skills.get('media-editing')
       expect(skill?.resourceBase).toEqual({
         kind: 'directory',
-        path: `${join(root, 'media-editing')}/`,
+        path: `${join(root, 'media-editing').replaceAll('\\', '/')}/`,
       })
       expect(skill?.content).toContain('## 替换音轨')
     } finally {
@@ -105,7 +114,7 @@ describe('bundled media-editing skill', () => {
     try {
       await mkdir(join(root, 'media-editing'), { recursive: true })
       await writeFile(join(root, 'media-editing', 'SKILL.md'), content)
-      ctx = new Context()
+      ctx = mediaContext()
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(SkillRegistry)
@@ -122,7 +131,7 @@ describe('bundled media-editing skill', () => {
   it.each([
     ['fontFile', { fontFile: 'fonts/cjk.ttf' }, 'fontFile must be an absolute path'],
   ])('requires an absolute %s path', async (_label, config, message) => {
-    ctx = new Context()
+    ctx = mediaContext()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await expect(ctx.plugin(ToolMedia, {
@@ -135,7 +144,7 @@ describe('bundled media-editing skill', () => {
 
 describe('bundled skill set', () => {
   it('lists every skill directory under the root', async () => {
-    ctx = new Context()
+    ctx = mediaContext()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SkillRegistry)
@@ -144,7 +153,7 @@ describe('bundled skill set', () => {
     for (const name of names) {
       expect(await ctx.skills.get(name)).toMatchObject({ name, provider: 'dsh-tool-media', source: 'bundled' })
     }
-    expect((await ctx.skills.get('studio-pipeline'))?.content).toContain('设定集先行')
+    expect((await ctx.skills.get('studio-pipeline'))?.content).toContain('## 完成与局部返工')
   })
 
   it('rejects a skill whose frontmatter names another directory', async () => {
@@ -152,7 +161,7 @@ describe('bundled skill set', () => {
     try {
       await mkdir(join(root, 'studio-craft'), { recursive: true })
       await writeFile(join(root, 'studio-craft', 'SKILL.md'), '---\nname: media-editing\ndescription: x\n---\n# Body\n')
-      ctx = new Context()
+      ctx = mediaContext()
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(SkillRegistry)
@@ -165,7 +174,7 @@ describe('bundled skill set', () => {
   })
 
   it('resolves a relative root without a trailing slash', async () => {
-    ctx = new Context()
+    ctx = mediaContext()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SkillRegistry)
@@ -174,7 +183,7 @@ describe('bundled skill set', () => {
   })
 
   it('rejects a root that does not exist', async () => {
-    ctx = new Context()
+    ctx = mediaContext()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SkillRegistry)
@@ -190,7 +199,7 @@ describe('skill provider guards', () => {
     try {
       await mkdir(join(root, 'nameless'), { recursive: true })
       await writeFile(join(root, 'nameless', 'SKILL.md'), '---\ndescription: x\n---\n# Body\n')
-      ctx = new Context()
+      ctx = mediaContext()
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(SkillRegistry)
@@ -201,7 +210,7 @@ describe('skill provider guards', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-    ctx = new Context()
+    ctx = mediaContext()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SkillRegistry)
@@ -220,7 +229,7 @@ describe('skill provider guards', () => {
 
 describe('retired configuration keys', () => {
   it('rejects the retired skillAssetRoot key instead of falling back to the default root', async () => {
-    ctx = new Context()
+    ctx = mediaContext()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SkillRegistry)

@@ -5,7 +5,8 @@ import { CanvasConflictError, type Bible, type CanvasDocument, type CanvasEditRe
 import { EMPTY_CANVAS } from '@deepseek-ai/dsh-canvas/src/document.ts'
 import { resolveConfig } from '@deepseek-ai/dsh-canvas/src/config.ts'
 import { applyOperations } from '@deepseek-ai/dsh-canvas/src/operations.ts'
-import { runPlan, startPlan, type MediaGenerator, type RunnerServices } from '../src/runner.ts'
+import { createRunnerState, runPlan, startPlan, type MediaGenerator, type RunnerServices } from '../src/runner.ts'
+import { bibleFixture } from './bible-fixture.ts'
 
 const limits = {
   maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
@@ -29,7 +30,7 @@ describe('runPlan', () => {
   let generated: string[]
   let fail: boolean
   const bible: Bible = {
-    version: 1, revision: 0, logline: '', style: { visual: '', aspect: '9:16' }, entries: [],
+    ...bibleFixture,
   }
 
   beforeEach(() => {
@@ -67,6 +68,7 @@ describe('runPlan', () => {
       music: async () => ({ path: join(directory, 'music.mp3'), model: 'music-model' }),
     }
     return {
+      state: createRunnerState(),
       canvas,
       limits,
       confirmLimits,
@@ -93,19 +95,20 @@ describe('runPlan', () => {
   }
 
   it('generates a node, records its version, and clears the status', async () => {
-    await edit([{ op: 'add', type: 'image', title: '参考图', gen: { kind: 'image', prompt: '画一个店员', params: {} } }] as never)
+    edit([{ op: 'add', type: 'image', title: '参考图', gen: { kind: 'image', prompt: '画一个店员', params: {} } }] as never)
     const outcome = await runPlan(services(), ['n1'], undefined)
     expect(outcome.status).toBe('done')
     expect(generated).toEqual(['image:n1'])
     const node = document.nodes.find(candidate => candidate.id === 'n1') as CanvasNode
     expect(node.versions).toHaveLength(1)
-    expect(node.activeVersion).toBe('v1')
+    expect(node.activeVersion).toBeUndefined()
+    expect(node.versions?.[0]?.id).toMatch(/^media-/u)
     expect(node.versions?.[0]).toMatchObject({ path: join(directory, 'image.png'), prompt: '画一个店员', model: 'image-model' })
     expect(node.status).toBeUndefined()
   })
 
   it('creates the video segments of a storyboard, chains their tails, and records the numbers a version needs', async () => {
-    await edit([{
+    edit([{
       op: 'add', type: 'storyboard', title: '场1 分镜',
       gen: { kind: 'video', prompt: '', params: {} },
       shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
@@ -128,7 +131,7 @@ describe('runPlan', () => {
     const close: Shot = { ...shot('s1'), shotSize: 'close' }
     const storyboardId = brandString<CanvasNodeId>('n1')
     const shotId = brandString<ShotId>('s1')
-    await edit([
+    edit([
       {
         op: 'add', type: 'storyboard', title: '场1 分镜', gen: { kind: 'video', prompt: '', params: {} }, shots: [close],
       },
@@ -156,7 +159,7 @@ describe('runPlan', () => {
 
     const initial = await startPlan(strict, ['n1'], undefined)
     if (initial.status !== 'needs_confirmation') throw new Error('expected initial confirmation')
-    await edit([{ op: 'update_shot', node: 'n1', shot: 's1', patch: { shotSize: 'medium' } }])
+    edit([{ op: 'update_shot', node: 'n1', shot: 's1', patch: { shotSize: 'medium' } }])
     const outdated = await startPlan(strict, ['n1'], initial.budget.token)
     if (outdated.status !== 'needs_confirmation') throw new Error('expected updated confirmation')
     expect(outdated.budget.token).not.toBe(initial.budget.token)
@@ -172,7 +175,7 @@ describe('runPlan', () => {
   })
 
   it('marks a node failed with a retryable status and keeps its earlier version', async () => {
-    await edit([{ op: 'add', type: 'image', path: '/old.png', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    edit([{ op: 'add', type: 'image', path: '/old.png', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
     fail = true
     const outcome = await runPlan(services(), ['n1'], undefined)
     expect(outcome.status).toBe('done')
@@ -182,7 +185,7 @@ describe('runPlan', () => {
   })
 
   it('asks for confirmation when the plan crosses a threshold, then runs with the same token', async () => {
-    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
     const strict = services({ confirmLimits: { ...confirmLimits, confirmImageCalls: 1 } })
     const asked = await runPlan(strict, ['n1'], undefined)
     expect(asked.status).toBe('needs_confirmation')
@@ -193,7 +196,7 @@ describe('runPlan', () => {
   })
 
   it('regenerates a video without adding nodes, refreshing its tail frame', async () => {
-    await edit([{
+    edit([{
       op: 'add', type: 'storyboard', title: '场1',
       gen: { kind: 'video', prompt: '', params: {} },
       shots: [shot('s1'), shot('s2')],
@@ -210,7 +213,7 @@ describe('runPlan', () => {
   })
 
   it('writes three independent groups concurrently without losing a revision', async () => {
-    await edit([1, 2, 3].map(index => ({
+    edit([1, 2, 3].map(index => ({
       op: 'add' as const, type: 'image' as const, title: `image ${String(index)}`,
       gen: { kind: 'image' as const, prompt: `p${String(index)}`, params: {} },
     })))
@@ -222,7 +225,7 @@ describe('runPlan', () => {
   })
 
   it('classifies a 4xx failure as not retryable and a cancellation as cancelled', async () => {
-    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
     const denied = services({
       generate: {
         ...services().generate,
@@ -247,10 +250,10 @@ describe('runPlan', () => {
   })
 
   it('retries a canvas write that lost a race and works without a live-job probe', async () => {
-    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
     let conflicts = 1
     const racing = services()
-    const baseEdit = racing.canvas.edit
+    const baseEdit = racing.canvas.edit.bind(racing.canvas)
     const outcome = await runPlan({
       ...racing,
       canvas: {
@@ -272,9 +275,9 @@ describe('runPlan', () => {
   })
 
   it('repairs a status a previous process left running', async () => {
-    await edit([{ op: 'add', type: 'image', path: '/a.png', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
-    await edit([{ op: 'set_status', node: 'n1', status: { state: 'running', jobId: 'gone' as never, at: 'then' } }] as never)
-    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'q', params: {} } }] as never)
+    edit([{ op: 'add', type: 'image', path: '/a.png', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    edit([{ op: 'set_status', node: 'n1', status: { state: 'running', jobId: 'gone' as never, at: 'then' } }] as never)
+    edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'q', params: {} } }] as never)
     const outcome = await runPlan(services(), ['n2'], undefined)
     expect(outcome.status).toBe('done')
     expect((document.nodes.find(node => node.id === 'n1') as CanvasNode).status)
@@ -282,7 +285,7 @@ describe('runPlan', () => {
   })
 
   it('reports a cancellation and a non-Error rejection', async () => {
-    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+    edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
     const cancelledServices = services({
       generate: {
         ...services().generate,
@@ -315,12 +318,12 @@ describe('runPlan', () => {
   })
 
   it('marks an orphan segment video stale before generating the new layout', async () => {
-    await edit([{
+    edit([{
       op: 'add', type: 'storyboard', title: '场1',
       gen: { kind: 'video', prompt: '', params: {} },
       shots: [shot('s1'), shot('s2')],
     }] as never)
-    await edit([{
+    edit([{
       op: 'add', type: 'video', path: '/orphan.mp4',
       gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'n1' as never, shots: ['sx' as never] } },
     }] as never)
@@ -330,23 +333,23 @@ describe('runPlan', () => {
   })
 
   it('uses a tail frame an earlier run recorded for the next segment', async () => {
-    await edit([{
+    edit([{
       op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
       shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
     }] as never)
-    await edit([{ op: 'add', type: 'image', path: '/tail.png' }] as never)
-    await edit([{
+    edit([{ op: 'add', type: 'image', path: '/tail.png' }] as never)
+    edit([{
       op: 'add', type: 'video', path: '/first.mp4',
       gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'n1' as never, shots: ['s1' as never] } },
     }] as never)
-    await edit([{ op: 'set_tail', node: 'n3', tailOf: { node: 'n2' as never, version: 'v1' as never } }] as never)
+    edit([{ op: 'set_tail', node: 'n3', tailOf: { node: 'n2' as never, version: 'v1' as never } }] as never)
     const outcome = await runPlan(services({ concurrency: 1 }), ['n1'], undefined)
     expect(outcome.status).toBe('done')
     expect(generated.some(call => call.includes('tail.png'))).toBe(true)
   })
 
   it('records a generation whose tail extraction fails as failed', async () => {
-    await edit([{
+    edit([{
       op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
       shots: [shot('s1'), shot('s2')],
     }] as never)
@@ -357,7 +360,11 @@ describe('runPlan', () => {
     }, ['n1'], undefined)
     expect(outcome.status).toBe('done')
     const video = document.nodes.find(node => node.type === 'video') as CanvasNode
-    expect(video.status).toMatchObject({ state: 'failed', error: 'ffmpeg failed', retryable: true })
+    expect(video.status).toMatchObject({
+      state: 'failed', retryable: false, recoveryRequired: true,
+    })
+    if (video.status?.state !== 'failed') throw new Error('expected finalization failure')
+    expect(video.status.error).toContain('ffmpeg failed')
     expect(video.versions).toHaveLength(1)
   })
 
@@ -368,8 +375,8 @@ describe('runPlan', () => {
     expect(outcome.results).toEqual([])
   })
 
-  it('reports a preparation failure without starting a job', async () => {
-    await edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
+  it('reports a preparation failure through the registered job without generating media', async () => {
+    edit([{ op: 'add', type: 'image', gen: { kind: 'image', prompt: 'p', params: {} } }] as never)
     const broken = services()
     const outcome = await runPlan({
       ...broken,
@@ -380,11 +387,12 @@ describe('runPlan', () => {
     }, ['n1'], undefined)
     expect(outcome.status).toBe('done')
     if (outcome.status !== 'done') throw new Error('expected done')
-    expect(outcome.results).toEqual([{ node: 'n1', ok: false, error: 'canvas write failed', retryable: true }])
+    expect(outcome.results).toEqual([{ node: 'n1', jobId: 'media-1', ok: false, error: 'canvas write failed', retryable: true }])
+    expect(generated).toEqual([])
   })
 
   it('dispatches speech and music nodes to their generators', async () => {
-    await edit([
+    edit([
       { op: 'add', type: 'audio', gen: { kind: 'speech', prompt: 'hello', params: { voice: 'v' } } },
       { op: 'add', type: 'audio', gen: { kind: 'music', prompt: 'theme', params: {} } },
     ] as never)
@@ -402,7 +410,7 @@ describe('runPlan', () => {
   })
 
   it('passes a blocked plan back without generating anything', async () => {
-    await edit([{
+    edit([{
       op: 'add', type: 'storyboard', gen: { kind: 'video', prompt: '', params: {} },
       shots: [{ ...shot('s1'), shotSize: undefined }] as never,
     }] as never)
@@ -412,13 +420,13 @@ describe('runPlan', () => {
   })
 
   it('records the reference and frame files a call consumed', async () => {
-    await edit([
+    edit([
       { op: 'add', type: 'image', path: '/ref.png' },
       { op: 'add', type: 'image', path: '/first.png' },
       { op: 'add', type: 'image', path: '/last.png' },
       { op: 'add', type: 'video', gen: { kind: 'video', prompt: 'p', params: { duration: 6 } } },
     ] as never)
-    await edit([
+    edit([
       { op: 'connect', from: 'n1', to: 'n4', kind: 'reference', role: 'ref' },
       { op: 'connect', from: 'n2', to: 'n4', kind: 'reference', role: 'first_frame' },
       { op: 'connect', from: 'n3', to: 'n4', kind: 'reference', role: 'last_frame' },
@@ -432,7 +440,7 @@ describe('runPlan', () => {
   })
 
   it('waits for a free generation slot when the bound is one', async () => {
-    await edit([
+    edit([
       { op: 'add', type: 'image', gen: { kind: 'image', prompt: 'a', params: {} } },
       { op: 'add', type: 'image', gen: { kind: 'image', prompt: 'b', params: {} } },
     ] as never)
@@ -484,9 +492,10 @@ describe('segment regeneration', () => {
       shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
     }])
     const services: RunnerServices = {
+      state: createRunnerState(),
       canvas: {
         read: async () => ({ document, revision }),
-        bible: async () => undefined,
+        bible: async () => bibleFixture,
         edit: async (operations, baseRevision) => {
           if (baseRevision !== revision) throw new CanvasConflictError(baseRevision, revision)
           return edit(operations, 'agent')
@@ -531,11 +540,12 @@ describe('segment regeneration', () => {
     ])
     expect((await runPlan(services, ['n1'], undefined)).status).toBe('done')
     const refreshed = document.nodes.find(node => node.id === first.id) as CanvasNode
-    expect(refreshed.tailOf?.version).toBe('v2')
+    expect(refreshed.tailOf?.version).not.toBe(first.tailOf?.version)
+    expect(refreshed.tailOf?.sourceVersion).toBe(refreshed.versions?.at(-1)?.id)
     expect(videoCalls[3]?.firstFramePath).toBe(`${directory}/video-3.mp4.tail.png`)
     expect(document.edges.some(edge => edge.source === tailNode && edge.target === second.id
       && edge.kind === 'reference' && edge.role === 'first_frame')).toBe(true)
-    expect(refreshed.inputChanged).toBeUndefined()
-    expect((document.nodes.find(node => node.id === second.id) as CanvasNode).inputChanged).toBeUndefined()
+    expect(refreshed.inputChanged).toBe(true)
+    expect((document.nodes.find(node => node.id === second.id) as CanvasNode).inputChanged).toBe(true)
   })
 })

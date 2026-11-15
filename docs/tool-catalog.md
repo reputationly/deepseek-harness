@@ -50,8 +50,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-canvas` | `canvas_edit`, `canvas_get` | `ctx.workingDirectory`, `ctx.tools`, `an owning Agent session` | `tool/call`, `tool/result`, `the project canvas file` | - | The canvas belongs to the project directory of the calling Session; Web ui-sidebar-canvas shows it. |
-| `@deepseek-ai/dsh-tool-media` | `ffmpeg`, `generate_image`, `generate_music`, `generate_speech`, `generate_video`, `media_probe`, `merge_videos` | `ctx.tools`, `ctx.credentials`, `ctx.canvas for node inputs and result nodes` | `tool/call`, `tool/result`, `generated media files`, `the project canvas file` | - | Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema. |
+| `@deepseek-ai/dsh-canvas` | `canvas_edit`, `canvas_get`, `studio_bible_update`, `studio_episode_create`, `studio_episode_use`, `studio_expand_script`, `studio_project_create`, `studio_stage`, `timeline_edit`, `timeline_get`, `timeline_history`, `timeline_restore` | `ctx.workingDirectory`, `ctx.tools`, `an owning Agent session` | `tool/call`, `tool/result`, `the project canvas file` | - | The canvas belongs to the project directory of the calling Session; Web ui-sidebar-canvas shows it. |
+| `@deepseek-ai/dsh-tool-media` | `canvas_generate`, `ffmpeg`, `generate_image`, `generate_music`, `generate_speech`, `generate_video`, `media_edit`, `media_probe`, `merge_videos`, `storyboard_voice`, `timeline_export`, `timeline_render`, `timeline_render_status` | `ctx.tools`, `ctx.subprocess`, `ctx.credentials`, `ctx.canvas for node inputs and result nodes` | `tool/call`, `tool/result`, `generated media files`, `the project canvas file` | - | Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema. |
 
 <a id="deepseek-aidsh-plugin-manager"></a>
 
@@ -2706,7 +2706,7 @@ web_search and web_fetch keep provider selection behind ctx.web so model-visible
 
 ### `canvas_edit`
 
-Edit the project canvas with an ordered list of operations applied together. Nodes are positioned automatically. An operation that cannot apply is skipped and reported while the others still apply.
+Edit the project canvas with an ordered list of operations applied together. Nodes are positioned automatically. baseRevision is the revision canvas_get returned; a stale revision is refused instead of overwriting newer work. An operation that cannot apply is skipped and reported while the others still apply.
 
 ```json
 {
@@ -2721,20 +2721,29 @@ Edit the project canvas with an ordered list of operations applied together. Nod
         "properties": {
           "op": {
             "type": "string",
-            "description": "add creates a node from type plus text or path. update changes title, text, or path of node. remove deletes node. connect and disconnect take from and to. group frames nodes under title. ungroup dissolves the group node and keeps its members.",
+            "description": "add creates a node from type plus text, path, shots, or prompt. update changes title, text, or path. set_gen changes how a media node generates and takes params where null deletes a parameter. set_text and set_shots store a new version; update_shot, insert_shot, remove_shot, and move_shot edit one shot. set_version adopts a version, or clears adoption when version is null. connect and disconnect take from and to, with an optional role. reorder_refs rewrites the reference order. group frames nodes under title; ungroup dissolves the group.",
             "enum": [
               "add",
               "update",
               "remove",
+              "set_gen",
+              "set_text",
+              "set_shots",
+              "update_shot",
+              "insert_shot",
+              "remove_shot",
+              "move_shot",
+              "set_version",
               "connect",
               "disconnect",
+              "reorder_refs",
               "group",
               "ungroup"
             ]
           },
           "ref": {
             "type": "string",
-            "description": "Name for the node that add or group creates, usable wherever a node id is expected in later operations of this call."
+            "description": "Name for the node that add or group creates, usable wherever a node id is expected later in this call."
           },
           "type": {
             "type": "string",
@@ -2742,7 +2751,10 @@ Edit the project canvas with an ordered list of operations applied together. Nod
               "image",
               "video",
               "audio",
-              "text"
+              "text",
+              "script",
+              "storyboard",
+              "timeline"
             ]
           },
           "title": {
@@ -2751,7 +2763,7 @@ Edit the project canvas with an ordered list of operations applied together. Nod
           },
           "text": {
             "type": "string",
-            "description": "Content of a text node."
+            "description": "Content of a text or script node."
           },
           "path": {
             "type": "string",
@@ -2759,23 +2771,284 @@ Edit the project canvas with an ordered list of operations applied together. Nod
           },
           "group": {
             "type": "string",
-            "description": "Existing group that the added node joins."
+            "description": "Existing group the added node joins."
           },
           "node": {
             "type": "string",
-            "description": "Node that update, remove, or ungroup acts on."
+            "description": "Node that the operation acts on."
           },
           "from": {
             "type": "string",
-            "description": "Node or group the edge starts at: the input or source material."
+            "description": "Node the edge starts at: the input or source material."
           },
           "to": {
             "type": "string",
-            "description": "Node or group the edge points to: what was made from, or depends on, from."
+            "description": "Node the edge points to: what was made from, or depends on."
           },
           "nodes": {
             "type": "array",
             "description": "Nodes that the new group frames.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bible": {
+            "type": "string",
+            "description": "Bible entry this image belongs to."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt of a generated node; may mention bible entries as @name."
+          },
+          "model": {
+            "type": "string",
+            "description": "Model id for generation."
+          },
+          "genKind": {
+            "type": "string",
+            "description": "What the node generates.",
+            "enum": [
+              "image",
+              "video",
+              "speech",
+              "music"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "description": "Generation parameters; null deletes one.",
+            "additionalProperties": true,
+            "properties": {}
+          },
+          "shots": {
+            "type": "array",
+            "description": "Shots of a storyboard, or the shot insert_shot adds.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Shot id such as s1; omit to number the shots of the table."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Short title of the shot, at most 24 characters."
+                },
+                "shotSize": {
+                  "type": "string",
+                  "description": "Camera framing; gate G2 needs it before a video is generated.",
+                  "enum": [
+                    "extreme_wide",
+                    "wide",
+                    "full",
+                    "medium",
+                    "medium_close",
+                    "close",
+                    "extreme_close",
+                    "insert"
+                  ]
+                },
+                "visual": {
+                  "type": "string",
+                  "description": "What the frame shows."
+                },
+                "motion": {
+                  "type": "string",
+                  "description": "What the characters do in the shot."
+                },
+                "camera": {
+                  "type": "string",
+                  "description": "Camera movement, or 固定 when the camera holds."
+                },
+                "durationSec": {
+                  "type": "number",
+                  "description": "Shot length in seconds."
+                },
+                "characters": {
+                  "type": "array",
+                  "description": "Bible entry ids of the characters on screen.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "scene": {
+                  "type": "string",
+                  "description": "Bible entry id of the location."
+                },
+                "props": {
+                  "type": "array",
+                  "description": "Bible entry ids of the props on screen.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "dialogue": {
+                  "type": "array",
+                  "description": "Spoken lines of the shot, in order.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Line id such as d1; omit to number the lines of the shot."
+                      },
+                      "speaker": {
+                        "type": "string",
+                        "description": "Bible entry id of the speaker; omit the field for narration."
+                      },
+                      "line": {
+                        "type": "string",
+                        "description": "What the speaker says, as written."
+                      }
+                    },
+                    "required": [
+                      "line"
+                    ]
+                  }
+                },
+                "sfx": {
+                  "type": "string",
+                  "description": "Sound effects of the shot."
+                },
+                "negative": {
+                  "type": "string",
+                  "description": "What this shot must not show."
+                }
+              }
+            }
+          },
+          "shot": {
+            "type": "string",
+            "description": "Shot id that the operation acts on."
+          },
+          "patch": {
+            "type": "object",
+            "description": "Shot fields update_shot replaces. Omitted fields stay unchanged. Required fields cannot be null.",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "Short title of the shot, at most 24 characters."
+              },
+              "shotSize": {
+                "type": "string",
+                "description": "Camera framing; gate G2 needs it before a video is generated.",
+                "enum": [
+                  "extreme_wide",
+                  "wide",
+                  "full",
+                  "medium",
+                  "medium_close",
+                  "close",
+                  "extreme_close",
+                  "insert"
+                ]
+              },
+              "visual": {
+                "type": "string",
+                "description": "What the frame shows."
+              },
+              "motion": {
+                "type": "string",
+                "description": "What the characters do in the shot."
+              },
+              "camera": {
+                "type": "string",
+                "description": "Camera movement, or 固定 when the camera holds."
+              },
+              "durationSec": {
+                "type": "number",
+                "description": "Shot length in seconds."
+              },
+              "characters": {
+                "type": "array",
+                "description": "Bible entry ids of the characters on screen.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scene": {
+                "type": "string",
+                "description": "Bible entry id of the location."
+              },
+              "props": {
+                "type": "array",
+                "description": "Bible entry ids of the props on screen.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "dialogue": {
+                "type": "array",
+                "description": "Spoken lines of the shot, in order.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Line id such as d1; omit to number the lines of the shot."
+                    },
+                    "speaker": {
+                      "type": "string",
+                      "description": "Bible entry id of the speaker; omit the field for narration."
+                    },
+                    "line": {
+                      "type": "string",
+                      "description": "What the speaker says, as written."
+                    }
+                  },
+                  "required": [
+                    "line"
+                  ]
+                }
+              },
+              "sfx": {
+                "type": "string",
+                "description": "Sound effects of the shot."
+              },
+              "negative": {
+                "type": "string",
+                "description": "What this shot must not show."
+              }
+            }
+          },
+          "after": {
+            "type": "string",
+            "description": "Shot id the moved or inserted shot follows; omit to append."
+          },
+          "version": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Version id set_version adopts, or null to clear adoption."
+          },
+          "role": {
+            "type": "string",
+            "description": "What the edge supplies. Inferred from node types when omitted.",
+            "enum": [
+              "prompt",
+              "ref",
+              "first_frame",
+              "last_frame",
+              "audio",
+              "source"
+            ]
+          },
+          "order": {
+            "type": "integer",
+            "description": "Position among the reference inputs."
+          },
+          "sources": {
+            "type": "array",
+            "description": "Reference sources in the order reorder_refs applies.",
             "items": {
               "type": "string"
             }
@@ -2785,10 +3058,15 @@ Edit the project canvas with an ordered list of operations applied together. Nod
           "op"
         ]
       }
+    },
+    "baseRevision": {
+      "type": "integer",
+      "description": "Revision canvas_get returned for the canvas this call edits."
     }
   },
   "required": [
-    "operations"
+    "operations",
+    "baseRevision"
   ]
 }
 ```
@@ -2797,7 +3075,7 @@ Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tool
 
 ### `canvas_get`
 
-Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges.
+Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges. Nodes report their adopted version, generation inputs, and whether their storyboard or inputs changed since they were made. A full or narrowed read includes version ids and recipes. Generated media remains a candidate until set_version explicitly adopts it.
 
 ```json
 {
@@ -2805,12 +3083,1304 @@ Read the project canvas the user sees beside the conversation: its nodes, groups
   "properties": {
     "nodes": {
       "type": "array",
-      "description": "Node or group ids to read in full. Omit to list the whole canvas with long text and prompts shortened.",
+      "description": "Node or group ids to read in full. Omit to list the whole canvas with long text shortened.",
       "items": {
         "type": "string"
       }
+    },
+    "detail": {
+      "type": "string",
+      "description": "summary shortens long text; full keeps it and returns the shots of each storyboard.",
+      "enum": [
+        "summary",
+        "full"
+      ]
+    },
+    "include": {
+      "type": "array",
+      "description": "bible adds the shared style and entries; project adds the production format and episodes; production adds the stage reached.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "bible",
+          "project",
+          "production"
+        ]
+      }
     }
   }
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_bible_update`
+
+Update the shared bible: the logline, the visual style, and the characters, locations, and props every episode draws on. Entries are matched by id; removing an entry a storyboard still uses is refused.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "logline": {
+      "type": "string",
+      "description": "One-sentence premise of the production."
+    },
+    "style": {
+      "type": "object",
+      "description": "Style fields to replace.",
+      "additionalProperties": false,
+      "properties": {
+        "visual": {
+          "type": "string"
+        },
+        "palette": {
+          "type": "string"
+        },
+        "aspect": {
+          "type": "string",
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1",
+            "4:3",
+            "3:4"
+          ]
+        },
+        "director": {
+          "type": "string"
+        },
+        "genre": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string"
+        }
+      }
+    },
+    "upsert": {
+      "type": "array",
+      "description": "Full entries to add or replace. An entry with an existing id replaces it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "character",
+              "location",
+              "prop"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "imageNodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voice": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "voice": {
+                "type": "string"
+              },
+              "sampleNode": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "description"
+        ]
+      }
+    },
+    "remove": {
+      "type": "array",
+      "description": "Entry ids to delete.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "baseRevision": {
+      "type": "integer",
+      "description": "Bible revision the caller read; a stale one is refused."
+    }
+  }
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_episode_create`
+
+Add an episode to the project and write it to its own canvas file.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Episode title."
+    }
+  },
+  "required": [
+    "title"
+  ]
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_episode_use`
+
+Switch which episode this conversation edits. Later canvas calls act on that episode.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "episode": {
+      "type": "string",
+      "description": "Episode id from canvas_get or studio_episode_create."
+    }
+  },
+  "required": [
+    "episode"
+  ]
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_expand_script`
+
+Lay a script out on the canvas: one group per scene, holding a text node with the scene body and an empty storyboard that reads it as its prompt. Scenes already laid out are skipped.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "script": {
+      "type": "string",
+      "description": "Script node id whose active version holds the scenes."
+    },
+    "scenes": {
+      "type": "array",
+      "description": "Scene numbers to lay out; omit for every scene.",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "baseRevision": {
+      "type": "integer",
+      "description": "Canvas revision the caller read."
+    }
+  },
+  "required": [
+    "script",
+    "baseRevision"
+  ]
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_project_create`
+
+Create the project metadata for a production: its format, title, and output specification. The canvas that already exists becomes episode 1 without moving the file.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "description": "Kind of production.",
+      "enum": [
+        "drama",
+        "comic",
+        "mv",
+        "free"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Project title shown in the studio header."
+    },
+    "aspect": {
+      "type": "string",
+      "description": "Frame aspect of every episode.",
+      "enum": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4"
+      ]
+    },
+    "resolution": {
+      "type": "string",
+      "description": "Output resolution, such as 1080p."
+    },
+    "fps": {
+      "type": "number",
+      "description": "Frames per second of the final cut.",
+      "enum": [
+        24,
+        25,
+        30
+      ]
+    }
+  },
+  "required": [
+    "format",
+    "title",
+    "aspect",
+    "resolution",
+    "fps"
+  ]
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `studio_stage`
+
+Read or advance the production stage of the episode this conversation edits. Stages run brief, bible, assets, script, storyboard, generating, post, delivered. Moving back or skipping a stage needs an override reason.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "status reports the stage; advance moves it.",
+      "enum": [
+        "status",
+        "advance"
+      ]
+    },
+    "to": {
+      "type": "string",
+      "description": "Stage to advance to.",
+      "enum": [
+        "brief",
+        "bible",
+        "assets",
+        "script",
+        "storyboard",
+        "generating",
+        "post",
+        "delivered"
+      ]
+    },
+    "gate": {
+      "type": "string",
+      "description": "Gate to record as overridden when the stage move needs one.",
+      "enum": [
+        "G1_bible_first",
+        "G2_storyboard_quality",
+        "G3_one_video_per_shots",
+        "G4_stage_order",
+        "G5_destructive",
+        "tail_chain"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why the override is acceptable; recorded with the gate."
+    },
+    "baseRevision": {
+      "type": "integer",
+      "description": "Production revision the caller read; a stale one is refused."
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `timeline_edit`
+
+Edit a timeline using the same commands as the visual editor. Read timeline_get first and pass its revision; a conflict refuses the complete batch. Reread and revise the intended changes instead of retrying an old snapshot. Create the timeline node with canvas_edit. On first edit pass spec and add_track; then add_clip with pinned node/version or text. startMs is position in the timeline; source.inMs is position in the media. ripple_delete shifts later clips on that track only. set_clip replaces the supplied fields, and times must stay within source media duration.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string"
+    },
+    "episode": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string"
+    },
+    "baseRevision": {
+      "type": "integer"
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "fps": {
+          "type": "integer",
+          "enum": [
+            24,
+            25,
+            30
+          ]
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "fps"
+      ]
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "add_track"
+              },
+              "track": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "video",
+                      "audio",
+                      "text"
+                    ]
+                  },
+                  "muted": {
+                    "type": "boolean"
+                  },
+                  "volume": {
+                    "type": "number"
+                  },
+                  "clips": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "startMs": {
+                          "type": "integer"
+                        },
+                        "durationMs": {
+                          "type": "integer"
+                        },
+                        "source": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "node": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "string"
+                            },
+                            "inMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "version",
+                            "inMs"
+                          ]
+                        },
+                        "text": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "content": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string",
+                              "enum": [
+                                "top",
+                                "center",
+                                "bottom"
+                              ]
+                            },
+                            "size": {
+                              "type": "integer"
+                            },
+                            "color": {
+                              "type": "string"
+                            },
+                            "strokeColor": {
+                              "type": "string"
+                            },
+                            "strokeWidth": {
+                              "type": "number"
+                            },
+                            "fontFamily": {
+                              "type": "string"
+                            },
+                            "lineHeight": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "content",
+                            "position",
+                            "size"
+                          ]
+                        },
+                        "volume": {
+                          "type": "number"
+                        },
+                        "opacity": {
+                          "type": "number"
+                        },
+                        "fadeInMs": {
+                          "type": "integer"
+                        },
+                        "fadeOutMs": {
+                          "type": "integer"
+                        },
+                        "fit": {
+                          "type": "string",
+                          "enum": [
+                            "contain",
+                            "cover"
+                          ]
+                        },
+                        "transform": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "x": {
+                              "type": "number"
+                            },
+                            "y": {
+                              "type": "number"
+                            },
+                            "width": {
+                              "type": "integer"
+                            },
+                            "height": {
+                              "type": "integer"
+                            },
+                            "rotation": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y",
+                            "width",
+                            "height",
+                            "rotation"
+                          ]
+                        },
+                        "still": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "static",
+                                "zoom_in",
+                                "zoom_out",
+                                "pan_left",
+                                "pan_right",
+                                "pan_up",
+                                "pan_down"
+                              ]
+                            },
+                            "strength": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "strength"
+                          ]
+                        },
+                        "transitionIn": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "cut",
+                                "dissolve",
+                                "fade_black"
+                              ]
+                            },
+                            "durationMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "durationMs"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "startMs",
+                        "durationMs"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "muted",
+                  "volume",
+                  "clips"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "track"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "remove_track"
+              },
+              "track": {
+                "type": "string",
+                "description": "Track id such as t1."
+              }
+            },
+            "required": [
+              "op",
+              "track"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "set_track"
+              },
+              "track": {
+                "type": "string",
+                "description": "Track id such as t1."
+              },
+              "muted": {
+                "type": "boolean"
+              },
+              "volume": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "op",
+              "track"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "add_clip"
+              },
+              "track": {
+                "type": "string",
+                "description": "Track id such as t1."
+              },
+              "clip": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "startMs": {
+                    "type": "integer"
+                  },
+                  "durationMs": {
+                    "type": "integer"
+                  },
+                  "source": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "node": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "inMs": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "node",
+                      "version",
+                      "inMs"
+                    ]
+                  },
+                  "text": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "content": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "center",
+                          "bottom"
+                        ]
+                      },
+                      "size": {
+                        "type": "integer"
+                      },
+                      "color": {
+                        "type": "string"
+                      },
+                      "strokeColor": {
+                        "type": "string"
+                      },
+                      "strokeWidth": {
+                        "type": "number"
+                      },
+                      "fontFamily": {
+                        "type": "string"
+                      },
+                      "lineHeight": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "content",
+                      "position",
+                      "size"
+                    ]
+                  },
+                  "volume": {
+                    "type": "number"
+                  },
+                  "opacity": {
+                    "type": "number"
+                  },
+                  "fadeInMs": {
+                    "type": "integer"
+                  },
+                  "fadeOutMs": {
+                    "type": "integer"
+                  },
+                  "fit": {
+                    "type": "string",
+                    "enum": [
+                      "contain",
+                      "cover"
+                    ]
+                  },
+                  "transform": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "width": {
+                        "type": "integer"
+                      },
+                      "height": {
+                        "type": "integer"
+                      },
+                      "rotation": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "width",
+                      "height",
+                      "rotation"
+                    ]
+                  },
+                  "still": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "static",
+                          "zoom_in",
+                          "zoom_out",
+                          "pan_left",
+                          "pan_right",
+                          "pan_up",
+                          "pan_down"
+                        ]
+                      },
+                      "strength": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "strength"
+                    ]
+                  },
+                  "transitionIn": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "cut",
+                          "dissolve",
+                          "fade_black"
+                        ]
+                      },
+                      "durationMs": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "durationMs"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "startMs",
+                  "durationMs"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "track",
+              "clip"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "move_clip"
+              },
+              "track": {
+                "type": "string",
+                "description": "Track id such as t1."
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              },
+              "startMs": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "op",
+              "track",
+              "clip",
+              "startMs"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "trim_clip"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              },
+              "inMs": {
+                "type": "integer"
+              },
+              "durationMs": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "op",
+              "clip",
+              "inMs",
+              "durationMs"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "split_clip"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              },
+              "atMs": {
+                "type": "integer"
+              },
+              "rightId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "clip",
+              "atMs",
+              "rightId"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "remove_clip"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              }
+            },
+            "required": [
+              "op",
+              "clip"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "ripple_delete"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              }
+            },
+            "required": [
+              "op",
+              "clip"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "set_clip"
+              },
+              "clip": {
+                "type": "string",
+                "description": "Clip id such as k1, unique across all tracks."
+              },
+              "patch": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "startMs": {
+                    "type": "integer"
+                  },
+                  "durationMs": {
+                    "type": "integer"
+                  },
+                  "source": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "node": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "inMs": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "node",
+                      "version",
+                      "inMs"
+                    ]
+                  },
+                  "text": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "content": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "center",
+                          "bottom"
+                        ]
+                      },
+                      "size": {
+                        "type": "integer"
+                      },
+                      "color": {
+                        "type": "string"
+                      },
+                      "strokeColor": {
+                        "type": "string"
+                      },
+                      "strokeWidth": {
+                        "type": "number"
+                      },
+                      "fontFamily": {
+                        "type": "string"
+                      },
+                      "lineHeight": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "content",
+                      "position",
+                      "size"
+                    ]
+                  },
+                  "volume": {
+                    "type": "number"
+                  },
+                  "opacity": {
+                    "type": "number"
+                  },
+                  "fadeInMs": {
+                    "type": "integer"
+                  },
+                  "fadeOutMs": {
+                    "type": "integer"
+                  },
+                  "fit": {
+                    "type": "string",
+                    "enum": [
+                      "contain",
+                      "cover"
+                    ]
+                  },
+                  "transform": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "width": {
+                        "type": "integer"
+                      },
+                      "height": {
+                        "type": "integer"
+                      },
+                      "rotation": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "width",
+                      "height",
+                      "rotation"
+                    ]
+                  },
+                  "still": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "static",
+                          "zoom_in",
+                          "zoom_out",
+                          "pan_left",
+                          "pan_right",
+                          "pan_up",
+                          "pan_down"
+                        ]
+                      },
+                      "strength": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "strength"
+                    ]
+                  },
+                  "transitionIn": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "cut",
+                          "dissolve",
+                          "fade_black"
+                        ]
+                      },
+                      "durationMs": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "durationMs"
+                    ]
+                  }
+                }
+              }
+            },
+            "required": [
+              "op",
+              "clip",
+              "patch"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "set_spec"
+              },
+              "spec": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "width": {
+                    "type": "integer"
+                  },
+                  "height": {
+                    "type": "integer"
+                  },
+                  "fps": {
+                    "type": "integer",
+                    "enum": [
+                      24,
+                      25,
+                      30
+                    ]
+                  }
+                },
+                "required": [
+                  "width",
+                  "height",
+                  "fps"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "spec"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory",
+    "baseRevision",
+    "operations"
+  ]
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `timeline_get`
+
+Read a timeline node before editing it. Clips pin specific source versions. Times are integer milliseconds; video and text layers paint in track order. An uninitialized timeline needs an explicit output spec on its first edit.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string"
+    },
+    "episode": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `timeline_history`
+
+List saved timeline revisions, newest first. undo and redo name available cursor targets. Restoration creates a new revision and preserves older generations.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string"
+    },
+    "episode": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+Source: [`packages/media/canvas/src/tools.ts`](../packages/media/canvas/src/tools.ts)
+
+### `timeline_restore`
+
+Restore a saved revision, or follow the current undo/redo target from timeline_history. Pass the reviewed live baseRevision. Conflicts refuse the whole operation; reread and review before trying again.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string"
+    },
+    "episode": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer"
+    },
+    "baseRevision": {
+      "type": "integer"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "restore",
+        "undo",
+        "redo"
+      ]
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory",
+    "revision",
+    "baseRevision",
+    "mode"
+  ]
 }
 ```
 
@@ -2821,6 +4391,34 @@ The canvas belongs to the project directory of the calling Session; Web ui-sideb
 <a id="deepseek-aidsh-tool-media"></a>
 
 ## `@deepseek-ai/dsh-tool-media`
+
+### `canvas_generate`
+
+Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one video node per segment. A large plan returns needs_confirmation with a token; show the totals to the user and call again with that token once they agree.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "description": "Image, video, audio, or storyboard node ids.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confirmToken": {
+      "type": "string",
+      "description": "Token from a previous needs_confirmation result, after the user agreed."
+    }
+  },
+  "required": [
+    "nodes"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/node-tools.ts`](../packages/media/tool-media/src/node-tools.ts)
 
 ### `ffmpeg`
 
@@ -2923,7 +4521,7 @@ Generate a music track. The prompt must describe genre, instrumentation, tempo, 
     },
     "lyrics": {
       "type": "string",
-      "description": "Optional lyrics for a music request."
+      "description": "Song lyrics; required by MiniMax Music3. Omit for instrumental creation with a model such as ACE-Step."
     }
   },
   "required": [
@@ -3027,6 +4625,77 @@ Generate a short video from a text prompt, from a first frame (and optional last
 
 Source: [`packages/media/tool-media/src/visual-tools.ts`](../packages/media/tool-media/src/visual-tools.ts)
 
+### `media_edit`
+
+Edit an exact media version locally with FFmpeg. audio_edit trims audio and applies gain and fades; extract_audio makes an audio node from a video; first_frame and last_frame capture images; refresh_tail refreshes the adopted video’s exact-version tail. Read canvas_get first and copy directory, episode, node, and version. Times are milliseconds, volume is linear (0–4). Results are unadopted candidates; use canvas_edit set_version only after the user chooses one. Identical requests reuse their candidate. Local interrupted edits may be explicitly retried; completed files survive failed attachment. No cloud model is called.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "directory": {
+      "type": "string",
+      "description": "Exact project directory from canvas_get."
+    },
+    "episode": {
+      "type": "string",
+      "description": "Captured episode id from canvas_get."
+    },
+    "node": {
+      "type": "string",
+      "description": "Audio or video source node id."
+    },
+    "version": {
+      "type": "string",
+      "description": "Exact retained source version, whether adopted or a candidate."
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "audio_edit",
+        "extract_audio",
+        "first_frame",
+        "last_frame",
+        "refresh_tail"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Required for extracts and frames: title of their new node."
+    },
+    "inMs": {
+      "type": "integer",
+      "description": "Audio trim start; omitted means zero."
+    },
+    "outMs": {
+      "type": "integer",
+      "description": "Audio trim end; omitted means the measured source end."
+    },
+    "volume": {
+      "type": "number",
+      "description": "Linear audio gain from 0 to 4; omitted means 1."
+    },
+    "fadeInMs": {
+      "type": "integer",
+      "description": "Fade in over the edited audio; omitted means zero."
+    },
+    "fadeOutMs": {
+      "type": "integer",
+      "description": "Fade out over the edited audio; omitted means zero."
+    }
+  },
+  "required": [
+    "directory",
+    "episode",
+    "node",
+    "version",
+    "operation"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/local-edit-tools.ts`](../packages/media/tool-media/src/local-edit-tools.ts)
+
 ### `media_probe`
 
 Probe a local media file or canvas media node before editing. Returns duration, container, and stream codecs and dimensions/audio properties.
@@ -3094,5 +4763,136 @@ Join two or more local video files in order. Streams are probed, normalized to a
 ```
 
 Source: [`packages/media/tool-media/src/edit-tools.ts`](../packages/media/tool-media/src/edit-tools.ts)
+
+### `storyboard_voice`
+
+Create one audio node per spoken line of the given storyboards and synthesize them, reusing nodes that already voice a line. Returns needs_confirmation with a token when the line count crosses the deployment limit.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "storyboards": {
+      "type": "array",
+      "description": "Storyboard node ids.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confirmToken": {
+      "type": "string",
+      "description": "Token from a previous needs_confirmation result, after the user agreed."
+    }
+  },
+  "required": [
+    "storyboards"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/node-tools.ts`](../packages/media/tool-media/src/node-tools.ts)
+
+### `timeline_export`
+
+Export the ready preview bytes as a new immutable video on the canvas. Requires the current timeline revision. The result survives cache cleanup. Existing versions remain unchanged and adopting the exported version is a separate decision.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "description": "Timeline node id from canvas_get."
+    },
+    "revision": {
+      "type": "integer",
+      "description": "Current revision returned by timeline_get."
+    },
+    "episode": {
+      "type": "string",
+      "description": "Episode id from canvas_get; copy it explicitly to keep edits on that episode."
+    },
+    "directory": {
+      "type": "string",
+      "description": "Exact project directory from canvas_get."
+    }
+  },
+  "required": [
+    "node",
+    "revision",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/timeline-tools.ts`](../packages/media/tool-media/src/timeline-tools.ts)
+
+### `timeline_render`
+
+Build the current timeline full-quality preview with the shared compositor. Read timeline_get first and pass its revision. This queues a local media job; a connected application renders it. queued/rendering/assembling do not mean ready. No cloud model is called. Check timeline_render_status, then timeline_export when ready. Editing invalidates the old preview.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "description": "Timeline node id from canvas_get."
+    },
+    "revision": {
+      "type": "integer",
+      "description": "Current revision returned by timeline_get."
+    },
+    "episode": {
+      "type": "string",
+      "description": "Episode id from canvas_get; copy it explicitly to keep edits on that episode."
+    },
+    "directory": {
+      "type": "string",
+      "description": "Exact project directory from canvas_get."
+    }
+  },
+  "required": [
+    "node",
+    "revision",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/timeline-tools.ts`](../packages/media/tool-media/src/timeline-tools.ts)
+
+### `timeline_render_status`
+
+Read the current timeline preview state. Only ready exposes a complete MP4 matching the current revision and pinned source versions. An interrupted job resumes local cache work after reconnect; failed and cancelled are terminal until explicitly retried.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "description": "Timeline node id from canvas_get."
+    },
+    "episode": {
+      "type": "string",
+      "description": "Episode id from canvas_get; copy it explicitly to keep edits on that episode."
+    },
+    "directory": {
+      "type": "string",
+      "description": "Exact project directory from canvas_get."
+    }
+  },
+  "required": [
+    "node",
+    "episode",
+    "directory"
+  ]
+}
+```
+
+Source: [`packages/media/tool-media/src/timeline-tools.ts`](../packages/media/tool-media/src/timeline-tools.ts)
 
 Models and accepted parameter values come from the gateway capability catalog at call time, not from the schema.

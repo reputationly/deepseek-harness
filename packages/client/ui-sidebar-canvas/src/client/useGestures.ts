@@ -73,10 +73,10 @@ export function useGestures<N extends Node, E extends Edge>(props: GestureProps<
     setNodes((current) => {
       const list = changes.reduce((previous, change) => {
         if (change.type === 'position' && change.position !== undefined) {
-          return previous.map(node => node.id === change.id ? { ...node, position: change.position } as N : node)
+          return previous.map(node => node.id === change.id ? { ...node, position: change.position } : node)
         }
         if (change.type === 'select') {
-          return previous.map(node => node.id === change.id ? { ...node, selected: change.selected } as N : node)
+          return previous.map(node => node.id === change.id ? { ...node, selected: change.selected } : node)
         }
         return previous
       }, [...current])
@@ -86,13 +86,11 @@ export function useGestures<N extends Node, E extends Edge>(props: GestureProps<
   /* v8 ignore next -- ReactFlow reports only selections for edges this canvas keeps */
   const onEdgesChange = useCallback((changes: EdgeChange<E>[]) => {
     setEdges(current => changes.reduce((list, change) => change.type === 'select'
-      ? list.map(edge => edge.id === change.id ? { ...edge, selected: change.selected } as E : edge)
+      ? list.map(edge => edge.id === change.id ? { ...edge, selected: change.selected } : edge)
       : list, [...current]))
   }, [setEdges])
   const onConnectStart = useCallback<OnConnectStart>((event) => {
-    const point = event as MouseEvent
-    /* v8 ignore next -- every drag event carries coordinates */
-    pointer.current = { x: point.clientX ?? 0, y: point.clientY ?? 0 }
+    pointer.current = 'clientX' in event ? { x: event.clientX, y: event.clientY } : { x: 0, y: 0 }
   }, [])
   const onConnectEnd = useCallback<OnConnectEnd>((event) => {
     const point = event as MouseEvent

@@ -1,111 +1,134 @@
-# 蒜狸小助手 发布与升级
+# Suanli Assistant releases and updates
 
-面向维护者的一页说明：版本号怎么来、包装到哪、客户端怎么发现更新。
+English | [中文](README.zh.md)
 
-## 版本号
+<a id="summary"></a>
+
+## Summary
+
+Use these scripts to publish platform packages, keep update pointers consistent and configure client updates.
+
+<a id="table-of-contents"></a>
+
+## Table of Contents
+
+- [Version numbering](#version-numbering)
+- [Publishing](#publishing)
+- [Bucket layout](#bucket-layout)
+- [Three entry points](#three-entry-points)
+- [Cache headers](#cache-headers)
+- [After publishing: refresh pointers](#after-publishing-refresh-pointers)
+- [Client update discovery](#client-update-discovery)
+- [Unsigned-package limitations](#unsigned-package-limitations)
+- [Dev Note](#dev-note)
+
+<a id="version-numbering"></a>
+
+## Version numbering
 
 ```
-<上游 DSH 版本>.ov.<UTC 构建分钟>
+<upstream DSH version>.ov.<UTC build minute>
 0.2.2-rc.1.ov.202611081619
 ```
 
-- 前缀跟随上游 `package.json`，上游发新版时自动变，不需要手改
-- 后缀是 UTC 到分钟的时间戳，保证同一上游版本下的多次构建严格递增
-- `electron-updater` 用 semver 比较，这个格式**高于**裸的 `0.2.2-rc.1`，所以正式版发布后客户端会自动升上去
-- 同一分钟内构建两次会得到相同版本号；连发请间隔一分钟
+- The prefix follows the upstream `package.json`; an upstream version change updates it automatically.
+- The suffix is a UTC timestamp to the minute, so successive builds under one upstream version increase.
+- `electron-updater` compares semver. This version sorts above the bare `0.2.2-rc.1`, allowing packaged releases to replace that upstream prerelease.
+- Two builds in one minute receive the same version. Wait one minute between consecutive releases.
 
-生成方式：`node scripts/release/aurora-version.mjs`，CI 里由 `prepare` job 统一算一次。
+Generate it with `node scripts/release/aurora-version.mjs`. CI calculates it once in `prepare`.
 
-## 发布
+<a id="publishing"></a>
 
-手动触发 `.github/workflows/suanli-assistant-release.yml`，两个输入：
+## Publishing
 
-| 输入 | 说明 |
+Manually trigger `.github/workflows/suanli-assistant-release.yml` with these inputs:
+
+| Input | Meaning |
 |---|---|
-| `version` | 留空则自动生成 |
-| `keep` | 每个平台保留的版本目录数，默认 2 |
+| `version` | Leave empty to generate automatically |
+| `keep` | Version directories retained per platform; default 2 |
 
-结构是 `prepare → build(matrix) → publish`：版本只算一次；每个平台只负责打包并上传 artifact；所有平台都成功后才由 `publish` 统一上传、翻指针、清理。
+The flow is `prepare → build(matrix) → publish`: calculate one version; package and upload an artifact per platform; then upload packages, update pointers and clean up in `publish` after every platform succeeds.
 
-**某个平台失败时不会发布任何平台** —— 否则指针会翻到该平台不存在的版本，用户升级撞 404。
+If a platform fails, no platform is published. Advancing a pointer to a missing platform artifact would make client updates return 404.
 
-## 桶结构
+<a id="bucket-layout"></a>
+
+## Bucket layout
 
 ```
 suanli-assistant/
   darwin-arm64/
-    nightly-mac.yml                    ← 更新指针，每次发布重写
-    latest.json                        ← 当前版本 / 大小 / sha256，下载页读这个
-    latest/suanli-assistant-*.dmg/.zip ← 固定文件名，字节随版本浮动
-    versions/<版本>/...                ← 不可变，回滚和差量更新用
+    nightly-mac.yml                    # update pointer, rewritten on release
+    latest.json                        # current version, size and sha256
+    latest/suanli-assistant-*.dmg/.zip  # fixed filenames, replaced on release
+    versions/<version>/...             # immutable rollback/differential files
   win32-x64/
     nightly.yml
     latest.json
     latest/suanli-assistant-win32-x64-unsigned.exe
-    versions/<版本>/...
+    versions/<version>/...
 ```
 
-- 版本目录**只增不改**：同一版本重发会覆盖，所以发布前确认版本号
-- 每个 target 保留最近 `keep` 个版本目录，删旧时跳过正在发布的那个
-- `latest/` 只有一份固定文件名，每次发布原地覆盖；不再额外复制一份带版本号的副本
-  （那会让存储、CDN 缓存和预热额度都翻倍，而没有任何链接指向它）
+- Add version directories without changing existing versions. Republishing the same version overwrites it, so check the version before publishing.
+- Retain the latest `keep` directories per target and exclude the version currently being published from cleanup.
+- Keep one fixed-name copy under `latest/`, replaced in place. Do not add a version-named duplicate: it doubles storage, CDN caching and prefetch usage without any link using it.
 
-### 三个入口，用途不同
+<a id="three-entry-points"></a>
 
-| 入口 | 谁用 | 缓存 |
+### Three entry points
+
+| Entry | Consumer | Cache |
 |---|---|---|
-| `versions/<版本>/<文件>` | `nightly.yml` 里的下载地址、差量更新 | 1 年 + `immutable` |
-| `latest.json` | 下载页、客服、文档想知道"最新是哪个" | `no-cache`，秒级 |
-| `latest/suanli-assistant-<平台>-unsigned.<ext>` | 给人手点的固定链接 | 5 分钟 |
+| `versions/<version>/<file>` | Download URLs in `nightly.yml`, differential updates | One year + `immutable` |
+| `latest.json` | Download page, support and version lookup | `no-cache`, seconds |
+| `latest/suanli-assistant-<platform>-unsigned.<ext>` | Fixed links opened by users | Five minutes |
 
-**给用户的固定链接只能用第三种，不能把 319MB 的文件挂在一个长缓存的固定路径上**：那样发版后
-一部分用户会永远拿到旧包，而且不同节点表现不同，几乎无法复现。
+Use the third form for a fixed user-facing download link. Putting a 319 MB package at a fixed path with long caching leaves some users on old bytes after releases, with different behavior across edge nodes.
 
-### 缓存头是发布脚本写的
+<a id="cache-headers"></a>
 
-R2 自己不发 `Cache-Control`，前面挂了 CDN（EdgeOne）时就会退回
-`TTL = (当前时间 - Last-Modified) × 10%` 的启发式 —— 刚发出来的安装包只剩几秒寿命，每个早期下载
-都会回源。所以每个对象上传时都带上自己的缓存头，值见
-`aurora-publish.mjs` 的 `CACHE_CONTROL`。
+### Cache headers
 
-CDN 侧要配合的规则（否则会反过来破坏自动更新）：
+The publishing script sets cache headers. Without explicit `Cache-Control`, a CDN in front of R2 can use the heuristic `TTL = (current time - Last-Modified) × 10%`; newly published packages then have only seconds of freshness and early downloads repeatedly reach the origin. Each object therefore receives its own header from `CACHE_CONTROL` in `aurora-publish.mjs`.
 
-- `versions/` 与 `latest/` 下的安装包 → 长缓存（与其自身 `Cache-Control` 一致即可）
-- **`nightly.yml`、`nightly-mac.yml`、`latest.json` → 不缓存或 ≤60 秒**。这几个是"指针"，
-  一旦被长缓存，客户端会长期收不到新版本
-- 开启「分片回源」，关闭「预刷新」和「智能压缩」（安装包本身已压缩）
+Configure the CDN consistently:
 
-上传走 Cloudflare R2 的 S3 兼容接口，用 `curl --aws-sigv4` 签名，不需要 AWS CLI。
+- Packages under `versions/` and `latest/`: follow their own `Cache-Control`.
+- `nightly.yml`, `nightly-mac.yml` and `latest.json`: no caching or at most 60 seconds. Long caching of these pointers prevents clients from discovering updates.
+- Enable range-based origin fetching. Disable pre-refresh and smart compression; packages are already compressed.
 
-## 发布之后：刷新指针
+Uploads use Cloudflare R2's S3-compatible interface with `curl --aws-sigv4`; AWS CLI is not required.
 
-`publish` job 末尾会让 EdgeOne 立刻认识新版本，只在仓库配了下列 secret 时执行（缺省则整步跳过）：
+<a id="after-publishing-refresh-pointers"></a>
 
-| secret | 说明 |
+## After publishing: refresh pointers
+
+At the end of `publish`, EdgeOne is refreshed when the repository has these secrets. Otherwise the step is skipped:
+
+| Secret | Meaning |
 |---|---|
-| `EO_SECRET_ID` / `EO_SECRET_KEY` | 子账号密钥，只需 `teo:CreatePrefetchTask`、`teo:CreatePurgeTask` |
-| `EO_ZONE_ID` | 站点 ID，形如 `zone-…` |
+| `EO_SECRET_ID` / `EO_SECRET_KEY` | Subaccount credentials requiring only `teo:CreatePrefetchTask` and `teo:CreatePurgeTask` |
+| `EO_ZONE_ID` | Zone ID such as `zone-…` |
 
-它只做一件事：**刷新** `nightly.yml`、`latest.json` 和 `latest/` 里的固定文件名，让指针立刻翻转，不会出现"页面写着新版、下载到旧包"。
+The step purges `nightly.yml`, `latest.json` and fixed filenames under `latest/` so pointers and downloaded packages agree.
 
-**为什么不预热**：EdgeOne 的[套餐选型对比](https://cloud.tencent.com/document/product/1552/94165)里，预热（URL 预热）的单次/单日额度对**免费版是 ✕**，即额度为 0，任何提交都返回
-`LimitExceeded.BatchQuota`。所以这一步不调 `CreatePrefetchTask`；将来套餐带预热额度了，再把预热加回来
-（脚本里刷新的分支已经拿到全部 URL，加一段调用即可）。
+The existing EdgeOne free-plan limitation is described in the [plan comparison](https://cloud.tencent.com/document/product/1552/94165): URL prefetch has zero quota and returns `LimitExceeded.BatchQuota`. This step therefore does not call `CreatePrefetchTask`. If the plan later includes prefetch quota, add it using the URL list already collected by the script.
 
-代价是每个边缘节点的**第一个**用户仍会走一次冷回源（跨境约 300–500 KB/s，319MB 约 10 分钟），
-之后的用户都命中缓存。
+The first user at each edge node still makes a cold origin request; subsequent users hit cache.
 
-这一步是 `continue-on-error`：字节此时已经在桶里，CDN 慢一拍不该把一次成功的发布标成失败，但会在运行摘要里留下告警。想先看清单而不真调接口：
+The step uses `continue-on-error`: packages have already been uploaded, so a slow CDN should leave a warning in the run summary rather than mark the completed upload as failed. Inspect the request list without calling the API:
 
 ```
 node scripts/release/eo-cache.mjs --index artifacts/win32-x64-latest.json --dry-run
 ```
 
+<a id="client-update-discovery"></a>
 
+## Client update discovery
 
-## 客户端如何发现更新
-
-安装包内 `Contents/Resources/app-update.yml`（Windows 为 `resources/app-update.yml`）：
+The package contains `Contents/Resources/app-update.yml`, or `resources/app-update.yml` on Windows:
 
 ```yaml
 provider: generic
@@ -113,12 +136,20 @@ url: https://aijisuan.kdns.fr/suanli-assistant/darwin-arm64
 channel: nightly
 ```
 
-由构建时的 `DSH_BRAND_UPDATE_BASE` 生成；未设置时不出这个文件，客户端也就不会检查更新。
+The build generates it from `DSH_BRAND_UPDATE_BASE`. When unset, the file is absent and the client does not check for updates.
 
-## 未签名的限制
+<a id="unsigned-package-limitations"></a>
 
-macOS 的更新安装走系统原生 Squirrel.Mac，它会校验新包的代码签名。未签名的包能**检测**到新版本、能**下载**，但**安装替换会被系统拒绝**。
+## Unsigned-package limitations
 
-Windows 的 NSIS 覆盖安装不做这个校验，未签名也能自动更新（用户会看到 SmartScreen 提示）。
+macOS uses native Squirrel.Mac to install updates and validates the new package's code signature. An unsigned package can detect and download an update, but the system rejects replacement installation.
 
-要打通 macOS 的自动更新，需要 Developer ID 证书并完成公证。
+Windows NSIS replacement installation does not apply that check. Unsigned packages can update automatically, with a SmartScreen prompt.
+
+Working macOS automatic installation requires a Developer ID certificate and notarization.
+
+<a id="dev-note"></a>
+
+## Dev Note
+
+None.

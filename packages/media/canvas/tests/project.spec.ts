@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { join } from 'node:path'
 import { canvasFileOf, episodeOf, FREE_PROJECT, parseProject, serializeProject, withBinding, withEpisode, type StudioProject } from '../src/project.ts'
 
 const project: StudioProject = {
@@ -39,11 +40,11 @@ describe('project', () => {
   })
 
   it('resolves the canvas file of an episode', () => {
-    expect(canvasFileOf('/p', FREE_PROJECT)).toBe('/p/.canvas/canvas.json')
-    expect(canvasFileOf('/p', project)).toBe('/p/.canvas/canvas.json')
-    expect(canvasFileOf('/p', project, 'e1' as never)).toBe('/p/.canvas/canvas.json')
+    expect(canvasFileOf('/p', FREE_PROJECT)).toBe(join('/p', '.canvas', 'canvas.json'))
+    expect(canvasFileOf('/p', project)).toBe(join('/p', '.canvas', 'canvas.json'))
+    expect(canvasFileOf('/p', project, 'e1' as never)).toBe(join('/p', '.canvas', 'canvas.json'))
     const two = withEpisode(project, '第二集').project
-    expect(canvasFileOf('/p', two, 'e2' as never)).toBe('/p/.canvas/episodes/e2.json')
+    expect(canvasFileOf('/p', two, 'e2' as never)).toBe(join('/p', '.canvas', 'episodes', 'e2.json'))
   })
 
   it('resolves the episode a session edits', () => {

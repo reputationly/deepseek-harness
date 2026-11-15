@@ -32,7 +32,7 @@ export class CanvasUnsupportedVersionError extends Error {
 }
 
 /** The canvas of a project that has none yet. */
-export const EMPTY_CANVAS: CanvasDocument = { version: 2, revision: 0, nextId: 1, nodes: [], edges: [] }
+export const EMPTY_CANVAS: CanvasDocument = { version: 3, revision: 0, nextId: 1, nodes: [], edges: [] }
 
 const NODE_TYPES: readonly CanvasNodeType[] = ['image', 'video', 'audio', 'text', 'script', 'storyboard', 'timeline', 'group']
 const EDGE_KINDS: readonly CanvasEdgeKind[] = ['derivation', 'reference']
@@ -219,7 +219,12 @@ function parseStatus(value: unknown, what: string): NodeStatus {
   const state = oneOf(raw.state, ['queued', 'running', 'failed'] as const, `${what}.state`)
   if (state === 'failed') {
     if (typeof raw.retryable !== 'boolean') throw new CanvasCorruptError(`${what}.retryable is not a boolean`)
-    return { state, at: text(raw.at, `${what}.at`), error: text(raw.error, `${what}.error`), retryable: raw.retryable }
+    if (raw.recoveryRequired !== undefined && typeof raw.recoveryRequired !== 'boolean') throw new CanvasCorruptError(`${what}.recoveryRequired is not a boolean`)
+    return {
+      state, at: text(raw.at, `${what}.at`), error: text(raw.error, `${what}.error`), retryable: raw.retryable,
+      ...raw.jobId === undefined ? {} : { jobId: brandString<JobId>(text(raw.jobId, `${what}.jobId`)) },
+      ...raw.recoveryRequired === undefined ? {} : { recoveryRequired: raw.recoveryRequired },
+    }
   }
   const jobId = brandString<JobId>(text(raw.jobId, `${what}.jobId`))
   const at = text(raw.at, `${what}.at`)
@@ -288,6 +293,7 @@ function parseNode(value: unknown, index: number): CanvasNode {
       tailOf: {
         node: brandString<CanvasNodeId>(text(tailOf.node, `node ${id} tailOf.node`)),
         version: brandString<VersionId>(text(tailOf.version, `node ${id} tailOf.version`)),
+        ...tailOf.sourceVersion === undefined ? {} : { sourceVersion: brandString<VersionId>(text(tailOf.sourceVersion, `node ${id} tailOf.sourceVersion`)) },
       },
     },
     ...raw.sceneOrigin === undefined ? {} : { sceneOrigin: parseSceneOrigin(raw.sceneOrigin, `node ${id} sceneOrigin`) },
@@ -371,14 +377,14 @@ function migrateNode(value: unknown, index: number): CanvasNode {
 /**
  * Migrate a version-1 canvas, naming the role of every reference edge it holds.
  * @param value - parsed JSON of a version-1 file.
- * @returns the document at version 2, revision 0.
+ * @returns the document at version 3, revision 0.
  * @throws {@link CanvasCorruptError} when the migrated document breaks an invariant.
  */
 export function migrateCanvas(value: unknown): CanvasDocument {
   const raw = record(value, 'document')
   const nodes = array(raw.nodes, 'nodes').map(migrateNode)
   const byId = new Map(nodes.map(node => [node.id, node]))
-  const edges = array(raw.edges, 'edges').map((entry, index) => {
+  const edges = array(raw.edges, 'edges').map((entry, index): CanvasEdge => {
     const edge = record(entry, `edges[${String(index)}]`)
     const source = byId.get(brandString<CanvasNodeId>(text(edge.source, `edges[${String(index)}].source`)))
     const target = byId.get(brandString<CanvasNodeId>(text(edge.target, `edges[${String(index)}].target`)))
@@ -392,12 +398,12 @@ export function migrateCanvas(value: unknown): CanvasDocument {
       id: edgeId(source.id, target.id, role),
       source: source.id,
       target: target.id,
-      kind: declared as CanvasEdgeKind,
+      kind: declared,
       ...role === undefined ? {} : { role },
     }
   })
   const document: CanvasDocument = {
-    version: 2,
+    version: 3,
     revision: 0,
     nextId: positive(raw.nextId, 'nextId'),
     nodes,
@@ -409,7 +415,8 @@ export function migrateCanvas(value: unknown): CanvasDocument {
 
 /**
  * Reject a document that exceeds the deployment bounds.
- * @param document - validated document.
+ * @param document - candidate document to validate before persisting.
+ * @param limits - deployment bounds for the persisted document.
  * @param limits - resolved deployment bounds.
  * @throws {@link CanvasCorruptError} naming the bound the document exceeds.
  */
@@ -439,7 +446,7 @@ export function assertWithinLimits(document: CanvasDocument, limits: ResolvedCon
  * Parse persisted canvas text.
  * @param source - file content.
  * @param limits - deployment bounds; omitted defaults apply.
- * @returns the validated document, migrated to version 2 when the file is version 1.
+ * @returns the validated format-3 document, preserving the selections of formats 1 and 2.
  * @throws {@link CanvasUnsupportedVersionError} when the file declares a newer format.
  * @throws {@link CanvasCorruptError} when the text is not a valid canvas.
  */
@@ -452,21 +459,26 @@ export function parseCanvas(source: string, limits?: ResolvedConfig): CanvasDocu
   }
   const raw = record(value, 'document')
   const version = count(raw.version, 'version')
-  if (version > 2) throw new CanvasUnsupportedVersionError(version)
-  if (version < 1 || version > 2) throw new CanvasCorruptError(`unsupported version ${String(version)}`)
+  if (version > 3) throw new CanvasUnsupportedVersionError(version)
+  if (version < 1) throw new CanvasCorruptError(`unsupported version ${String(version)}`)
   const document = version === 1 ? migrateCanvas(value) : parseCurrentDocument(value)
   if (limits !== undefined) assertWithinLimits(document, limits)
   return document
 }
 
-/** Parse a version-2 document. */
+/** Preserve legacy implicit selection when reading format 2; format 3 requires explicit adoption. */
 function parseCurrentDocument(value: unknown): CanvasDocument {
   const raw = record(value, 'document')
   const document: CanvasDocument = {
-    version: 2,
+    version: 3,
     revision: count(raw.revision, 'revision'),
     nextId: positive(raw.nextId, 'nextId'),
-    nodes: array(raw.nodes, 'nodes').map(parseNode),
+    nodes: array(raw.nodes, 'nodes').map((value, index) => {
+      const node = parseNode(value, index)
+      const legacy = raw.version === 2 && node.activeVersion === undefined ? node.versions?.at(-1) : undefined
+      const activeVersion = legacy?.id ?? node.activeVersion
+      return { ...node, ...activeVersion === undefined ? {} : { activeVersion } }
+    }),
     edges: array(raw.edges, 'edges').map(parseEdge),
   }
   assertCanvas(document)
@@ -476,19 +488,13 @@ function parseCurrentDocument(value: unknown): CanvasDocument {
 /**
  * Serialize a document for the canvas file.
  * @param document - validated document.
+ * @param limits - deployment bounds used to validate before publication.
  * @returns pretty-printed JSON ending in a newline.
  */
-export function serializeCanvas(document: CanvasDocument): string {
-  return `${JSON.stringify(document, null, 2)}\n`
+export function serializeCanvas(document: CanvasDocument, limits?: ResolvedConfig): string {
+  const source = `${JSON.stringify(document, null, 2)}\n`
+  parseCanvas(source, limits)
+  return source
 }
 
-/**
- * Version a node currently shows.
- * @param node - node whose active version is asked for.
- * @returns the active version, the last stored version when no active version is recorded, or undefined when the node has none.
- */
-export function activeVersionOf(node: CanvasNode): NodeVersion | undefined {
-  if (node.versions === undefined || node.versions.length === 0) return undefined
-  const active = node.versions.find(version => version.id === node.activeVersion)
-  return active ?? node.versions[node.versions.length - 1]
-}
+export { activeVersionOf } from './versions.ts'

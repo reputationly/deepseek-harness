@@ -1,4 +1,25 @@
 /** Public type subpath of the media tools package: the Remote namespace's wire types. */
+export type * from './timeline-render-types.ts'
+export type * from './local-edit-types.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * A local render changed state; connected renderers can claim queued work.
+     * @mode emit
+     * @param notice - owner, project, timeline and job state.
+     */
+    'media/render-change'(notice: import('./timeline-render-types.ts').TimelineRenderNotice): void
+  }
+}
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /** Local processing never changes adoption; a completed but unattached artifact remains at path. */
+    'media/edit': { readonly kind: import('./local-edit-types.ts').LocalMediaEditFailure; readonly path?: string }
+    /** The requested local render operation failed; the current cache remains revision-fenced. */
+    'media/render': { readonly kind: import('./timeline-render-types.ts').TimelineRenderErrorCode }
+  }
+}
 
 /** One parameter a capability accepts. */
 export interface MediaParamView {
@@ -22,6 +43,8 @@ export interface MediaCapabilityView {
   readonly model: string
   /** Gateway operation, such as `generate_video`. */
   readonly operation: string
+  /** Task modes explicitly offered by the gateway for this model. */
+  readonly taskTypes?: readonly string[]
   /** Parameters the model accepts. */
   readonly params: readonly MediaParamView[]
 }

@@ -980,6 +980,20 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport.',
   },
   {
+    key: 'gatewayStatus',
+    pkg: 'api-gateway-status',
+    title: 'Gateway availability Remote',
+    mode: 'service',
+    note: 'Publishes cached gateway availability; refresh resolves the credential reference and coalesces concurrent probes. Status payloads exclude credentials.',
+  },
+  {
+    key: 'wechat',
+    pkg: 'wechat',
+    title: 'Local WeChat binding Remote',
+    mode: 'service',
+    note: 'Owns the local iLink binding and exposes login, logout, project selection and sanitized connection status to settings.',
+  },
+  {
     key: 'liveshareShares',
     pkg: 'experimental-liveshare',
     title: 'Owner share management Remote',

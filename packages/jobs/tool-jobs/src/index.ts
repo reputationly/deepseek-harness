@@ -368,7 +368,7 @@ export function apply(ctx: Context, config: Config): void {
    * @param event - the settlement to announce.
    */
   const deliverSettlement = (event: SettledEvent): void => {
-    if (event.cause === 'teardown' || event.job.owner === undefined) return
+    if (event.cause === 'teardown' || event.job.owner === undefined || event.job.completionNotice === 'none') return
     // The destination is the agent registered for the owner session now. An
     // owned job needed the agent registry to start, so the registry is only
     // absent here when it left before settlement — and then no inbox is left.

@@ -98,7 +98,7 @@ export function parseProject(source: string): StudioProject {
     revision,
     format: format as ProductionFormat,
     title: text(raw.title, 'title'),
-    spec: { aspect: aspect as ProjectSpec['aspect'], resolution: text(spec.resolution, 'spec.resolution'), fps: fps as 24 | 25 | 30 },
+    spec: { aspect: aspect as ProjectSpec['aspect'], resolution: text(spec.resolution, 'spec.resolution'), fps: fps },
     episodes,
     bindings: Object.fromEntries(Object.entries(bindings).map(([session, episode]) => [session, brandString<EpisodeId>(text(episode, `bindings.${session}`))])),
   }

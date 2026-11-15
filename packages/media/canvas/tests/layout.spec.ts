@@ -14,6 +14,43 @@ const edge = (source: string, target: string): CanvasEdge => ({
 })
 
 describe('layout', () => {
+  it('keeps final storyboard group frames apart, including their headers and padding', () => {
+    const nodes = new Map<string, DraftNode>([
+      ['g1', node('g1', 'group')],
+      ['n1', node('n1', 'storyboard', { group: 'g1' as never })],
+      ['g2', node('g2', 'group')],
+      ['n2', node('n2', 'storyboard', { group: 'g2' as never })],
+    ])
+    layoutCreated(nodes, [], ['n1', 'n2'])
+    fitGroups(nodes)
+    const first = nodes.get('g1')!
+    const second = nodes.get('g2')!
+    expect(first.x + first.width <= second.x || second.x + second.width <= first.x
+      || first.y + first.height <= second.y || second.y + second.height <= first.y).toBe(true)
+    expect(nodes.get('n2')!.y - second.y).toBe(70)
+  })
+
+  it('packs new groups around existing nodes without moving existing content', () => {
+    const existing = node('old', 'text', { x: -40, y: 0, width: 80, height: 80 })
+    const nodes = new Map<string, DraftNode>([['old', existing]])
+    const created: string[] = []
+    for (let index = 0; index < 8; index++) {
+      const id = `n${String(index)}`
+      const group = `g${String(index)}`
+      nodes.set(group, node(group, 'group'))
+      nodes.set(id, node(id, index % 2 === 0 ? 'storyboard' : 'image', { group: group as never }))
+      created.push(id)
+    }
+    layoutCreated(nodes, [], created)
+    expect(existing).toMatchObject({ x: -40, y: 0 })
+    const frames = [...nodes.values()].filter(candidate => candidate.type === 'group')
+    for (const a of frames) {
+      for (const b of [...frames.filter(other => other.id !== a.id), existing]) {
+        expect(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true)
+      }
+    }
+  })
+
   it('sizes every content kind', () => {
     expect(Object.fromEntries((['image', 'video', 'audio', 'text', 'script', 'storyboard', 'timeline'] as const)
       .map(type => [type, nodeSize(type)]))).toEqual({

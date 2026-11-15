@@ -26,12 +26,18 @@ export class GatewayStatusCache {
     private readonly now: () => number = Date.now,
   ) {}
 
-  /** @returns the latest observation without asking the gateway. */
+  /**
+   * Read the latest cached gateway observation.
+   * @returns the latest observation without asking the gateway.
+   */
   current(): GatewayStatus {
     return this.status
   }
 
-  /** @returns the settled observation; concurrent callers share one probe. */
+  /**
+   * Probe gateway availability, sharing one request among concurrent callers.
+   * @returns the settled observation; concurrent callers share one probe.
+   */
   refresh(): Promise<GatewayStatus> {
     if (this.inflight !== undefined) return this.inflight
     this.status = { ...this.status, state: 'checking' }

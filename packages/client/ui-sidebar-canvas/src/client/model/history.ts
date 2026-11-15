@@ -1,5 +1,6 @@
 /** Undo and redo for the edits this tab applies, expressed as the operations that restore the previous state. */
 import type { CanvasDocument, CanvasEditResult, CanvasNode, CanvasNodeId, CanvasOperation, Shot } from '@deepseek-ai/dsh-canvas/client'
+import { activeVersionOf } from './versions.ts'
 
 /** Direction of a local history action. */
 export type HistoryDirection = 'undo' | 'redo'
@@ -21,8 +22,7 @@ function nodeOf(document: CanvasDocument, id: string): CanvasNode | undefined {
 
 /** Shots a node currently shows. */
 function shotsOf(node: CanvasNode | undefined): readonly Shot[] {
-  const versions = node?.versions ?? []
-  return versions.find(version => version.id === node?.activeVersion)?.shots ?? versions.at(-1)?.shots ?? []
+  return node === undefined ? [] : activeVersionOf(node)?.shots ?? []
 }
 
 /** Inverse operations for one edit, or undefined when the edit cannot be expressed backwards. */
@@ -42,11 +42,22 @@ function inverseOf(
     }
     case 'set_version': {
       const node = nodeOf(document, operation.node)
-      return node?.activeVersion === undefined ? undefined : [{ op: 'set_version', node: operation.node, version: node.activeVersion }]
+      return node === undefined ? undefined : [{ op: 'set_version', node: operation.node, version: node.activeVersion ?? null }]
     }
     case 'set_gen': {
       const node = nodeOf(document, operation.node)
-      return node?.gen === undefined ? undefined : [{ op: 'set_gen', node: operation.node, gen: node.gen }]
+      if (node?.gen === undefined) return undefined
+      const gen = node.gen
+      return [{ op: 'set_gen', node: operation.node, gen: {
+        ...operation.gen.kind === undefined ? {} : { kind: gen.kind },
+        ...operation.gen.model === undefined ? {} : { model: gen.model ?? null },
+        ...operation.gen.prompt === undefined ? {} : { prompt: gen.prompt },
+        ...operation.gen.shot === undefined || gen.shot === undefined ? {} : { shot: gen.shot },
+        ...operation.gen.dialogue === undefined || gen.dialogue === undefined ? {} : { dialogue: gen.dialogue },
+        ...operation.gen.params === undefined ? {} : {
+          params: Object.fromEntries(Object.keys(operation.gen.params).map(key => [key, gen.params[key] ?? null])),
+        },
+      } }]
     }
     case 'set_text': {
       const node = nodeOf(document, operation.node)
@@ -160,6 +171,13 @@ function operationsApplied(
   return operations.filter((_operation, index) => !skipped.has(index))
 }
 
+/**
+ * Compute inverse operations for the edits accepted by the Host.
+ * @param document - Canvas document before the applied edit.
+ * @param operations - Submitted canvas operations in their original order.
+ * @param result - Host result identifying skipped operations and assigned node IDs.
+ * @returns Inverse operations, or undefined when the accepted edit cannot be inverted.
+ */
 export function invertOperations(
   document: CanvasDocument,
   operations: readonly CanvasOperation[],
@@ -232,7 +250,13 @@ export class EditHistory {
     return true
   }
 
-  /** Refreshes the inverse after a redo creates nodes with new Host-assigned ids. */
+  /**
+   * Refreshes the inverse after a redo creates nodes with new Host-assigned ids.
+   * @param document - Canvas document before the applied edit.
+   * @param operations - Submitted canvas operations in their original order.
+   * @param result - Host result identifying skipped operations and assigned node IDs.
+   * @returns Whether the newest inverse was refreshed successfully.
+   */
   refreshAfterRedo(document: CanvasDocument, operations: readonly CanvasOperation[], result: CanvasEditResult): boolean {
     const index = this.undoStack.length - 1
     const entry = this.undoStack[index]
@@ -245,22 +269,34 @@ export class EditHistory {
     return true
   }
 
-  /** @returns whether an undo is available. */
+  /**
+   * Check whether the local edit history contains an undo entry.
+   * @returns whether an undo is available.
+   */
   canUndo(): boolean {
     return this.undoStack.length > 0
   }
 
-  /** @returns whether a redo is available. */
+  /**
+   * Check whether an undone edit can be reapplied.
+   * @returns whether a redo is available.
+   */
   canRedo(): boolean {
     return this.redoStack.length > 0
   }
 
-  /** @returns the label of the edit an undo would reverse, when one is available. */
+  /**
+   * Read the label of the newest undoable edit.
+   * @returns the label of the edit an undo would reverse, when one is available.
+   */
   undoLabel(): string | undefined {
     return this.undoStack.at(-1)?.label
   }
 
-  /** @returns the operations that undo the newest edit. */
+  /**
+   * Move the newest edit to the redo stack and return its inverse.
+   * @returns the operations that undo the newest edit.
+   */
   undo(): readonly CanvasOperation[] | undefined {
     const entry = this.undoStack.pop()
     if (entry === undefined) return undefined
@@ -268,7 +304,10 @@ export class EditHistory {
     return entry.inverse
   }
 
-  /** @returns the operations that redo the newest undone edit. */
+  /**
+   * Move the newest undone edit back to the undo stack.
+   * @returns the operations that redo the newest undone edit.
+   */
   redo(): readonly CanvasOperation[] | undefined {
     const entry = this.redoStack.pop()
     if (entry === undefined) return undefined

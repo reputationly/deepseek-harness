@@ -7,17 +7,20 @@
 
 import { readFile } from 'node:fs/promises'
 import { basename, extname, resolve } from 'node:path'
+import { localMediaPath } from './local-path.ts'
 import type { Context } from '@deepseek-ai/cordis'
-import { activeVersionOf, type CanvasService } from '@deepseek-ai/dsh-canvas'
+import { activeVersionOf, gateBibleFirst, type CanvasService } from '@deepseek-ai/dsh-canvas'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { CatalogSource, MediaCatalog } from './catalog.ts'
 import type { ParamChoice } from './choices.ts'
 import { awaitTask, downloadMedia, editImages, generateImage, submitTask, type GatewayRequest } from './gateway.ts'
 import { planImage, planVideo, type ReferenceImage } from './planner.ts'
+import type { LegacyRunner } from './legacy-runner.ts'
 
 /** What the visual tools need from the plugin. */
 export interface VisualToolDeps {
+  readonly runLegacy?: LegacyRunner
   readonly request: (signal: AbortSignal) => Promise<GatewayRequest>
   readonly catalog: CatalogSource | undefined
   readonly imageModel: string
@@ -53,6 +56,12 @@ function canvasLink(deps: VisualToolDeps, exec: ToolExecution): CanvasLink | und
   return canvas === undefined || exec.agent === undefined ? undefined : { canvas, session: exec.agent.session }
 }
 
+async function requireBible(link: CanvasLink | undefined): Promise<void> {
+  if (link === undefined) return
+  const refusal = gateBibleFirst((await link.canvas.bibleOf(link.session)).bible)
+  if (refusal !== undefined) throw new Error(`${refusal.gate}: ${refusal.missing.join(', ')}`)
+}
+
 /** Metadata required to place a media artifact on a project canvas. */
 export interface MediaPlacementNode {
   readonly type: 'image' | 'video' | 'audio'
@@ -84,12 +93,12 @@ export async function placeMediaArtifact(
   try {
     const document = await canvas.read(session)
     const fromFiles = sourceFiles.flatMap(file =>
-      document.nodes.filter(candidate => activeVersionOf(candidate)?.path === resolve(file)).map(candidate => candidate.id))
+      document.nodes.filter(candidate => activeVersionOf(candidate)?.path === resolve(localMediaPath(file))).map(candidate => candidate.id))
     const sources = [...new Set([...sourceNodes.filter(Boolean), ...fromFiles])]
     const title = node.title ?? (node.prompt === undefined ? basename(node.path) : node.prompt.length > 40 ? `${node.prompt.slice(0, 40)}…` : node.prompt)
     const result = await canvas.edit(session, [
       {
-        op: 'add', ref: 'result', type: node.type, path: node.path, title,
+        op: 'add', ref: 'result', type: node.type, path: node.path, title, candidate: true,
         ...node.prompt === undefined
           ? {}
           : {
@@ -135,8 +144,9 @@ const IMAGE_TYPES: Readonly<Record<string, string>> = {
 }
 
 async function reference(path: string): Promise<ReferenceImage> {
-  const bytes = await readFile(path)
-  const type = IMAGE_TYPES[extname(path).toLowerCase()] ?? 'image/png'
+  const local = localMediaPath(path)
+  const bytes = await readFile(local)
+  const type = IMAGE_TYPES[extname(local).toLowerCase()] ?? 'image/png'
   return { dataURI: `data:${type};base64,${bytes.toString('base64')}`, bytes: bytes.byteLength }
 }
 
@@ -232,6 +242,7 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
     async execute(args, exec) {
       const input = args
       const link = canvasLink(deps, exec)
+      await requireBible(link)
       const files = [...input.referenceImages ?? [], ...await nodeImages('generate_image', link, input.referenceNodes ?? [])]
       const gateway = await deps.request(exec.signal)
       const references = await Promise.all(files.map(reference))
@@ -242,6 +253,16 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
       }, deps.imageModel)
       if (plan.kind === 'reject') throw new Error(`generate_image: ${plan.reason}`)
       if (plan.kind === 'ask') return { status: 'needs_choice' as const, model: plan.model, choices: plan.choices.map(plainChoice) }
+      const durable = await deps.runLegacy?.({
+        kind: 'image', model: plan.model, prompt: input.prompt,
+        params: {
+          ...plan.call.endpoint === 'generations' && plan.call.size !== undefined ? { size: plan.call.size } : {},
+          ...input.aspectRatio === undefined ? {} : { aspectRatio: input.aspectRatio },
+          ...input.resolution === undefined ? {} : { resolution: input.resolution },
+        },
+        references: files.map(path => ({ path, role: 'ref' })),
+      }, exec)
+      if (durable !== undefined) return { status: 'done' as const, ...durable }
       const url = plan.call.endpoint === 'edits'
         ? await editImages(gateway, { model: plan.model, prompt: input.prompt, images: plan.call.images })
         : await generateImage(gateway, {
@@ -281,6 +302,7 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
     async execute(args, exec) {
       const input = args
       const link = canvasLink(deps, exec)
+      await requireBible(link)
       const frameOf = async (file: string | undefined, node: string | undefined): Promise<string | undefined> => {
         if (node === undefined) return file
         const [path, ...rest] = await nodeImages('generate_video', link, [node])
@@ -303,6 +325,21 @@ export function registerVisualTools(ctx: Context, deps: VisualToolDeps): void {
       }, deps.videoModel, deps.videoDefaultDuration)
       if (plan.kind === 'reject') throw new Error(`generate_video: ${plan.reason}`)
       if (plan.kind === 'ask') return { status: 'needs_choice' as const, model: plan.model, choices: plan.choices.map(plainChoice) }
+      const durable = await deps.runLegacy?.({
+        kind: 'video', model: plan.model, prompt: input.prompt,
+        params: {
+          ...input.aspectRatio === undefined ? {} : { aspectRatio: input.aspectRatio },
+          ...input.resolution === undefined ? {} : { resolution: input.resolution },
+          ...input.duration === undefined ? {} : { duration: input.duration },
+          ...input.audio === undefined ? {} : { audio: input.audio },
+        },
+        references: [
+          ...files.map(path => ({ path, role: 'ref' as const })),
+          ...firstFrame === undefined ? [] : [{ path: firstFrame, role: 'first_frame' as const }],
+          ...lastFrame === undefined ? [] : [{ path: lastFrame, role: 'last_frame' as const }],
+        ],
+      }, exec)
+      if (durable !== undefined) return { status: 'done' as const, ...durable }
       const id = await submitTask(gateway, plan.model, { ...plan.body })
       const url = await awaitTask(gateway, id, { timeoutMs: deps.taskTimeoutMs, intervalMs: deps.pollIntervalMs })
       const media = await downloadMedia(gateway, url)

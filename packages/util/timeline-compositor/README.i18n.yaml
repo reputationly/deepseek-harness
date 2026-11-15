@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/util/timeline-compositor/README.md
+/:
+  en: e2b96f6ce88d772c
+  zh: 2b80a97baefe954d
+/dsh-util-timeline-compositor:
+  en: 9b52b26afd7d98f7
+  zh: 5e10db2904fcb51d
+/dsh-util-timeline-compositor/summary:
+  en: efa900efb7d17fe6
+  zh: 49f2cc8224b09ebd
+/dsh-util-timeline-compositor/table-of-contents:
+  en: 22ba8899a29ab8b7
+  zh: acb4ebc3f1fc3ca0
+/dsh-util-timeline-compositor/composition:
+  en: 2ba5b52c75b7c22b
+  zh: 3d0a1ac8a16508d6
+/dsh-util-timeline-compositor/known-limitations-and-deferred-work:
+  en: 2698831c4207898c
+  zh: 06f2ad0ffc503191
+/dsh-util-timeline-compositor/known-limitations-and-deferred-work/dev-note:
+  en: e8f3eaf8d037a24d
+  zh: 6f289777862b5d9a

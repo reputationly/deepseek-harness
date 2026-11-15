@@ -1,12 +1,14 @@
-import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
+import { SubprocessExecutableNotFoundError } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessHandle, SubprocessOutcome, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 
 const MAX_CONCURRENT_JOBS = 2
 const OUTPUT_LIMIT = 4 * 1024 * 1024
 const ERROR_TAIL_LIMIT = 2_000
+const TERMINATION_GRACE_MS = 500
 
 /** Failure kinds one FFmpeg or FFprobe run can report. */
-export type FfmpegErrorCode = 'binary-not-found' | 'timeout' | 'aborted' | 'process-exit' | 'disposed' | 'invalid-probe'
+export type FfmpegErrorCode = 'binary-not-found' | 'timeout' | 'aborted' | 'process-exit' | 'disposed' | 'invalid-probe' | 'cleanup-failed'
 
 /** One failed FFmpeg or FFprobe run, carrying its kind. */
 export class FfmpegError extends Error {
@@ -28,6 +30,11 @@ export interface FfmpegRunOptions {
   readonly timeoutMs?: number
 }
 
+/** Frame counting decodes the first video stream to identify its exact final frame, including VFR sources. */
+export interface FfprobeRunOptions extends FfmpegRunOptions {
+  readonly countVideoFrames?: boolean
+}
+
 /** Output one FFmpeg run captured. */
 export interface FfmpegRunResult {
   /** Standard output, limited to the tail this package retains. */
@@ -46,6 +53,8 @@ export interface FfprobeDocument {
     readonly height?: number
     readonly r_frame_rate?: string
     readonly avg_frame_rate?: string
+    readonly nb_frames?: string
+    readonly nb_read_frames?: string
     readonly sample_rate?: string
     readonly channels?: number
     readonly channel_layout?: string
@@ -59,6 +68,19 @@ export interface FfprobeDocument {
   }
 }
 
+/**
+ * Resolve an exact zero-based final frame index from a counted video stream. Container duration
+ * and nominal frame rate cannot identify the last decoded frame of a VFR source.
+ * @param probe - FFprobe document obtained with countVideoFrames enabled.
+ * @returns the index of its final decoded video frame.
+ * @throws FfmpegError when counting did not produce a positive safe integer.
+ */
+export function lastVideoFrameIndex(probe: FfprobeDocument): number {
+  const frames = Number(probe.streams?.find(stream => stream.codec_type === 'video')?.nb_read_frames)
+  if (!Number.isSafeInteger(frames) || frames < 1) throw new FfmpegError('invalid-probe', 'The source has no counted decodable video frames')
+  return frames - 1
+}
+
 interface Waiter {
   readonly resolve: () => void
   readonly reject: (error: FfmpegError) => void
@@ -66,39 +88,32 @@ interface Waiter {
   abort?: () => void
 }
 
-function appendTail(chunks: Buffer[], currentBytes: number, chunk: Buffer): number {
-  chunks.push(chunk)
-  let size = currentBytes + chunk.byteLength
-  while (size > OUTPUT_LIMIT && chunks.length > 0) {
-    const first = chunks[0] as Buffer
-    const excess = size - OUTPUT_LIMIT
-    if (first.byteLength <= excess) {
-      chunks.shift()
-      size -= first.byteLength
-    } else {
-      chunks[0] = first.subarray(excess)
-      size -= excess
-    }
-  }
-  return size
-}
-
-function processError(bin: string, error: NodeJS.ErrnoException): FfmpegError {
-  if (error.code === 'ENOENT') {
+function processError(bin: string, error: unknown): FfmpegError {
+  const missing = error instanceof SubprocessExecutableNotFoundError
+    || (error instanceof Error && 'code' in error && error.code === 'ENOENT')
+  if (missing) {
     const binary = path.basename(bin) === 'ffprobe' || path.basename(bin) === 'ffprobe.exe' ? 'ffprobe' : 'ffmpeg'
     return new FfmpegError('binary-not-found', `未找到 ${binary}，请安装或配置 ${binary === 'ffprobe' ? 'ffprobePath' : 'ffmpegPath'}`, { cause: error })
   }
-  return new FfmpegError('process-exit', `${path.basename(bin)} could not start: ${error.message}`, { cause: error })
+  const message = error instanceof Error ? error.message : 'Unknown subprocess failure'
+  return new FfmpegError('process-exit', `${path.basename(bin)} could not start: ${message}`, { cause: error })
 }
 
-/** Runs FFmpeg and FFprobe under one concurrency bound, recording seen from every child. */
+function checkAbort(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new FfmpegError('aborted', 'ffmpeg operation was aborted', { cause: signal.reason })
+}
+
+/** Runs FFmpeg and FFprobe as managed process ranges under one concurrency bound. */
 export class FfmpegRunner {
-  private readonly children = new Set<ChildProcess>()
+  private readonly children = new Map<SubprocessHandle, (error: FfmpegError) => void>()
   private readonly waiters: Waiter[] = []
+  private readonly pending = new Set<Promise<unknown>>()
   private active = 0
   private disposed = false
+  private disposal: Promise<void> | undefined
 
   constructor(
+    private readonly subprocess: Pick<SubprocessRuntime, 'resolveExecutable' | 'spawn'>,
     readonly ffmpegPath = 'ffmpeg',
     readonly ffprobePath = 'ffprobe',
     readonly timeoutMs = 600_000,
@@ -111,14 +126,8 @@ export class FfmpegRunner {
    * @returns the exit code and captured output.
    * @throws `FfmpegError` when the binary is missing, times out, or exits non-zero.
    */
-  async exec(args: readonly string[], options: FfmpegRunOptions = {}): Promise<FfmpegRunResult> {
-    const signal = options.signal
-    await this.acquire(signal)
-    try {
-      return await this.run(this.ffmpegPath, args, options)
-    } finally {
-      this.release()
-    }
+  exec(args: readonly string[], options: FfmpegRunOptions = {}): Promise<FfmpegRunResult> {
+    return this.admit(() => this.run(this.ffmpegPath, args, options), options.signal)
   }
 
   /**
@@ -128,11 +137,10 @@ export class FfmpegRunner {
    * @returns the parsed ffprobe document.
    * @throws `FfmpegError` `invalid-probe` when ffprobe does not return JSON.
    */
-  async probe(pathname: string, options: FfmpegRunOptions = {}): Promise<FfprobeDocument> {
-    const signal = options.signal
-    await this.acquire(signal)
-    try {
+  probe(pathname: string, options: FfprobeRunOptions = {}): Promise<FfprobeDocument> {
+    return this.admit(async () => {
       const result = await this.run(this.ffprobePath, [
+        ...options.countVideoFrames === true ? ['-count_frames', '-select_streams', 'v:0'] : [],
         '-v', 'error', '-show_streams', '-show_format', '-of', 'json', pathname,
       ], options, true)
       try {
@@ -140,22 +148,47 @@ export class FfmpegRunner {
       } catch (error: unknown) {
         throw new FfmpegError('invalid-probe', `ffprobe returned invalid JSON for ${pathname}`, { cause: error })
       }
-    } finally {
-      this.release()
-    }
+    }, options.signal)
   }
 
-  /** Kill every running child and reject the waiters it holds. */
-  dispose(): void {
-    if (this.disposed) return
+  /** Stop admission, terminate managed ranges, and await every accepted operation.
+   * @returns the same drain promise for repeated disposal requests.
+   * @throws `FfmpegError` `cleanup-failed` if a process range cannot be confirmed empty.
+   */
+  dispose(): Promise<void> {
+    if (this.disposal !== undefined) return this.disposal
     this.disposed = true
-    for (const child of this.children) {
-      child.kill('SIGKILL')
+    this.disposal = Promise.allSettled(this.pending).then(async () => {
+      const ranges = await Promise.allSettled([...this.children.keys()].map(child =>
+        Promise.resolve().then(() => child.waitForExit())))
+      const failures = ranges.flatMap((result): unknown[] => result.status === 'rejected'
+        ? [result.reason]
+        : result.value ? [] : [new Error('FFmpeg subprocess range did not stop')])
+      if (failures.length > 0) {
+        throw new FfmpegError('cleanup-failed', 'FFmpeg subprocess cleanup failed', { cause: new AggregateError(failures) })
+      }
+    })
+    for (const stop of this.children.values()) {
+      stop(new FfmpegError('disposed', 'ffmpeg runner was disposed'))
     }
     for (const waiter of this.waiters.splice(0)) {
       if (waiter.signal !== undefined && waiter.abort !== undefined) waiter.signal.removeEventListener('abort', waiter.abort)
       waiter.reject(new FfmpegError('disposed', 'ffmpeg runner was disposed'))
     }
+    return this.disposal
+  }
+
+  private admit<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (this.disposed) return Promise.reject(new FfmpegError('disposed', 'ffmpeg runner was disposed'))
+    const pending = (async () => {
+      await this.acquire(signal)
+      try { return await operation() }
+      finally { this.release() }
+    })()
+    this.pending.add(pending)
+    const finish = (): void => { this.pending.delete(pending) }
+    void pending.then(finish, finish)
+    return pending
   }
 
   private async acquire(signal?: AbortSignal): Promise<void> {
@@ -187,71 +220,117 @@ export class FfmpegRunner {
     } else this.active--
   }
 
-  private run(
+  private checkAdmission(signal: AbortSignal | undefined): void {
+    if (this.disposed) throw new FfmpegError('disposed', 'ffmpeg runner was disposed')
+    checkAbort(signal)
+  }
+
+  private async run(
     bin: string,
     args: readonly string[],
     options: FfmpegRunOptions,
     probe = false,
   ): Promise<FfmpegRunResult> {
-    if (this.disposed) return Promise.reject(new FfmpegError('disposed', 'ffmpeg runner was disposed'))
-    if (options.signal?.aborted) return Promise.reject(new FfmpegError('aborted', 'ffmpeg operation was aborted', { cause: options.signal.reason }))
+    this.checkAdmission(options.signal)
+    let executable: string
+    try {
+      executable = await this.subprocess.resolveExecutable(bin, undefined, options.signal)
+    } catch (error: unknown) {
+      checkAbort(options.signal)
+      throw processError(bin, error)
+    }
+    this.checkAdmission(options.signal)
     return new Promise((resolve, reject) => {
-      let child: ChildProcess
+      let child: SubprocessHandle
       try {
-        child = spawn(bin, [...args], { cwd: options.cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+        child = this.subprocess.spawn({
+          argv: [executable, ...args], cwd: options.cwd ?? process.cwd(), graceMs: TERMINATION_GRACE_MS,
+          stdio: { stdin: 'ignore', stdout: { maxBytes: OUTPUT_LIMIT }, stderr: { maxBytes: OUTPUT_LIMIT } },
+        })
       } catch (error: unknown) {
-        reject(processError(bin, error as NodeJS.ErrnoException))
+        reject(processError(bin, error))
         return
       }
-      this.children.add(child)
-      const stdout: Buffer[] = []
-      const stderr: Buffer[] = []
-      let stdoutBytes = 0
-      let stderrBytes = 0
       let pending: FfmpegError | undefined
+      let outcome: SubprocessOutcome | undefined
+      let directSettled = false
+      let quiescent = false
       let settled = false
       const signal = options.signal
       const timeoutMs = options.timeoutMs ?? (probe ? Math.min(this.timeoutMs, 30_000) : this.timeoutMs)
       const timer = setTimeout(() => {
-        pending = new FfmpegError('timeout', `${path.basename(bin)} timed out after ${timeoutMs}ms`)
-        child.kill('SIGKILL')
+        stop(new FfmpegError('timeout', `${path.basename(bin)} timed out after ${timeoutMs}ms`))
       }, timeoutMs)
       timer.unref()
       const onAbort = (): void => {
-        pending = new FfmpegError('aborted', 'ffmpeg operation was aborted', { cause: signal?.reason })
-        child.kill('SIGKILL')
+        stop(new FfmpegError('aborted', 'ffmpeg operation was aborted', { cause: signal?.reason }))
       }
-      signal?.addEventListener('abort', onAbort, { once: true })
-      child.stdout?.on('data', (chunk: Buffer) => { stdoutBytes = appendTail(stdout, stdoutBytes, chunk) })
-      child.stderr?.on('data', (chunk: Buffer) => { stderrBytes = appendTail(stderr, stderrBytes, chunk) })
       const finish = (callback: () => void): void => {
         if (settled) return
         settled = true
         clearTimeout(timer)
         signal?.removeEventListener('abort', onAbort)
-        this.children.delete(child)
+        if (quiescent) this.children.delete(child)
         callback()
       }
-      child.once('error', (error) => {
-        finish(() => { reject(processError(bin, error)) })
-      })
-      child.once('close', (code, killedBy) => {
-        const out = Buffer.concat(stdout).toString('utf8')
-        const err = Buffer.concat(stderr).toString('utf8')
-        const error = pending
-        if (error !== undefined) {
+      const unobservable = (cause: unknown): void => {
+        // The provider retains the range for its own finalization. This owner cannot
+        // safely admit replacements after losing proof of the previous work's exit.
+        this.disposed = true
+        finish(() => {
+          reject(new FfmpegError('cleanup-failed', 'Could not confirm FFmpeg processes exited; restart the Host before retrying', { cause }))
+        })
+      }
+      const stop = (error: FfmpegError): void => {
+        pending ??= error
+        try { child.terminate() }
+        catch (cause: unknown) { unobservable(cause) }
+      }
+      const complete = (): void => {
+        if (!directSettled || !quiescent || settled) return
+        if (pending !== undefined) {
+          const error = pending
           finish(() => { reject(error) })
           return
         }
-        if (code === 0) {
+        let out: string
+        let err: string
+        try {
+          out = child.collected.stdout?.readFrom(0).text ?? ''
+          err = child.collected.stderr?.readFrom(0).text ?? ''
+        } catch (cause: unknown) {
+          finish(() => { reject(new FfmpegError('process-exit', 'Could not read FFmpeg subprocess output', { cause })) })
+          return
+        }
+        if (outcome?.exitCode === 0) {
           finish(() => { resolve({ stdout: out, stderr: err }) })
           return
         }
         const tail = err.trim().slice(-ERROR_TAIL_LIMIT)
+        const status = outcome?.exitCode ?? outcome?.signal
         finish(() => {
-          reject(new FfmpegError('process-exit', `${path.basename(bin)} exited with ${code ?? killedBy}${tail === '' ? '' : `: ${tail}`}`))
+          reject(new FfmpegError('process-exit', `${path.basename(bin)} exited with ${status}${tail === '' ? '' : `: ${tail}`}`))
         })
+      }
+      this.children.set(child, stop)
+      signal?.addEventListener('abort', onAbort, { once: true })
+      void child.done.then((result) => {
+        outcome = result
+        directSettled = true
+        complete()
+      }, (error: unknown) => {
+        pending ??= processError(bin, error)
+        directSettled = true
+        complete()
       })
+      void Promise.resolve().then(() => child.waitForExit()).then((empty) => {
+        if (!empty) { unobservable(new Error('FFmpeg subprocess range wait ended before exit')); return }
+        quiescent = true
+        complete()
+      }, unobservable)
+      // A provider may synchronously reenter cancellation while returning its handle.
+      if (this.disposed) stop(new FfmpegError('disposed', 'ffmpeg runner was disposed'))
+      else if (signal?.aborted) onAbort()
     })
   }
 }

@@ -254,10 +254,10 @@ describe('studio tools', () => {
     expect(conflict).toBeInstanceOf(RemoteError)
     expect(conflict).toMatchObject({ code: 'canvas/conflict', details: { expected: 9, actual: 0 } })
     await mkdir(join(directory, '.canvas'), { recursive: true })
-    await writeFile(canvasFile(directory), '{"version":3,"revision":0,"nextId":1,"nodes":[],"edges":[]}')
+    await writeFile(canvasFile(directory), '{"version":4,"revision":0,"nextId":1,"nodes":[],"edges":[]}')
     const failure = await ctx.canvas.get(session).catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(RemoteError)
-    expect(failure).toMatchObject({ code: 'canvas/unsupported-version', details: { version: 3 } })
+    expect(failure).toMatchObject({ code: 'canvas/unsupported-version', details: { version: 4 } })
   })
 
   it('refuses more operations than the deployment accepts', async () => {

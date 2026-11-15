@@ -62,6 +62,10 @@ AccountDetails.balance 将充值钱包投影为 value、赠送钱包投影为 bo
 
 赠金通知查询返回 AccountBonusBatch，包含当前 Platform 账号 id 和按服务端顺序排列的可通知订单。AccountBonusNotification 保留服务端消息与到期时间，不投影凭证。确认请求携带预期账号 id 和订单 id；账号变化后 Host 拒绝该请求。两项通知操作都通过 x-client-locale 传递发起界面的语言，不使用语言查询参数。
 
+## 网关连接状态
+
+[网关状态服务](../../packages/api/gateway-status/README.zh.md)报告配置的网关是否接受已存储的密钥。`read` 返回缓存的观测结果；`refresh` 重新解析凭据引用，并复用已在执行的探测。观测结果区分缺少或被拒绝的密钥与不可达的端点。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -366,6 +370,28 @@ abstract getDeviceIdentity(): Promise<{ deviceId?: string; userId?: AccountUserI
 ```
 
 Source: [`packages/credentials/deepseek-account/src/index.ts`](../../packages/credentials/deepseek-account/src/index.ts)
+
+<a id="ctxgatewaystatus--gatewaystatusservice"></a>
+
+### `ctx.gatewayStatus` — `GatewayStatusService`
+
+Host service backing the generated `ctx.remote.gatewayStatus` namespace.
+
+```ts cordis-catalog
+/**
+ * Report the latest observation without asking the gateway.
+ * @returns the cached status; `checking` until the first probe settles.
+ */
+@Remote read(): GatewayStatus
+
+/**
+ * Probe the gateway now, sharing any probe already in flight.
+ * @returns the settled observation.
+ */
+@Remote refresh(): Promise<GatewayStatus>
+```
+
+Source: [`packages/api/gateway-status/src/index.ts`](../../packages/api/gateway-status/src/index.ts)
 
 <a id="authorization-events"></a>
 

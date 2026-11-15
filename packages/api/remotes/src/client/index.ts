@@ -68,6 +68,10 @@ export type {} from '@deepseek-ai/dsh-canvas/remote'
 export type {} from '@deepseek-ai/dsh-tool-media/remote'
 export type {
   MediaCapabilityView, MediaJobRef, MediaParamView, MediaPlanLine, MediaPlanTotals, MediaPlanView,
+  LocalMediaEditRequest, LocalMediaEditResult, LocalMediaEditFailure, LocalMediaImportRequest, LocalVideoImportRequest,
+  TimelineCacheKey, TimelineRenderLease, TimelineRenderPlan, TimelineRenderView, TimelineRenderWork, TimelineRenderPart,
+  TimelineRenderState, TimelineRenderErrorCode, TimelineRenderAsset, TimelineRenderSegment, TimelineRenderNotice,
+  TimelineExportResult, TimelineRenderBlock,
 } from '@deepseek-ai/dsh-tool-media/types'
 export type {} from '@deepseek-ai/dsh-goal/remote'
 export type {} from '@deepseek-ai/dsh-schedule/remote'

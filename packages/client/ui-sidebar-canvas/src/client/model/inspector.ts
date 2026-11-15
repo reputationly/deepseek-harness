@@ -1,4 +1,31 @@
 /** Where the inspector sits in the studio, given the room the canvas has. */
+import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
+
+/**
+ * A video cannot use its own derived tail as an input, which would form a cycle.
+ * @param document - latest nodes and connections.
+ * @param target - video receiving the frame reference.
+ * @returns image choices with unavailable files and descendants disabled.
+ */
+export function frameChoices(document: CanvasDocument, target: string): readonly {
+  readonly id: string
+  readonly title: string
+  readonly disabled: boolean
+}[] {
+  const descendants = new Set([target])
+  const queue = [target]
+  for (const id of queue) {
+    for (const edge of document.edges) {
+      if (edge.source !== id || descendants.has(edge.target)) continue
+      descendants.add(edge.target)
+      queue.push(edge.target)
+    }
+  }
+  return document.nodes.filter(node => node.type === 'image').map(node => ({
+    id: node.id, title: node.title,
+    disabled: descendants.has(node.id) || node.versions?.find(version => version.id === node.activeVersion)?.path === undefined,
+  }))
+}
 
 /** Width the studio needs before the inspector may take a column of its own. */
 export const INSPECTOR_MIN_WIDTH = 960
@@ -25,7 +52,11 @@ export interface ParamControl {
   readonly options?: readonly string[]
 }
 
-/** Gateway operation one node kind generates through. */
+/**
+ * Gateway operation one node kind generates through.
+ * @param kind - Media or message kind being handled.
+ * @returns Matching gateway generation operation name.
+ */
 export function operationFor(kind: 'image' | 'video' | 'speech' | 'music'): string {
   if (kind === 'image') return 'generate_image'
   if (kind === 'video') return 'generate_video'
@@ -58,12 +89,7 @@ export function modelChoices(
   })
 }
 
-/**
- * Controls for one capability, seeded from the node's current parameters and the catalog defaults.
- * @param capability - selected model and its parameters.
- * @param current - parameters the node already carries.
- * @returns one control per catalog parameter, in catalog order.
- */
+
 /** One catalog parameter as the inspector reads it. */
 export interface CatalogParam {
   readonly id: string
@@ -73,6 +99,12 @@ export interface CatalogParam {
   readonly type?: string
 }
 
+/**
+ * Build parameter controls from the selected capability and saved values.
+ * @param capability - Selected model and its catalog parameters.
+ * @param current - Parameter values already saved on the node.
+ * @returns One control per catalog parameter, retaining any saved value.
+ */
 export function paramControls(
   capability: { readonly params: readonly CatalogParam[] } | undefined,
   current: Readonly<Record<string, string | number | boolean>>,
@@ -96,12 +128,7 @@ export function paramControls(
   })
 }
 
-/**
- * Operations that set what one media node generates.
- * @param node - media node.
- * @param change - model, prompt, or parameters the user edited.
- * @returns the generation update.
- */
+
 /** A generation update the inspector sends. */
 export interface GenOperation {
   readonly op: 'set_gen'
@@ -140,6 +167,12 @@ function genFields(change: {
   return gen
 }
 
+/**
+ * Build a canvas operation for the supplied generation fields.
+ * @param node - Canvas node being inspected or edited.
+ * @param change - Generation fields to update.
+ * @returns Operation carrying the supplied generation fields.
+ */
 export function genOperation(
   node: GenNodeLike,
   change: {
@@ -161,12 +194,7 @@ export interface ReferenceItem {
   readonly order: number
 }
 
-/**
- * Reference images of one node, in order.
- * @param document - canvas document.
- * @param nodeId - node whose inputs are listed.
- * @returns sources with their reference order.
- */
+
 /** Edge fields the reference order reads. */
 export interface EdgeLike {
   readonly source: string
@@ -175,6 +203,12 @@ export interface EdgeLike {
   readonly order?: number
 }
 
+/**
+ * List a node's reference inputs in ascending reference order.
+ * @param document - Canvas document before the applied edit.
+ * @param nodeId - Node whose reference inputs are requested.
+ * @returns Reference source IDs and their order values.
+ */
 export function orderedRefs(document: { readonly edges: readonly EdgeLike[] }, nodeId: string): ReferenceItem[] {
   return document.edges
     .filter(edge => edge.target === nodeId && edge.role === 'ref')

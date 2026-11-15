@@ -35,10 +35,16 @@ Drag a card to move it, or drag a group frame to move the group with its members
 
 Images load when their card appears. Video and audio load when the user presses play. An edit the Host does not fully apply, such as a connection that would form a cycle, is reported in a notice above the canvas while the canvas stays visible.
 
+New-node notices and asset selections locate their nodes. The inspector saves only changed generation fields; an external edit of the same field requires reloading or explicit overwrite. First/last-frame selectors exclude images downstream of the video. Three-view generation creates and runs a real image node. Fullscreen preserves the current view and exits with Escape. Videos that fail browser decoding can prepare a local compatible preview through the Host media service without changing their recorded version.
+
+Create a timeline from the canvas toolbar, or open a timeline node from its inspector or by double-clicking it. The full-screen editor embeds the Session conversation, a full-quality cached video, clip and output parameters, and multi-track editing. Source insertion pins a selected node version. Parameter drafts survive concurrent edits, failed reads, and connection replacement; merging and discarding are explicit. History, undo, and redo use the Host's saved revisions. Preview uses the file resource and native streamed playback of the same MP4 used for export; unavailable or outdated caches cannot be exported.
+
+Create music or speech nodes from the toolbar and open their audio application from the inspector or by double-clicking. The application contains the shared conversation, version listening, and model parameters; selecting a version only changes the preview, and adopting it is explicit. Returned ABC scores remain readable when the model catalog is unavailable. Unsaved drafts survive disconnection and require explicit discard on closing. Model availability and supported audio modes come from the [media service](../../media/tool-media/README.md).
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`CanvasSource` holds one Session's canvas state. It reads through `canvas.get`, sends edits through `canvas.apply`, reads again after every edit and after a `canvas/change` event for the project it shows, and lets only the latest read publish. A failed refresh keeps the last document on screen.
+`CanvasSource` holds one Session's canvas state. It reads through `canvas.get`, sends edits through `canvas.apply`, reads again after every edit and after a `canvas/change` event for the project it shows, and lets only the latest read publish. A failed refresh keeps the last document on screen. Queued writes retain their project, episode, and connection; an owner change refuses unsent work and ignores late acknowledgements. Known writes enter undo history immediately, while parameter drafts clear only after a successful reread. An unconfirmed transport outcome requires rereading and checking before retrying.
 
 The Host owns the document. Gestures become operation lists (`move`, `connect`, `group`, `ungroup`, `remove`, `disconnect`), and the flow is redrawn from the document the Host returns; positions and ids are never decided in the browser. `flow.ts` holds the pure mapping in both directions.
 
@@ -57,7 +63,7 @@ None; canvas documents and media bytes travel only between the browser and the H
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- No undo, no inline editing of titles or text, and no resizing of cards.
+- No resizing of cards.
 - A media file larger than the Host's full-file read limit shows a load failure on its card.
 - The overview map is hidden when the tab is narrower than 720px.
 

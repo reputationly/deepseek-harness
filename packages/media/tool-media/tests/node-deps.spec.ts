@@ -9,9 +9,20 @@ import { createNodeToolDeps, type JobsRegistry } from '../src/node-deps.ts'
 import type { MediaGenerator } from '../src/runner.ts'
 
 const config = {
-  maxSegmentSeconds: 15, videoDefaultDuration: 5, videoModel: 'vm', videoRefModel: 'vrm', imageModel: 'im',
-  speechModel: 'sm', musicModel: 'mm', confirmVideoCalls: 2, confirmVideoSeconds: 20, confirmSpeechLines: 5,
-  confirmImageCalls: 2, confirmMusicCalls: 1, generateConcurrency: 1, outputDir: '/tmp/out',
+  maxSegmentSeconds: 15,
+  videoDefaultDuration: 5,
+  videoModel: 'vm',
+  videoRefModel: 'vrm',
+  imageModel: 'im',
+  speechModel: 'sm',
+  musicModel: 'mm',
+  confirmVideoCalls: 2,
+  confirmVideoSeconds: 20,
+  confirmSpeechLines: 5,
+  confirmImageCalls: 2,
+  confirmMusicCalls: 1,
+  generateConcurrency: 1,
+  outputDir: '/tmp/out',
 }
 const session = { id: 's1' } as Session
 
@@ -29,14 +40,19 @@ function registry() {
   return { start, append, kill, job, spec: () => captured!, handle: () => handle! }
 }
 
-afterEach(async () => { vi.restoreAllMocks() })
+afterEach(async () => {
+  vi.restoreAllMocks()
+})
 
 it('wraps a generator run into a media job that logs its progress', async () => {
   const r = registry()
   const partialGenerator = { image: vi.fn(async () => ({ path: '/p/out.png', model: 'm' })) }
   const generator = partialGenerator as never as MediaGenerator
   const deps = createNodeToolDeps({
-    canvas: () => undefined, resolved: config, generator, jobs: { start: r.start },
+    canvas: () => undefined,
+    resolved: config,
+    generator,
+    jobs: { start: r.start },
     ffmpeg: { probe: vi.fn(), exec: vi.fn() },
   })
   const job = deps.jobs(session).start({ label: 'image n1', run: () => generator.image({} as never) })
@@ -48,10 +64,17 @@ it('wraps a generator run into a media job that logs its progress', async () => 
 
 it('reports a failed run and an aborted signal', async () => {
   const r = registry()
-  const failingGenerator = { image: vi.fn(async () => { throw new Error('boom') }) }
+  const failingGenerator = {
+    image: vi.fn(async () => {
+      throw new Error('boom')
+    }),
+  }
   const generator = failingGenerator as never as MediaGenerator
   const deps = createNodeToolDeps({
-    canvas: () => undefined, resolved: config, generator, jobs: { start: r.start },
+    canvas: () => undefined,
+    resolved: config,
+    generator,
+    jobs: { start: r.start },
     ffmpeg: { probe: vi.fn(), exec: vi.fn() },
   })
   const run = deps.jobs(session).start({ label: 'image n1', run: () => generator.image({} as never) })
@@ -60,20 +83,74 @@ it('reports a failed run and an aborted signal', async () => {
   expect(r.append).toHaveBeenCalledWith(expect.stringContaining('boom'), { channel: 'log' })
 })
 
-it('refuses to start without a jobs service', () => {
+it('registers local editing separately from cloud generation', async () => {
+  const r = registry()
   const deps = createNodeToolDeps({
-    canvas: () => undefined, resolved: config, generator: {} as never, jobs: undefined,
+    canvas: () => undefined,
+    resolved: config,
+    generator: {} as never,
+    jobs: { start: r.start },
     ffmpeg: { probe: vi.fn(), exec: vi.fn() },
   })
-  expect(() => deps.jobs(session).start({ label: 'x', run: async () => ({ path: '/p', model: 'm' }) })).toThrow('jobs service')
+  const job = deps
+    .jobs(session)
+    .start({
+      local: true,
+      completionNotice: 'none',
+      label: 'Trim audio',
+      run: async () => ({ path: '/trim.wav', model: 'local-ffmpeg' }),
+    })
+  await job.done
+  expect(r.spec().kind).toBe('media-edit')
+  expect(r.spec().completionNotice).toBe('none')
+  expect(r.append).toHaveBeenCalledWith('processing local media Trim audio\n', { channel: 'log' })
+})
+
+it('refuses to start without a jobs service', () => {
+  const deps = createNodeToolDeps({
+    canvas: () => undefined,
+    resolved: config,
+    generator: {} as never,
+    jobs: undefined,
+    ffmpeg: { probe: vi.fn(), exec: vi.fn() },
+  })
+  expect(() => deps.jobs(session).start({ label: 'x', run: async () => ({ path: '/p', model: 'm' }) })).toThrow(
+    'jobs service',
+  )
+})
+
+it('distinguishes teardown from a user cancellation with the same reason text', async () => {
+  const r = registry()
+  const deps = createNodeToolDeps({
+    canvas: () => undefined,
+    resolved: config,
+    generator: {} as never,
+    jobs: { start: r.start },
+    ffmpeg: { probe: vi.fn(), exec: vi.fn() },
+  })
+  for (const cause of ['kill', 'teardown'] as const) {
+    const run = deps.jobs(session).start({ label: 'pending media', run: async () => ({ path: '/p', model: 'm' }) })
+    r.handle().cancel('jobs service disposed', cause)
+    expect(run.signal.aborted).toBe(true)
+    const reason: unknown = run.signal.reason
+    expect(reason instanceof Error).toBe(cause === 'teardown')
+    await run.done
+  }
 })
 
 it('probes duration and picture size, tolerating a missing video stream', async () => {
-  const probe = vi.fn()
-    .mockResolvedValueOnce({ streams: [{ codec_type: 'video', width: 1080, height: 1920 }], format: { duration: '3.5' } })
+  const probe = vi
+    .fn()
+    .mockResolvedValueOnce({
+      streams: [{ codec_type: 'video', width: 1080, height: 1920 }],
+      format: { duration: '3.5' },
+    })
     .mockResolvedValueOnce({})
   const deps = createNodeToolDeps({
-    canvas: () => undefined, resolved: config, generator: {} as never, jobs: undefined,
+    canvas: () => undefined,
+    resolved: config,
+    generator: {} as never,
+    jobs: undefined,
     ffmpeg: { probe, exec: vi.fn() },
   })
   await expect(deps.probe('/p/a.mp4')).resolves.toEqual({ durationMs: 3500, width: 1080, height: 1920 })
@@ -83,15 +160,21 @@ it('probes duration and picture size, tolerating a missing video stream', async 
 it('extracts the last frame next to an absolute output directory', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-node-deps-'))
   try {
-    const exec = vi.fn(async (args: readonly string[]) => { await writeFile(args.at(-1) as string, 'frame-bytes') })
+    const exec = vi.fn(async (args: readonly string[]) => {
+      await writeFile(args.at(-1) as string, 'frame-bytes')
+    })
     const deps = createNodeToolDeps({
-      canvas: () => undefined, resolved: { ...config, outputDir: directory }, generator: {} as never,
-      jobs: undefined, ffmpeg: { probe: vi.fn(), exec },
+      canvas: () => undefined,
+      resolved: { ...config, outputDir: directory },
+      generator: {} as never,
+      jobs: undefined,
+      ffmpeg: { probe: vi.fn(async () => ({ streams: [{ codec_type: 'video', nb_read_frames: '41' }] })), exec },
     })
     const target = await deps.tailFrame('/p/a.mp4')
     expect(target.startsWith(directory)).toBe(true)
     expect(await readFile(target, 'utf8')).toBe('frame-bytes')
     expect(exec).toHaveBeenCalled()
+    expect(exec.mock.calls[0]![0]).toContain('select=eq(n\\,40)')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -102,10 +185,15 @@ it('resolves a relative output directory against the process cwd', async () => {
   const previous = process.cwd()
   try {
     process.chdir(directory)
-    const exec = vi.fn(async (args: readonly string[]) => { await writeFile(args.at(-1) as string, 'bytes') })
+    const exec = vi.fn(async (args: readonly string[]) => {
+      await writeFile(args.at(-1) as string, 'bytes')
+    })
     const deps = createNodeToolDeps({
-      canvas: () => undefined, resolved: { ...config, outputDir: 'media-out' }, generator: {} as never,
-      jobs: undefined, ffmpeg: { probe: vi.fn(), exec },
+      canvas: () => undefined,
+      resolved: { ...config, outputDir: 'media-out' },
+      generator: {} as never,
+      jobs: undefined,
+      ffmpeg: { probe: vi.fn(async () => ({ streams: [{ codec_type: 'video', nb_read_frames: '2' }] })), exec },
     })
     const target = await deps.tailFrame('/p/a.mp4')
     expect(target).toContain('media-out')

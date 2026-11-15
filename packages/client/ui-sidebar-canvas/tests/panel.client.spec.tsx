@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /** The bible and asset panel lists entries, makes a three-view node, and filters assets. */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { Bible, CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
 import { BibleAssetsPanel } from '../src/client/BibleAssetsPanel.tsx'
+import type { CanvasSource } from '../src/client/canvas-source.ts'
 
 afterEach(() => { cleanup() })
 
@@ -17,7 +18,7 @@ const bible: Bible = {
   narrator: {},
 }
 const document: CanvasDocument = {
-  version: 2, revision: 1, nextId: 5, edges: [],
+  version: 3, revision: 1, nextId: 5, edges: [],
   nodes: [
     { id: 'n1' as never, type: 'image', title: '参考图', x: 0, y: 0, width: 1, height: 1 },
     { id: 'n2' as never, type: 'video', title: '段1', x: 0, y: 0, width: 1, height: 1 },
@@ -25,16 +26,22 @@ const document: CanvasDocument = {
   ],
 }
 
-it('lists the bible by kind and creates a three-view image for an entry', () => {
-  const edit = vi.fn(async () => {})
-  render(<BibleAssetsPanel document={document} bible={bible} edit={edit} select={() => {}} close={() => {}} t={t} />)
+it('lists the bible by kind, creates a three-view image, then starts its generation', async () => {
+  const generate = vi.fn()
+  const edit = vi.fn<CanvasSource['edit']>(async (operations, options) => {
+    options?.onApplied?.(document, operations, { revision: 2, refs: { 'three-view': 'n4' as never }, created: ['n4' as never], skipped: [] })
+  })
+  render(<BibleAssetsPanel document={document} bible={bible} edit={edit} generate={generate} select={() => {}} close={() => {}} t={t} />)
   expect(screen.getByText('林夏')).toBeTruthy()
   expect(screen.getByText('便利店')).toBeTruthy()
   fireEvent.click(screen.getAllByRole('button', { name: 'bible.threeView' })[0] as HTMLElement)
-  expect(edit).toHaveBeenCalledWith([expect.objectContaining({
+  expect(edit).toHaveBeenCalledOnce()
+  expect(edit.mock.calls[0]?.[0]).toMatchObject([{
     op: 'add', type: 'image', bible: 'c1', title: '林夏 bible.threeView',
-    gen: expect.objectContaining({ kind: 'image' }),
-  })])
+    gen: { kind: 'image' },
+  }])
+  expect(edit.mock.calls[0]?.[1]?.onApplied).toBeTypeOf('function')
+  await waitFor(() => { expect(generate).toHaveBeenCalledExactlyOnceWith('n4') })
 })
 
 it('filters assets by type and selects one', () => {
@@ -47,6 +54,16 @@ it('filters assets by type and selects one', () => {
   expect(screen.queryByRole('button', { name: '参考图' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '段1' }))
   expect(select).toHaveBeenCalledWith('n2')
+})
+
+it.each([false, true])('does not start generation when image creation is refused (throws: %s)', async (throws) => {
+  const generate = vi.fn()
+  render(<BibleAssetsPanel document={document} bible={bible} edit={async () => {
+    if (throws) throw new Error('storage unavailable')
+  }} generate={generate} select={() => {}} close={() => {}} t={t} />)
+  fireEvent.click(screen.getAllByRole('button', { name: 'bible.threeView' })[0]!)
+  await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('bible.threeViewFailed') })
+  expect(generate).not.toHaveBeenCalled()
 })
 
 it('switches back to the bible tab', () => {

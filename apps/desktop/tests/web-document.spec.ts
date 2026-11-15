@@ -37,7 +37,7 @@ it('requires the Host authentication exchange and retains only its cookie value'
 
 it('forwards upload bytes and cancellation with Host credentials while keeping the response streaming', async () => {
   const body = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('stream')); controller.close() } })
-  const fetch = vi.fn().mockResolvedValue(new Response(body, { headers: { 'content-encoding': 'gzip', 'set-cookie': 'private' } }))
+  const fetch = vi.fn().mockResolvedValue(new Response(body, { headers: { 'content-encoding': 'gzip', 'content-length': '123', 'set-cookie': 'private' } }))
   vi.stubGlobal('fetch', fetch)
   const request = new Request('dsh-app://app/api/upload?name=file', {
     method: 'POST', body: 'upload bytes', headers: { origin: 'dsh-app://app', cookie: 'untrusted' },
@@ -51,7 +51,28 @@ it('forwards upload bytes and cancellation with Host credentials while keeping t
   expect(init.body).toBe(request.body)
   expect(response.headers.get('set-cookie')).toBeNull()
   expect(response.headers.get('content-encoding')).toBeNull()
+  expect(response.headers.get('content-length')).toBeNull()
   expect(await response.text()).toBe('stream')
+})
+
+it.each([200, 206])('preserves unencoded media length and byte ranges for status %s', async (status) => {
+  const bytes = new Uint8Array(status === 200 ? [0, 1, 2, 3, 4, 5, 6, 7] : [4, 5, 6, 7])
+  const headers = new Headers({ 'content-type': 'video/mp4', 'content-length': String(bytes.byteLength), 'accept-ranges': 'bytes' })
+  if (status === 206) headers.set('content-range', 'bytes 4-7/8')
+  const upstream = new Response(bytes, { status, headers })
+  const fetch = vi.fn().mockResolvedValue(upstream)
+  vi.stubGlobal('fetch', fetch)
+  const request = new Request('dsh-app://app/api/file?p=movie.mp4&v=1',
+    status === 206 ? { headers: { range: 'bytes=4-7' } } : undefined)
+  const response = await forwardWebRequest(request, 'http://127.0.0.1:1234/', 'session=owned')
+  expect(response.status).toBe(status)
+  expect(response.headers.get('content-length')).toBe(String(bytes.byteLength))
+  expect(response.headers.get('content-range')).toBe(status === 206 ? 'bytes 4-7/8' : null)
+  expect(response.headers.get('accept-ranges')).toBe('bytes')
+  expect(response.headers.get('content-type')).toBe('video/mp4')
+  const init = fetch.mock.calls[0]![1] as RequestInit
+  expect(new Headers(init.headers).get('range')).toBe(status === 206 ? 'bytes=4-7' : null)
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
 })
 
 it('drops connection-level headers the Host wrote for its own transport', async () => {

@@ -159,8 +159,10 @@ export interface JobHooks {
   /**
    * Request termination. Must be synchronous, idempotent, and eventually settle
    * {@link done}; throws propagate. The optional reason is forwarded verbatim.
+   * Registries distinguish explicit control (`kill`) from owner or service
+   * disposal (`teardown`); producers must not infer that distinction from reason text.
    */
-  cancel(reason?: string): void
+  cancel(reason?: string, cause?: Exclude<JobSettleCause, 'producer'>): void
   /**
    * Resolves after the producer releases its resources, not merely when work
    * finishes. Must not reject; the runtime converts a rejection to `failed`.
@@ -188,6 +190,11 @@ export interface JobSpec {
    * caller until service disposal.
    */
   owner?: SessionId
+  /**
+   * Suppress automatic model notices for work whose completion is delivered by its UI caller.
+   * Ownership, output, and observation are unchanged.
+   */
+  completionNotice?: 'none'
   /** Creating tool invocation, retained in the durable lifecycle records. */
   toolCall?: JobToolCall
   /**
@@ -263,12 +270,12 @@ export type JobEvent =
     readonly job: JobView
     readonly cause: JobSettleCause
     /**
-     * Whether this settlement released a live {@link JobRegistry.wait}. That
-     * waiter's caller receives the terminal projection as its own result, so
-     * a completion reporter treats an awaited settlement as already delivered
-     * and reports only the unawaited ones. A wait that timed out or was
-     * aborted before the settlement does not count.
-     */
+       * Whether this settlement released a live {@link JobRegistry.wait}. That
+       * waiter's caller receives the terminal projection as its own result, so
+       * a completion reporter treats an awaited settlement as already delivered
+       * and reports only the unawaited ones. A wait that timed out or was
+       * aborted before the settlement does not count.
+       */
     readonly awaited: boolean
   }
   | {
@@ -287,9 +294,7 @@ export type JobEvent =
  * serves every composition in the process, and a mount under one preset must
  * not hear another preset's agents. `{ owners: 'all' }` delivers everything.
  */
-export type JobEventFilter =
-  | { readonly owner: SessionId }
-  | { readonly owners: 'all' | 'scope' }
+export type JobEventFilter = { readonly owner: SessionId } | { readonly owners: 'all' | 'scope' }
 
 /** Event callback; contained by the registry, never awaited. */
 export type JobEventListener = (event: JobEvent) => void

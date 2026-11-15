@@ -33,6 +33,8 @@ export interface Capability {
   readonly operation: string
   readonly model: string
   readonly taskTypes?: readonly string[]
+  /** Request protocol declared by the gateway. */
+  readonly transport?: { readonly kind: string }
   readonly paramSchema?: { readonly properties?: Readonly<Record<string, CapabilityParam>> }
   readonly limits?: CapabilityLimits
   readonly default?: boolean

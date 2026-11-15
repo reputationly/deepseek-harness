@@ -1,8 +1,18 @@
 import { existsSync } from 'node:fs'
+import { mediaProtocol } from './local-path.ts'
 
+/**
+ * Argument validation success or an actionable rejection reason.
+ */
 export type GuardResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
+/**
+ * Rewritten FFmpeg arguments or the reason rewriting was rejected.
+ */
 export type RewriteResult = { readonly ok: true; readonly args: string[] } | { readonly ok: false; readonly error: string }
 
+/**
+ * Declared generation intent used when checking original-audio preservation.
+ */
 export interface FfmpegMetadata {
   readonly prompt?: string
   readonly model?: string
@@ -46,18 +56,28 @@ function hasOptionPair(args: readonly string[], option: string, value: string): 
 function localInput(source: string, lavfi: boolean): boolean {
   if (lavfi) return true
   if (source === '-' || source.includes('|') || source.startsWith('/dev/') || source.startsWith('\\\\.\\')) return false
-  if (/^(?:pipe|fd|concat|subfile|data|crypto|cache|tcp|udp|http|https|rtmp|rtsp|srt):/iu.test(source)) return false
-  return !/^[a-z][a-z\d+.-]*:\/\//iu.test(source)
+  return mediaProtocol(source) === undefined
 }
 
 function videoConcat(graph: string): boolean {
   return [...graph.matchAll(/concat\s*=\s*([^;,]+)/giu)].some(match => !/\bv\s*=\s*0\b/iu.test(match[1] as string))
 }
 
+/**
+ * Recognize FFmpeg null-output dry runs.
+ * @param args - FFmpeg argument vector without the executable.
+ * @returns Whether the command selects the null output format.
+ */
 export function isDryRun(args: readonly string[]): boolean {
   return hasOptionPair(args, '-f', 'null') || args.includes('-f=null')
 }
 
+/**
+ * Validate tool-owned output and supported FFmpeg argument combinations.
+ * @param args - FFmpeg argument vector without the executable.
+ * @param outputType - Expected media output kind.
+ * @returns Validation result with the rejection reason when invalid.
+ */
 export function checkFfmpegCommand(args: readonly string[], outputType = 'video'): GuardResult {
   const graphs: string[] = []
   let pendingFormat = ''
@@ -114,6 +134,13 @@ export function checkFfmpegCommand(args: readonly string[], outputType = 'video'
   return { ok: true }
 }
 
+/**
+ * Reject edits that discard audio which the declared intent requires preserving.
+ * @param args - FFmpeg argument vector without the executable.
+ * @param metadata - Declared output intent used to protect original audio.
+ * @param outputType - Expected media output kind.
+ * @returns Validation result for the command and its audio intent.
+ */
 export function checkFfmpegAudioPreserve(args: readonly string[], metadata?: FfmpegMetadata, outputType = 'video'): GuardResult {
   const command = checkFfmpegCommand(args, outputType)
   if (!command.ok || isDryRun(args)) return command
@@ -130,6 +157,12 @@ export function checkFfmpegAudioPreserve(args: readonly string[], metadata?: Ffm
     : { ok: true }
 }
 
+/**
+ * Recognize a mapped audio replacement that copies the original video stream.
+ * @param args - FFmpeg argument vector without the executable.
+ * @param outputType - Expected media output kind.
+ * @returns Whether video stream copy and replacement audio are explicitly mapped.
+ */
 export function isPureAudioReplacementMux(args: readonly string[], outputType: string): boolean {
   const inputs = optionValues(args, '-i')
   const maps = optionValues(args, '-map')
@@ -140,6 +173,12 @@ export function isPureAudioReplacementMux(args: readonly string[], outputType: s
   return outputType === 'video' && inputs.length === 2 && copiesVideo && (mappedVideo && mappedAudio || secondIsAudio)
 }
 
+/**
+ * Read occurrences of one named option inside an FFmpeg filter expression.
+ * @param filter - FFmpeg filter expression to inspect.
+ * @param key - Option name or attachment encryption key.
+ * @returns Matching option values in their expression order.
+ */
 export function extractOptionValues(filter: string, key: string): string[] {
   const values: string[] = []
   const needle = `${key}=`
@@ -184,6 +223,11 @@ export function extractOptionValues(filter: string, key: string): string[] {
   return values
 }
 
+/**
+ * Escape backslashes, colons and quotes in a filter option value.
+ * @param value - Value to transform or persist.
+ * @returns Escaped filter option value.
+ */
 export function escapeFfmpegFilterValue(value: string): string {
   return value.replace(/[\\:']/gu, character => `\\${character}`)
 }
@@ -212,6 +256,13 @@ function drawtextRanges(filter: string): { readonly start: number; readonly end:
   return ranges
 }
 
+/**
+ * Inject the configured CJK font into eligible drawtext filters.
+ * @param args - FFmpeg argument vector without the executable.
+ * @param fontPath - Configured CJK font path, when available.
+ * @param fileExists - Checks referenced local files.
+ * @returns Rewritten arguments or a missing-font rejection.
+ */
 export function injectCjkFont(
   args: readonly string[],
   fontPath?: string,
@@ -236,6 +287,12 @@ export function injectCjkFont(
   return { ok: true, args: output }
 }
 
+/**
+ * Reject unsupported drawtext line breaks and missing font files.
+ * @param args - FFmpeg argument vector without the executable.
+ * @param fileExists - Checks referenced local files.
+ * @returns Validation result for drawtext configuration.
+ */
 export function checkFfmpegDrawtext(args: readonly string[], fileExists: (path: string) => boolean = existsSync): GuardResult {
   for (const arg of args) {
     if (arg.includes('drawtext') && extractOptionValues(arg, 'text').some(text => /\\+n/u.test(text))) {

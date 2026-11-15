@@ -1,7 +1,7 @@
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
@@ -21,6 +21,11 @@ let directory: string
 let ctx: Context
 let session: Session
 
+vi.mock('node:fs/promises', async (original) => {
+  const actual = await original<typeof import('node:fs/promises')>()
+  return { ...actual, readFile: vi.fn(actual.readFile), rename: vi.fn(actual.rename) }
+})
+
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'dsh-canvas-guards-'))
   ctx = new Context()
@@ -33,6 +38,9 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  await ctx.fiber.dispose()
+  vi.mocked(readFile).mockReset()
+  vi.mocked(rename).mockReset()
   await rm(directory, { recursive: true, force: true })
 })
 
@@ -43,10 +51,8 @@ describe('store', () => {
     await mkdir(join(directory, '.canvas'), { recursive: true })
     await writeFile(join(directory, '.canvas', 'bible.json'), 'not json')
     await expect(store.readDocument(directory, 'bible.json', parseBible)).rejects.toThrow('bible.json')
-    // A path below a regular file fails with ENOTDIR, which is not a missing file.
-    await writeFile(join(directory, 'not-a-directory'), 'x')
-    await expect(new CanvasStore().readDocument(join(directory, 'not-a-directory'), 'x.json', parseBible))
-      .rejects.toMatchObject({ code: 'ENOTDIR' })
+    vi.mocked(readFile).mockRejectedValueOnce(Object.assign(new Error('Permission denied'), { code: 'EACCES' }))
+    await expect(store.readDocument(directory, 'bible.json', parseBible)).rejects.toMatchObject({ code: 'EACCES' })
   })
 })
 
@@ -146,13 +152,12 @@ describe('last branches', () => {
   it('keeps the canvas file when a write cannot replace it', async () => {
     await ctx.canvas.edit(session, [{ op: 'add', type: 'text', text: 'a' }], { baseRevision: 0 })
     const root = join(directory, '.canvas')
-    await chmod(root, 0o500)
-    try {
-      await expect(ctx.canvas.edit(session, [{ op: 'add', type: 'text', text: 'b' }], { baseRevision: 1 }))
-        .rejects.toMatchObject({ code: 'EACCES' })
-    } finally {
-      await chmod(root, 0o700)
-    }
+    const before = await readFile(join(root, 'canvas.json'), 'utf8')
+    vi.mocked(rename).mockRejectedValue(Object.assign(new Error('Permission denied'), { code: 'EACCES' }))
+    await expect(ctx.canvas.edit(session, [{ op: 'add', type: 'text', text: 'b' }], { baseRevision: 1 }))
+      .rejects.toMatchObject({ code: 'EACCES' })
+    expect(await readFile(join(root, 'canvas.json'), 'utf8')).toBe(before)
+    expect((await ctx.canvas.read(session)).revision).toBe(1)
   })
 })
 

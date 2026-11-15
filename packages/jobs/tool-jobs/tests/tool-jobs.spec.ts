@@ -782,6 +782,36 @@ describe('completion notices across scoped mounts', () => {
 })
 
 describe('completion notice delivery', () => {
+  it.each(['idle', 'running'] as const)('retains observable UI job output without notifying a %s owner', async (status) => {
+    const { ctx } = await setup()
+    const inject = vi.fn(), followup = vi.fn()
+    const owner = await fakeAgent(ctx, 'sess-ui', { status, inject, followup })
+    const work = producer({ owner: owner.id, label: 'Import local audio' })
+    const id = ctx.jobs.start({ ...work.spec, completionNotice: 'none' })
+    work.append('saved local candidate')
+    work.settle({ status: 'completed', result: '/project/import.wav' })
+    await tick()
+    expect(ctx.jobs.list(owner.id)).toEqual([expect.objectContaining({ id, status: 'completed', completionNotice: 'none', owner: owner.id })])
+    expect(inject).not.toHaveBeenCalled()
+    expect(followup).not.toHaveBeenCalled()
+    const read = ctx.jobs.read(id, owner.id)
+    expect(read.result).toBe('/project/import.wav')
+    expect(read.chunks.map(chunk => chunk.text).join('')).toBe('saved local candidate')
+  })
+
+  it('keeps a failed UI job observable without opening an Agent turn', async () => {
+    const { ctx } = await setup()
+    const inject = vi.fn(), followup = vi.fn()
+    const owner = await fakeAgent(ctx, 'sess-ui', { status: 'idle', inject, followup })
+    const work = producer({ owner: owner.id })
+    const id = ctx.jobs.start({ ...work.spec, completionNotice: 'none' })
+    work.settle({ status: 'failed', detail: 'local probe failed' })
+    await tick()
+    expect(ctx.jobs.read(id, owner.id).job).toMatchObject({ status: 'failed', detail: 'local probe failed' })
+    expect(inject).not.toHaveBeenCalled()
+    expect(followup).not.toHaveBeenCalled()
+  })
+
   it('opens a turn on an idle owner when a job settles', async () => {
     const { ctx } = await setup()
     const inject = vi.fn()

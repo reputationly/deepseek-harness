@@ -74,6 +74,8 @@ export interface JobView {
   readonly label: string
   /** Owning session; absent for an unowned job, which every caller can see. */
   readonly owner?: SessionId
+  /** Explicit opt-out from automatic model notification; absent retains normal completion delivery. */
+  readonly completionNotice?: 'none'
   /** Producer-owned cap for complete model-facing notices and reads, in UTF-8 bytes. */
   readonly outputLimitBytes?: number
   /** Current lifecycle state. */

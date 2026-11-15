@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Agents can generate images, speech, music, and video through an OpenAI-compatible gateway, then edit local audio and video with FFmpeg. Generated and edited media can be added to the current project canvas. Local editing requires usable FFmpeg tools; generation requires configured gateway credentials.
+Agents can generate images, speech, music, and video through an OpenAI-compatible gateway, then edit local audio and video with FFmpeg. Generated and edited media can be added to the current project canvas. The Host must provide local `subprocess` execution through `@deepseek-ai/dsh-subprocess-local`. Local editing requires usable FFmpeg tools; generation requires configured gateway credentials.
 
 ## Table of Contents
 
@@ -47,9 +47,17 @@ Choose this package when an agent needs gateway image, speech, music, or video g
 
 Generated files land in `outputDir` resolved against the process working directory. Asynchronous music and video requests poll until they finish or `taskTimeoutMs` elapses.
 
-When the gateway publishes a capability catalog (`GET /v1/ov/capabilities`), `generate_image` and `generate_video` take their models and accepted parameter values from it instead of `imageModel` and `videoModel`. The catalog is read per key, cached in memory for 60 seconds, and mirrored to `catalogCacheFile` (default `<DSH_HOME>/cache/ov-catalog.json`) under a key digest, so an outage falls back to the last catalog that key saw. Set `catalog: false` to use the configured models only. `videoDefaultDuration` (default 5) is the length recommended when the user names none.
+In Canvas Sessions, all four `generate_*` tools create their output node before submission and use the same persistent runner as `canvas_generate`; this requires a Host jobs provider and controller. Visual generation requires a populated project bible. A successful tool result means the version is attached and the node has left queued/running state. File-only deployments without a canvas keep standalone generation.
 
-`canvas_generate` plans and runs the media of named canvas nodes: one storyboard becomes one video node per segment, an existing node that already covers a segment is reused, and a segment that must continue the previous picture uses its last frame as the first. Above `confirmVideoCalls`, `confirmVideoSeconds`, `confirmImageCalls`, `confirmSpeechLines`, or `confirmMusicCalls` the tool returns the quote and a token instead of spending money; the model shows the quote and calls again with the token. A confirmed run returns as soon as its jobs are registered, with their ids; each job reports its own completion notice and keeps the node's `status` in step (`queued`, `running`, then cleared or `failed`). A node whose existing status is `queued` or `running` is refused with `already_running`, and a status left behind by a previous process becomes `failed` with `interrupted by a restart`. `storyboard_voice` creates one audio node per spoken line and reuses nodes by line id. Each call runs as a `media` job, so it can be cancelled and reported like other background work. Reference images an `@name` mention implies are added to the call and connected as `ref` edges; the project's resolution is mapped to the tier the gateway's catalog offers.
+Opening the canvas reconciles `.canvas/<episode-file>.media/` checkpoints: completed files are attached idempotently and known remote task ids are polled without a new submission. Preparation failures can be retried; an unknown paid submission or local cancellation of a remote request requires provider-history verification. Changing generation parameters does not clear `recoveryRequired`. Keep checkpoints and `outputDir` in backups. See the [upgrade guide](../../../docs/upgrade-guide/v0.2.2-rc.1/canvas-media-recovery/guide.md) for custom compositions.
+
+Host shutdown preserves known remote tasks and retained files for recovery on reopening. Explicitly cancelled checkpoints remain terminal, including records created before shutdown and user cancellation were distinguished.
+
+Windows drive paths, UNC paths, and `file:` URLs are local media references. Local voice samples are uploaded as data URIs; HTTP(S) and data voice references are passed through. FFmpeg inputs accept local files only. When a browser cannot decode a recorded video, `media.videoPreview` prepares a WebM/VP9/Opus cache in `.canvas/previews/` using local FFmpeg, preserving the original and making no cloud request.
+
+When the gateway publishes a capability catalog (`GET /v1/ov/capabilities`), `generate_image` and `generate_video` take their models and accepted parameter values from it instead of `imageModel` and `videoModel`. Audio requests also validate model availability, modes, and transport against this catalog; a failed lookup without a usable cached catalog refuses audio submission. The catalog is read per key, cached in memory for 60 seconds, and mirrored to `catalogCacheFile` (default `<DSH_HOME>/cache/ov-catalog.json`) under a key digest, so an outage falls back to the last catalog that key saw. Set `catalog: false` to use the configured models only. `videoDefaultDuration` (default 5) is the length recommended when the user names none.
+
+`canvas_generate` plans and runs the media of named canvas nodes: one storyboard becomes one video node per segment, an existing node that already covers a segment is reused, and a segment that must continue the previous picture uses its last frame as the first. Above `confirmVideoCalls`, `confirmVideoSeconds`, `confirmImageCalls`, `confirmSpeechLines`, or `confirmMusicCalls` the tool returns the quote and a token instead of spending money; the model shows the quote and calls again with the token. A confirmed run returns as soon as its jobs are registered, with their ids; each job reports its own completion notice and keeps the node's `status` in step (`queued`, `running`, then cleared or `failed`). A node whose existing status is `queued` or `running` is refused with `already_running`; orphaned statuses without a recoverable record become `failed` with `interrupted by a restart`. `storyboard_voice` creates one audio node per spoken line and reuses nodes by line id. Each call runs as a `media` job, so it can be cancelled and reported like other background work. Reference images an `@name` mention implies are added to the call and connected as `ref` edges; the project's resolution is mapped to the tier the gateway's catalog offers.
 
 FFmpeg and FFprobe default to executables on `PATH`. Desktop packages for macOS arm64 and Windows x64 include both binaries; other deployments must install them or set their paths. Set `fontFile` to an absolute font path when using non-ASCII text with `drawtext`.
 
@@ -83,7 +91,7 @@ Media generation and local editing use separate execution paths and share media 
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`generate_image` and `generate_speech` are synchronous: the gateway returns the media inline or as an expiring URL that the tool downloads before returning. `generate_music` and `generate_video` submit a task and poll its status, because those models run for minutes. Music requests send the prompt as `instructions`, which the gateway requires to decide the arrangement.
+Music and video use asynchronous tasks. Speech follows the catalog's transport: `videos_task` preserves a remote task id for recovery, while `audio_speech` retains the legacy `/audio/speech` request. Music3 sends lyrics as the prompt and style as instructions. YuE2 records planning settings and returned ABC for subsequent composition; ACE-Step supports creation, reference cover, and range repaint. Breeze TTS 2 uses voice-design instructions and vocal events; reference cloning is refused because this transport does not expose it. Resolved audio inputs record their source node, version, role, and path.
 
 Speech and music return `{ path, model }` and add the file as an audio canvas node when possible; the gateway's media URLs expire, so the file is written before the tool returns.
 
@@ -155,8 +163,8 @@ Append-only; calls and results follow the reusable request prefix and do not inv
 
 Media generation and local editing require separate gateway and executable dependencies.
 
-- Speech synthesis requires a reference voice source; the gateway rejects preset voice names, so the model must be given an audio URL or data URI.
-- Speech and music models are configuration rather than discovery; only image and video follow the capability catalog.
+- IndexTTS requires a reference audio source; Breeze uses voice-design instructions instead of preset voice names or reference cloning.
+- Audio models must be offered by the key's catalog when discovery is enabled. Standalone tool defaults still come from deployment configuration; canvas nodes can select an offered model explicitly.
 - Video and music run inside the tool budget, so very long renders need a larger `taskTimeoutMs` rather than a background job.
 - Local editing requires usable FFmpeg and FFprobe executables. Non-ASCII `drawtext` requires a configured font file.
 

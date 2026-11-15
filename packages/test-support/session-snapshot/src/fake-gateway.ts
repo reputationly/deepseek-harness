@@ -84,7 +84,10 @@ export async function startFakeGateway(): Promise<FakeGateway> {
     url: `http://127.0.0.1:${String(address.port)}/v1`,
     close: async () => {
       await new Promise<void>((resolve, reject) => {
-        server.close(error => error === undefined ? resolve() : reject(error))
+        server.close((error) => {
+          if (error === undefined) resolve()
+          else reject(error)
+        })
       })
     },
   }

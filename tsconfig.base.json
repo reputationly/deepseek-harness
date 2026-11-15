@@ -28,6 +28,9 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@deepseek-ai/dsh-api-gateway-status": ["./packages/api/gateway-status/src/index.ts"],
+      "@deepseek-ai/dsh-client-ui-gateway-status": ["./packages/client/ui-gateway-status/src/index.ts"],
+      "@deepseek-ai/dsh-client-ui-gateway-status/client": ["./packages/client/ui-gateway-status/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-file-actions": ["./packages/client/ui-file-actions/src/index.ts"],
       "@deepseek-ai/dsh-client-ui-file-actions/client": ["./packages/client/ui-file-actions/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-file-actions/types": ["./packages/client/ui-file-actions/src/types.ts"],
@@ -181,7 +184,9 @@
       "@deepseek-ai/dsh-subagent/client": ["./packages/subagent/subagent/src/client.ts"],
       "@deepseek-ai/dsh-subagent/src/*": ["./packages/subagent/subagent/src/*"],
       "@deepseek-ai/dsh-workspace/types": ["./packages/workspace/workspace/src/types.ts"],
+      "@deepseek-ai/dsh-tool-media/types": ["./packages/media/tool-media/src/types.ts"],
       "@deepseek-ai/dsh-util-workspace-path": ["./packages/util/workspace-path/src/index.ts"],
+      "@deepseek-ai/dsh-util-timeline-compositor": ["./packages/util/timeline-compositor/src/index.ts"],
       "@deepseek-ai/dsh-session-stats/types": ["./packages/session/session-stats/src/types.ts"],
       "@deepseek-ai/dsh-session-stats/client": ["./packages/session/session-stats/src/client.ts"],
       "@deepseek-ai/dsh-session-turn-outline/types": ["./packages/session/session-turn-outline/src/types.ts"],

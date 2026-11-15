@@ -12,7 +12,7 @@ Edges: n1->n2:prompt"
 exports[`canvas tools > shows the model one schema per tool 1`] = `
 [
   {
-    "description": "Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges. Nodes report their active version, generation inputs, and whether their storyboard or inputs changed since they were made.",
+    "description": "Read the project canvas the user sees beside the conversation: its nodes, groups with their members, and edges. Nodes report their adopted version, generation inputs, and whether their storyboard or inputs changed since they were made. A full or narrowed read includes version ids and recipes. Generated media remains a candidate until set_version explicitly adopts it.",
     "name": "canvas_get",
     "parameters": {
       "properties": {
@@ -103,7 +103,7 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
                 "type": "array",
               },
               "op": {
-                "description": "add creates a node from type plus text, path, shots, or prompt. update changes title, text, or path. set_gen changes how a media node generates and takes params where null deletes a parameter. set_text and set_shots store a new version; update_shot, insert_shot, remove_shot, and move_shot edit one shot. set_version switches the active version. connect and disconnect take from and to, with an optional role. reorder_refs rewrites the reference order. group frames nodes under title; ungroup dissolves the group.",
+                "description": "add creates a node from type plus text, path, shots, or prompt. update changes title, text, or path. set_gen changes how a media node generates and takes params where null deletes a parameter. set_text and set_shots store a new version; update_shot, insert_shot, remove_shot, and move_shot edit one shot. set_version adopts a version, or clears adoption when version is null. connect and disconnect take from and to, with an optional role. reorder_refs rewrites the reference order. group frames nodes under title; ungroup dissolves the group.",
                 "enum": [
                   "add",
                   "update",
@@ -135,9 +135,95 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
                 "type": "object",
               },
               "patch": {
-                "additionalProperties": true,
-                "description": "Shot fields update_shot replaces.",
-                "properties": {},
+                "additionalProperties": false,
+                "description": "Shot fields update_shot replaces. Omitted fields stay unchanged. Required fields cannot be null.",
+                "properties": {
+                  "camera": {
+                    "description": "Camera movement, or 固定 when the camera holds.",
+                    "type": "string",
+                  },
+                  "characters": {
+                    "description": "Bible entry ids of the characters on screen.",
+                    "items": {
+                      "type": "string",
+                    },
+                    "type": "array",
+                  },
+                  "dialogue": {
+                    "description": "Spoken lines of the shot, in order.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "description": "Line id such as d1; omit to number the lines of the shot.",
+                          "type": "string",
+                        },
+                        "line": {
+                          "description": "What the speaker says, as written.",
+                          "type": "string",
+                        },
+                        "speaker": {
+                          "description": "Bible entry id of the speaker; omit the field for narration.",
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "line",
+                      ],
+                      "type": "object",
+                    },
+                    "type": "array",
+                  },
+                  "durationSec": {
+                    "description": "Shot length in seconds.",
+                    "type": "number",
+                  },
+                  "motion": {
+                    "description": "What the characters do in the shot.",
+                    "type": "string",
+                  },
+                  "negative": {
+                    "description": "What this shot must not show.",
+                    "type": "string",
+                  },
+                  "props": {
+                    "description": "Bible entry ids of the props on screen.",
+                    "items": {
+                      "type": "string",
+                    },
+                    "type": "array",
+                  },
+                  "scene": {
+                    "description": "Bible entry id of the location.",
+                    "type": "string",
+                  },
+                  "sfx": {
+                    "description": "Sound effects of the shot.",
+                    "type": "string",
+                  },
+                  "shotSize": {
+                    "description": "Camera framing; gate G2 needs it before a video is generated.",
+                    "enum": [
+                      "extreme_wide",
+                      "wide",
+                      "full",
+                      "medium",
+                      "medium_close",
+                      "close",
+                      "extreme_close",
+                      "insert",
+                    ],
+                    "type": "string",
+                  },
+                  "title": {
+                    "description": "Short title of the shot, at most 24 characters.",
+                    "type": "string",
+                  },
+                  "visual": {
+                    "description": "What the frame shows.",
+                    "type": "string",
+                  },
+                },
                 "type": "object",
               },
               "path": {
@@ -299,8 +385,15 @@ exports[`canvas tools > shows the model one schema per tool 1`] = `
                 "type": "string",
               },
               "version": {
-                "description": "Version id set_version activates.",
-                "type": "string",
+                "description": "Version id set_version adopts, or null to clear adoption.",
+                "oneOf": [
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
               },
             },
             "required": [

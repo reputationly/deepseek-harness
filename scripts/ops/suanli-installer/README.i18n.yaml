@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write scripts/ops/suanli-installer/README.md
+/suanli-assistant-domestic-installer-origin:
+  en: 4371b6cfe1a2742a
+  zh: 0439166895e6c6d3
+/suanli-assistant-domestic-installer-origin/summary:
+  en: 872beb1dacea70bf
+  zh: 27416d76d0a43255
+/suanli-assistant-domestic-installer-origin/table-of-contents:
+  en: 519a254f4db468c1
+  zh: 6fca5231129fc9f9
+/suanli-assistant-domestic-installer-origin/layout:
+  en: 83adda2892dab978
+  zh: 731d1cbef7fc2771
+/suanli-assistant-domestic-installer-origin/deployment:
+  en: d84f5e7f89d3e136
+  zh: 740f88ed891b060f
+/suanli-assistant-domestic-installer-origin/edgeone-rules:
+  en: 9fd7acc183afeaf1
+  zh: cd37bf6a50dd18c4
+/suanli-assistant-domestic-installer-origin/acceptance:
+  en: 91c8a938541b4424
+  zh: d1a9b69088e4b048
+/suanli-assistant-domestic-installer-origin/known-issues:
+  en: a27262ff2d112d1e
+  zh: 829395d2f1c426bc
+/suanli-assistant-domestic-installer-origin/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

@@ -1,21 +1,31 @@
 /** Node-tool dependencies assembled from the deployment config and the services this plugin found. */
-import { createHash } from 'node:crypto'
-import { mkdir, readFile, rename } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, readFile, rm } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import type { CanvasService } from '@deepseek-ai/dsh-canvas'
-import type { JobHandle, JobId } from '@deepseek-ai/dsh-jobs'
+import type { JobHandle, JobHooks, JobId } from '@deepseek-ai/dsh-jobs'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { NodeToolDeps } from './node-tools.ts'
-import type { GeneratedMedia, MediaGenerator, MediaJob } from './runner.ts'
+import { createRunnerState, MediaInterruptedError, type GeneratedMedia, type MediaGenerator, type MediaJob } from './runner.ts'
+import { lastVideoFrameIndex, type FfprobeDocument, type FfprobeRunOptions } from './ffmpeg.ts'
 
 /** Media jobs registry this plugin registers through. */
 export interface JobsRegistry {
+  /** Live job ids from the Host registry, including producers still stopping. */
+  live?(owner: Session['id']): readonly string[]
+  /**
+   * Register a Session-owned media job with its producer's completion policy.
+   * @param spec - owner, job identity, notification policy, and execution hooks.
+   * @returns the registry-issued job id.
+   */
   start(spec: {
-    readonly kind: 'media'
+    readonly kind: 'media' | 'media-edit'
     readonly label: string
     readonly owner: Session['id']
+    readonly completionNotice?: 'none'
     readonly run: (job: JobHandle) => {
-      readonly cancel: (reason?: string) => void
+      readonly cancel: JobHooks['cancel']
       readonly done: Promise<{ readonly status: 'completed'; readonly result: string }
       | { readonly status: 'failed'; readonly detail: string }>
     }
@@ -24,15 +34,7 @@ export interface JobsRegistry {
 
 /** FFmpeg operations the node tools need. */
 export interface FfmpegPort {
-  probe(path: string): Promise<{
-    readonly streams?: readonly {
-      readonly codec_type?: string
-      readonly duration?: string
-      readonly width?: number
-      readonly height?: number
-    }[]
-    readonly format?: { readonly duration?: string }
-  }>
+  probe(path: string, options?: FfprobeRunOptions): Promise<FfprobeDocument>
   exec(args: readonly string[]): Promise<unknown>
 }
 
@@ -66,6 +68,8 @@ export interface NodeDepsInput {
 /** One job wrapper that reports progress and settles the run promise. */
 function mediaJobOf(registry: JobsRegistry, session: Session, spec: {
   readonly label: string
+  readonly local?: true
+  readonly completionNotice?: 'none'
   readonly run: (signal: AbortSignal) => Promise<GeneratedMedia>
 }): MediaJob {
   const owner = session.id
@@ -74,11 +78,12 @@ function mediaJobOf(registry: JobsRegistry, session: Session, spec: {
   const done = new Promise<GeneratedMedia>((resolve, fail) => { settle = resolve; reject = fail })
   const controller = new AbortController()
   const id = registry.start({
-    kind: 'media',
+    kind: spec.local === true ? 'media-edit' : 'media',
     label: spec.label,
     owner,
+    ...spec.completionNotice === undefined ? {} : { completionNotice: spec.completionNotice },
     run: (job: JobHandle) => {
-      job.append(`generating ${spec.label}\n`, { channel: 'log' })
+      job.append(`${spec.local === true ? 'processing local media' : 'generating'} ${spec.label}\n`, { channel: 'log' })
       spec.run(controller.signal).then((value) => {
         settle(value)
         job.append(`wrote ${value.path}\n`, { channel: 'log' })
@@ -87,7 +92,7 @@ function mediaJobOf(registry: JobsRegistry, session: Session, spec: {
         job.append(`${error instanceof Error ? error.message : String(error)}\n`, { channel: 'log' })
       })
       return {
-        cancel: (reason?: string) => controller.abort(reason),
+        cancel: (reason, cause) => { controller.abort(cause === 'teardown' && spec.local !== true ? new MediaInterruptedError(reason) : reason) },
         done: done.then(
           value => ({ status: 'completed' as const, result: value.path }),
           (error: unknown) => ({ status: 'failed' as const, detail: error instanceof Error ? error.message : String(error) }),
@@ -106,6 +111,7 @@ function mediaJobOf(registry: JobsRegistry, session: Session, spec: {
 export function createNodeToolDeps(input: NodeDepsInput): NodeToolDeps {
   const { canvas, resolved, generator, jobs, ffmpeg } = input
   return {
+    state: createRunnerState(),
     canvas,
     limits: {
       maxVideoSeconds: resolved.maxSegmentSeconds,
@@ -126,6 +132,7 @@ export function createNodeToolDeps(input: NodeDepsInput): NodeToolDeps {
     concurrency: resolved.generateConcurrency,
     generate: generator,
     jobs: session => ({
+      live: () => jobs?.live?.(session.id) ?? [],
       start: (spec) => {
         /* v8 ignore next -- the composition enables the jobs row with these tools */
         if (jobs === undefined) throw new Error('tool-media: the jobs service is not available')
@@ -145,12 +152,17 @@ export function createNodeToolDeps(input: NodeDepsInput): NodeToolDeps {
     tailFrame: async (path) => {
       const directory = isAbsolute(resolved.outputDir) ? resolved.outputDir : join(process.cwd(), resolved.outputDir)
       await mkdir(directory, { recursive: true })
-      const scratch = join(directory, 'tail-scratch.png')
-      await ffmpeg.exec(['-sseof', '-0.05', '-i', path, '-frames:v', '1', '-y', scratch])
-      const bytes = await readFile(scratch)
-      const target = join(directory, `tail-${createHash('sha256').update(bytes).digest('hex').slice(0, 8)}.png`)
-      await rename(scratch, target)
-      return target
+      const scratch = join(directory, `tail-${randomUUID()}.tmp.png`)
+      try {
+        const frame = lastVideoFrameIndex(await ffmpeg.probe(path, { countVideoFrames: true }))
+        await ffmpeg.exec(['-i', path, '-map', '0:v:0', '-an', '-vf', `select=eq(n\\,${frame})`, '-frames:v', '1', '-fps_mode', 'vfr', '-y', scratch])
+        const bytes = await readFile(scratch)
+        const target = join(directory, `tail-${createHash('sha256').update(bytes).digest('hex').slice(0, 8)}.png`)
+        await writeFileAtomic(target, bytes, { mode: 0o666 })
+        return target
+      } finally {
+        await rm(scratch, { force: true })
+      }
     },
   }
 }

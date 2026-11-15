@@ -52,14 +52,12 @@ export function StoryboardNode({ data, selected }: NodeProps<CanvasFlowNode>): R
 
 /** A finished cut: its clip count and duration. */
 export function TimelineNode({ data, selected }: NodeProps<CanvasFlowNode>): ReactNode {
-  const { node, t } = data
-  /* v8 ignore next -- a timeline node always carries its duration */
-  const timeline = node.timeline
-  const duration = timeline === undefined ? 0 : timeline.durationMs / 1000
+  const { node, t, timelineSummary } = data
   return <NodeCard data={data} selected={selected} className={css.text}>
     <p className={css.textBody}>
-      {/* v8 ignore next -- a timeline node always carries its exports */}
-      {t('timeline.clips', { clips: timeline === undefined ? 0 : timeline.exports.length, duration: duration.toFixed(1) })}
+      {timelineSummary?.node === node.id
+        ? t('timeline.clips', { clips: timelineSummary.clips, duration: (timelineSummary.durationMs / 1000).toFixed(1) })
+        : t('editor.open')}
     </p>
   </NodeCard>
 }

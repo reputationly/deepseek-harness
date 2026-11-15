@@ -97,6 +97,11 @@ interface JobSpec {
    * caller until service disposal.
    */
   owner?: SessionId
+  /**
+   * Suppress automatic model notices for work whose completion is delivered by its UI caller.
+   * Ownership, output, and observation are unchanged.
+   */
+  completionNotice?: 'none'
   /** Creating tool invocation, retained in the durable lifecycle records. */
   toolCall?: JobToolCall
   /**
@@ -158,8 +163,10 @@ interface JobHooks {
   /**
    * Request termination. Must be synchronous, idempotent, and eventually settle
    * {@link done}; throws propagate. The optional reason is forwarded verbatim.
+   * Registries distinguish explicit control (`kill`) from owner or service
+   * disposal (`teardown`); producers must not infer that distinction from reason text.
    */
-  cancel(reason?: string): void
+  cancel(reason?: string, cause?: Exclude<JobSettleCause, 'producer'>): void
   /**
    * Resolves after the producer releases its resources, not merely when work
    * finishes. Must not reject; the runtime converts a rejection to `failed`.
@@ -287,6 +294,8 @@ interface JobView {
   readonly label: string
   /** Owning session; absent for an unowned job, which every caller can see. */
   readonly owner?: SessionId
+  /** Explicit opt-out from automatic model notification; absent retains normal completion delivery. */
+  readonly completionNotice?: 'none'
   /** Producer-owned cap for complete model-facing notices and reads, in UTF-8 bytes. */
   readonly outputLimitBytes?: number
   /** Current lifecycle state. */
@@ -377,7 +386,7 @@ type JobEvent =
  * not hear another preset's agents. `{ owners: 'all' }` delivers everything.
  */
 type JobEventFilter =
-  | { readonly owner: SessionId }
+  { readonly owner: SessionId }
   | { readonly owners: 'all' | 'scope' }
 ```
 

@@ -33,3 +33,7 @@
 # `glob`/`grep` take an absolute path, which a replayed transcript cannot rewrite; the scenario only needs the canvas tools.
 - id: tool-fs-search
   disabled: true
+
+- insert:
+    - id: snapshot-clock-fixture
+      name: '../../../apps/cli/tests/fixtures/snapshot-clock.ts'

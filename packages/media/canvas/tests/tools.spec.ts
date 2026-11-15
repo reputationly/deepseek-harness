@@ -62,6 +62,31 @@ const shot = (overrides: Record<string, unknown> = {}): Record<string, unknown> 
 })
 
 describe('canvas_edit operations', () => {
+  it('normalizes dialogue updates and preserves fields omitted from the patch after reopening', async () => {
+    await edit([{ op: 'add', type: 'storyboard', shots: [shot()] }])
+    const result = await call('canvas_edit', {
+      baseRevision: await revision(),
+      operations: [{ op: 'update_shot', node: 'n1', shot: 's1', patch: { dialogue: [{ speaker: 'linxia', line: '你好' }] } }],
+    })
+    expect(result.isError).toBe(false)
+    const document = await ctx.canvas.read(session)
+    expect(document.nodes[0]?.versions?.at(-1)?.shots?.[0]).toMatchObject({
+      shotSize: 'close', visual: 'a street', durationSec: 3,
+      dialogue: [{ id: 'd1', speaker: { kind: 'character', entry: 'linxia' }, line: '你好' }],
+    })
+  })
+
+  it('refuses a null shot size without changing the persisted document or revision', async () => {
+    await edit([{ op: 'add', type: 'storyboard', shots: [shot()] }])
+    const before = await ctx.canvas.read(session)
+    const result = await call('canvas_edit', {
+      baseRevision: before.revision,
+      operations: [{ op: 'update_shot', node: 'n1', shot: 's1', patch: { shotSize: null } }],
+    })
+    expect(result.isError).toBe(true)
+    expect(await ctx.canvas.read(session)).toEqual(before)
+  })
+
   it('maps every operation form, minimal and complete', async () => {
     // add: minimal fields, then the complete form with prompt, model, shots, bible, group.
     expect(await edit([{ op: 'add', type: 'text', text: 'brief' }])).toContain('Created n1')
@@ -338,7 +363,7 @@ describe('last tool branches', () => {
       callId: ToolCallId('call-no-agent'),
       name: 'canvas_get',
       arguments: {},
-    } as never)
+    })
     expect(JSON.stringify(result)).toContain('runs only inside a Session')
   })
 })

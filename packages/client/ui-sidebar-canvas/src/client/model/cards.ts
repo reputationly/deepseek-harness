@@ -9,6 +9,9 @@ export interface VersionChoice {
   readonly active: boolean
 }
 
+/**
+ * Scene and segment numbers available for a storyboard video badge.
+ */
 export type ShotBadge =
   | { readonly scene: number; readonly segment: number }
   | { readonly scene: number; readonly segment?: never }
@@ -21,11 +24,15 @@ export type CardState =
   | { readonly kind: 'running'; readonly elapsedMs: number }
   | { readonly kind: 'failed'; readonly error: string; readonly retryable: boolean }
 
-/** Version the node currently shows. */
+/**
+ * Locate the explicitly adopted version in the card's history.
+ * @param node - node whose selection the card displays.
+ * @returns its history index, or -1 when none is adopted.
+ */
 export function currentVersion(node: CanvasNode): number {
   const versions = node.versions ?? []
   const index = versions.findIndex(version => version.id === node.activeVersion)
-  return index < 0 ? Math.max(0, versions.length - 1) : index
+  return index
 }
 
 /**
@@ -35,7 +42,7 @@ export function currentVersion(node: CanvasNode): number {
  */
 export function versionChoices(node: CanvasNode): VersionChoice[] {
   const versions = node.versions ?? []
-  if (versions.length < 2) return []
+  if (versions.length === 0 || versions.length === 1 && node.activeVersion !== undefined) return []
   const active = currentVersion(node)
   return versions.map((version, index) => ({ id: version.id, label: `v${String(index + 1)}`, active: index === active }))
 }
@@ -61,6 +68,7 @@ export function cardState(status: NodeStatus | undefined, now: number): CardStat
  * @param node - video node.
  * @param board - storyboard the segment belongs to, when the view has it.
  * @param scene - scene number the group records, when known.
+ * @param boardSegments - Precomputed segments of the source storyboard.
  * @returns the scene and segment numbers, or undefined when the node is not a storyboard segment.
  */
 export function shotBadge(
@@ -133,7 +141,7 @@ export interface StoryboardCardView {
 /**
  * Small table and footer text of one storyboard.
  * @param node - storyboard node.
- * @param maxSegmentSec - longest segment one generation call may cover.
+ * @param segments - Precomputed storyboard segments.
  * @returns rows capped for the card plus the summary line.
  */
 export function storyboardCardView(

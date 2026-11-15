@@ -224,7 +224,8 @@ function contextOf(logs: readonly string[]): NormalizeContext {
   return {
     sessionIds: headers.flatMap(header => typeof header.id === 'string' ? [header.id] : []),
     cwd,
-    cwdAliases: [cwd.split(sep).join('/')],
+    // Runtime-context text and tool arguments embed paths inside JSON strings on Windows.
+    cwdAliases: [cwd.split(sep).join('/'), JSON.stringify(cwd).slice(1, -1)],
   }
 }
 
@@ -294,6 +295,7 @@ async function writeSessionFixtures(
     : []
   for (const replacement of [...replacements]) {
     if (replacement.from === ctx.cwd) replacements.push({ from: ctx.cwd.split(sep).join('/'), to: replacement.to })
+    replacements.push({ from: JSON.stringify(replacement.from).slice(1, -1), to: JSON.stringify(replacement.to).slice(1, -1) })
   }
   const fresh = actualLogs.map((log, index) => {
     const stable = tokenizeSessionFixtureCwd(mode === 'refresh'

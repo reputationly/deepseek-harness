@@ -1,5 +1,8 @@
 /** Copy owned by the project canvas tab. */
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import { timelineEn, timelineZh } from './timeline-locales.ts'
+import { audioEn, audioZh } from './audio-locales.ts'
+import { videoEn, videoZh } from './video-locales.ts'
 
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'sidebarCanvas'
@@ -13,6 +16,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Simplified Chinese canvas copy. */
 export const zh = {
+  ...audioZh,
+  ...videoZh,
+  ...timelineZh,
   title: '画布',
   'guide.description': '查看对话生成的素材及其关系',
   loading: '正在读取画布…',
@@ -33,6 +39,8 @@ export const zh = {
   dismiss: '关闭提示',
   'media.loading': '正在加载…',
   'media.failed': '无法加载此文件',
+  'media.preparingPreview': '正在准备兼容预览…',
+  'media.previewFailed': '无法预览视频，请检查 FFmpeg 或先将视频导入项目',
   'video.play': '播放视频',
   'audio.play': '播放音频',
   'edge.ref': '参考图 #{n}',
@@ -99,6 +107,13 @@ export const zh = {
   'inspector.modelDefault': '部署默认',
   'inspector.prompt': '提示词',
   'inspector.apply': '应用',
+  'canvas.locateAdded': '定位',
+  'bible.threeViewFailed': '未能创建三视图，请重试',
+  'inspector.conflict': '该节点的相同字段已被其他操作修改，草稿仍保留。请核对后选择如何处理',
+  'inspector.reloadDraft': '放弃草稿并重新载入',
+  'inspector.overwriteDraft': '覆盖冲突字段',
+  'inspector.applyFailed': '未能保存，草稿已保留，请重试',
+  'inspector.applyBeforeGenerate': '请先应用草稿，再开始生成',
   'inspector.references': '参考图',
   'inspector.noReferences': '还没有参考图',
   'inspector.removeReference': '移除参考图',
@@ -137,6 +152,9 @@ export const zh = {
 
 /** English canvas copy. */
 export const en = {
+  ...audioEn,
+  ...videoEn,
+  ...timelineEn,
   title: 'Canvas',
   'guide.description': 'See generated media and how it is related',
   loading: 'Reading canvas…',
@@ -157,6 +175,8 @@ export const en = {
   dismiss: 'Dismiss',
   'media.loading': 'Loading…',
   'media.failed': 'This file could not be loaded',
+  'media.preparingPreview': 'Preparing a compatible preview…',
+  'media.previewFailed': 'Cannot preview this video. Check FFmpeg or import the video into the project.',
   'video.play': 'Play video',
   'audio.play': 'Play audio',
   'edge.ref': 'Reference #{n}',
@@ -223,6 +243,13 @@ export const en = {
   'inspector.modelDefault': 'Deployment default',
   'inspector.prompt': 'Prompt',
   'inspector.apply': 'Apply',
+  'canvas.locateAdded': 'Locate',
+  'bible.threeViewFailed': 'Could not create the three-view image. Try again.',
+  'inspector.conflict': 'These fields changed elsewhere. Your draft is retained; review before overwriting.',
+  'inspector.reloadDraft': 'Discard draft and reload',
+  'inspector.overwriteDraft': 'Overwrite conflicting fields',
+  'inspector.applyFailed': 'Could not save. Your draft is retained; try again.',
+  'inspector.applyBeforeGenerate': 'Apply your draft before generating.',
   'inspector.references': 'References',
   'inspector.noReferences': 'No references yet',
   'inspector.removeReference': 'Remove reference',
@@ -261,6 +288,9 @@ export const en = {
 
 /** Japanese canvas copy. */
 export const ja = {
+  ...audioEn,
+  ...videoEn,
+  ...timelineEn,
   title: 'キャンバス',
   'guide.description': '生成された素材とその関係を表示',
   loading: 'キャンバスを読み込んでいます…',
@@ -281,6 +311,8 @@ export const ja = {
   dismiss: '閉じる',
   'media.loading': '読み込み中…',
   'media.failed': 'このファイルを読み込めませんでした',
+  'media.preparingPreview': '互換プレビューを準備中…',
+  'media.previewFailed': 'プレビューできません。FFmpeg を確認するか、動画をプロジェクトにインポートしてください。',
   'video.play': '動画を再生',
   'audio.play': '音声を再生',
   'edge.ref': 'Reference #{n}',
@@ -347,6 +379,13 @@ export const ja = {
   'inspector.modelDefault': 'Deployment default',
   'inspector.prompt': 'Prompt',
   'inspector.apply': 'Apply',
+  'canvas.locateAdded': 'Locate',
+  'bible.threeViewFailed': 'Could not create the three-view image. Try again.',
+  'inspector.conflict': 'These fields changed elsewhere. Your draft is retained; review before overwriting.',
+  'inspector.reloadDraft': 'Discard draft and reload',
+  'inspector.overwriteDraft': 'Overwrite conflicting fields',
+  'inspector.applyFailed': 'Could not save. Your draft is retained; try again.',
+  'inspector.applyBeforeGenerate': 'Apply your draft before generating.',
   'inspector.references': 'References',
   'inspector.noReferences': 'No references yet',
   'inspector.removeReference': 'Remove reference',
@@ -385,6 +424,9 @@ export const ja = {
 
 /** Spanish canvas copy. */
 export const es = {
+  ...audioEn,
+  ...videoEn,
+  ...timelineEn,
   title: 'Lienzo',
   'guide.description': 'Ver el contenido generado y cómo se relaciona',
   loading: 'Leyendo el lienzo…',
@@ -405,6 +447,8 @@ export const es = {
   dismiss: 'Cerrar',
   'media.loading': 'Cargando…',
   'media.failed': 'No se pudo cargar este archivo',
+  'media.preparingPreview': 'Preparando una vista previa compatible…',
+  'media.previewFailed': 'No se puede previsualizar el vídeo. Revisa FFmpeg o importa el vídeo al proyecto.',
   'video.play': 'Reproducir vídeo',
   'audio.play': 'Reproducir audio',
   'edge.ref': 'Reference #{n}',
@@ -471,6 +515,13 @@ export const es = {
   'inspector.modelDefault': 'Deployment default',
   'inspector.prompt': 'Prompt',
   'inspector.apply': 'Apply',
+  'canvas.locateAdded': 'Locate',
+  'bible.threeViewFailed': 'Could not create the three-view image. Try again.',
+  'inspector.conflict': 'These fields changed elsewhere. Your draft is retained; review before overwriting.',
+  'inspector.reloadDraft': 'Discard draft and reload',
+  'inspector.overwriteDraft': 'Overwrite conflicting fields',
+  'inspector.applyFailed': 'Could not save. Your draft is retained; try again.',
+  'inspector.applyBeforeGenerate': 'Apply your draft before generating.',
   'inspector.references': 'References',
   'inspector.noReferences': 'No references yet',
   'inspector.removeReference': 'Remove reference',
@@ -509,6 +560,9 @@ export const es = {
 
 /** French canvas copy. */
 export const fr = {
+  ...audioEn,
+  ...videoEn,
+  ...timelineEn,
   title: 'Canevas',
   'guide.description': 'Voir les médias générés et leurs relations',
   loading: 'Lecture du canevas…',
@@ -529,6 +583,8 @@ export const fr = {
   dismiss: 'Fermer',
   'media.loading': 'Chargement…',
   'media.failed': 'Impossible de charger ce fichier',
+  'media.preparingPreview': 'Préparation d’un aperçu compatible…',
+  'media.previewFailed': 'Aperçu indisponible. Vérifiez FFmpeg ou importez la vidéo dans le projet.',
   'video.play': 'Lire la vidéo',
   'audio.play': 'Lire l’audio',
   'edge.ref': 'Reference #{n}',
@@ -595,6 +651,13 @@ export const fr = {
   'inspector.modelDefault': 'Deployment default',
   'inspector.prompt': 'Prompt',
   'inspector.apply': 'Apply',
+  'canvas.locateAdded': 'Locate',
+  'bible.threeViewFailed': 'Could not create the three-view image. Try again.',
+  'inspector.conflict': 'These fields changed elsewhere. Your draft is retained; review before overwriting.',
+  'inspector.reloadDraft': 'Discard draft and reload',
+  'inspector.overwriteDraft': 'Overwrite conflicting fields',
+  'inspector.applyFailed': 'Could not save. Your draft is retained; try again.',
+  'inspector.applyBeforeGenerate': 'Apply your draft before generating.',
   'inspector.references': 'References',
   'inspector.noReferences': 'No references yet',
   'inspector.removeReference': 'Remove reference',
@@ -633,6 +696,9 @@ export const fr = {
 
 /** German canvas copy. */
 export const de = {
+  ...audioEn,
+  ...videoEn,
+  ...timelineEn,
   title: 'Canvas',
   'guide.description': 'Erzeugte Medien und ihre Beziehungen ansehen',
   loading: 'Canvas wird gelesen…',
@@ -653,6 +719,8 @@ export const de = {
   dismiss: 'Schließen',
   'media.loading': 'Wird geladen…',
   'media.failed': 'Diese Datei konnte nicht geladen werden',
+  'media.preparingPreview': 'Kompatible Vorschau wird vorbereitet…',
+  'media.previewFailed': 'Keine Videovorschau. Prüfen Sie FFmpeg oder importieren Sie das Video ins Projekt.',
   'video.play': 'Video abspielen',
   'audio.play': 'Audio abspielen',
   'edge.ref': 'Reference #{n}',
@@ -719,6 +787,13 @@ export const de = {
   'inspector.modelDefault': 'Deployment default',
   'inspector.prompt': 'Prompt',
   'inspector.apply': 'Apply',
+  'canvas.locateAdded': 'Locate',
+  'bible.threeViewFailed': 'Could not create the three-view image. Try again.',
+  'inspector.conflict': 'These fields changed elsewhere. Your draft is retained; review before overwriting.',
+  'inspector.reloadDraft': 'Discard draft and reload',
+  'inspector.overwriteDraft': 'Overwrite conflicting fields',
+  'inspector.applyFailed': 'Could not save. Your draft is retained; try again.',
+  'inspector.applyBeforeGenerate': 'Apply your draft before generating.',
   'inspector.references': 'References',
   'inspector.noReferences': 'No references yet',
   'inspector.removeReference': 'Remove reference',
@@ -757,6 +832,9 @@ export const de = {
 
 /** Russian canvas copy. */
 export const ru = {
+  ...audioEn,
+  ...videoEn,
+  ...timelineEn,
   title: 'Холст',
   'guide.description': 'Просмотр созданных материалов и связей между ними',
   loading: 'Чтение холста…',
@@ -777,6 +855,8 @@ export const ru = {
   dismiss: 'Закрыть',
   'media.loading': 'Загрузка…',
   'media.failed': 'Не удалось загрузить этот файл',
+  'media.preparingPreview': 'Подготовка совместимого предпросмотра…',
+  'media.previewFailed': 'Предпросмотр недоступен. Проверьте FFmpeg или импортируйте видео в проект.',
   'video.play': 'Воспроизвести видео',
   'audio.play': 'Воспроизвести аудио',
   'edge.ref': 'Reference #{n}',
@@ -843,6 +923,13 @@ export const ru = {
   'inspector.modelDefault': 'Deployment default',
   'inspector.prompt': 'Prompt',
   'inspector.apply': 'Apply',
+  'canvas.locateAdded': 'Locate',
+  'bible.threeViewFailed': 'Could not create the three-view image. Try again.',
+  'inspector.conflict': 'These fields changed elsewhere. Your draft is retained; review before overwriting.',
+  'inspector.reloadDraft': 'Discard draft and reload',
+  'inspector.overwriteDraft': 'Overwrite conflicting fields',
+  'inspector.applyFailed': 'Could not save. Your draft is retained; try again.',
+  'inspector.applyBeforeGenerate': 'Apply your draft before generating.',
   'inspector.references': 'References',
   'inspector.noReferences': 'No references yet',
   'inspector.removeReference': 'Remove reference',
@@ -881,6 +968,9 @@ export const ru = {
 
 /** Portuguese canvas copy. */
 export const pt = {
+  ...audioEn,
+  ...videoEn,
+  ...timelineEn,
   title: 'Tela',
   'guide.description': 'Ver a mídia gerada e como ela se relaciona',
   loading: 'Lendo a tela…',
@@ -901,6 +991,8 @@ export const pt = {
   dismiss: 'Dispensar',
   'media.loading': 'Carregando…',
   'media.failed': 'Não foi possível carregar este arquivo',
+  'media.preparingPreview': 'Preparando uma prévia compatível…',
+  'media.previewFailed': 'Não é possível visualizar o vídeo. Verifique o FFmpeg ou importe o vídeo para o projeto.',
   'video.play': 'Reproduzir vídeo',
   'audio.play': 'Reproduzir áudio',
   'edge.ref': 'Reference #{n}',
@@ -967,6 +1059,13 @@ export const pt = {
   'inspector.modelDefault': 'Deployment default',
   'inspector.prompt': 'Prompt',
   'inspector.apply': 'Apply',
+  'canvas.locateAdded': 'Locate',
+  'bible.threeViewFailed': 'Could not create the three-view image. Try again.',
+  'inspector.conflict': 'These fields changed elsewhere. Your draft is retained; review before overwriting.',
+  'inspector.reloadDraft': 'Discard draft and reload',
+  'inspector.overwriteDraft': 'Overwrite conflicting fields',
+  'inspector.applyFailed': 'Could not save. Your draft is retained; try again.',
+  'inspector.applyBeforeGenerate': 'Apply your draft before generating.',
   'inspector.references': 'References',
   'inspector.noReferences': 'No references yet',
   'inspector.removeReference': 'Remove reference',

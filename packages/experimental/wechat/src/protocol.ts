@@ -1,18 +1,42 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto'
 
+/**
+ * Tencent iLink API origin.
+ */
 export const ILINK_BASE_URL = 'https://ilinkai.weixin.qq.com'
+/**
+ * Tencent iLink attachment CDN origin.
+ */
 export const CDN_BASE_URL = 'https://novac2c.cdn.weixin.qq.com/c2c'
+/**
+ * Deadline for ordinary iLink requests in milliseconds.
+ */
 export const API_TIMEOUT_MS = 15_000
+/**
+ * Deadline for long-poll requests in milliseconds.
+ */
 export const LONG_POLL_TIMEOUT_MS = 40_000
+/**
+ * Maximum accepted inbound attachment size in bytes.
+ */
 export const MAX_INBOUND_BYTES = 100 * 1024 * 1024
+/**
+ * Maximum outbound attachment size before conversion or rejection.
+ */
 export const MAX_OUTBOUND_BYTES = 20 * 1024 * 1024
 
+/**
+ * Wire discriminator values for supported iLink message items.
+ */
 export const ITEM_TYPE = { text: 1, image: 2, voice: 3, file: 4, video: 5 } as const
 const CDN_HOSTS = new Set([
   'novac2c.cdn.weixin.qq.com', 'ilinkai.weixin.qq.com', 'wx.qlogo.cn',
   'thirdwx.qlogo.cn', 'res.wx.qq.com', 'mmbiz.qpic.cn', 'mmbiz.qlogo.cn',
 ])
 
+/**
+ * iLink response fields, retaining provider-specific payload data.
+ */
 export interface IlinkEnvelope {
   readonly ret?: number | string
   readonly errcode?: number | string
@@ -20,6 +44,9 @@ export interface IlinkEnvelope {
   readonly [key: string]: unknown
 }
 
+/**
+ * Incoming or outgoing iLink message fields used by the bridge.
+ */
 export interface IlinkMessage {
   readonly message_id?: string | number
   readonly from_user_id?: string
@@ -30,16 +57,25 @@ export interface IlinkMessage {
   readonly [key: string]: unknown
 }
 
+/**
+ * One typed text or attachment item in an iLink message.
+ */
 export interface IlinkItem {
   readonly type?: number | string
   readonly [key: string]: unknown
 }
 
+/**
+ * QR login data returned by iLink.
+ */
 export interface IlinkQr {
   readonly qrcode: string
   readonly qrDataUrl: string
 }
 
+/**
+ * iLink application failure retaining the provider response codes.
+ */
 export class IlinkApiError extends Error {
   constructor(message: string, readonly ret?: number | string, readonly errcode?: number | string) {
     super(message)
@@ -55,6 +91,11 @@ export class IlinkClient {
     private readonly fetcher: typeof fetch = fetch,
   ) {}
 
+  /**
+   * Request a new iLink login QR code.
+   * @param signal - Cancels this request or subscription.
+   * @returns QR login payload.
+   */
   async getQr(signal?: AbortSignal): Promise<IlinkQr> {
     const response = await this.request('ilink/bot/get_bot_qrcode?bot_type=3', {
       method: 'GET',
@@ -75,6 +116,13 @@ export class IlinkClient {
     return { qrcode: response.qrcode, qrDataUrl }
   }
 
+  /**
+   * Poll the state of a pending QR login.
+   * @param qrcode - QR login handle returned by iLink.
+   * @param verifyCode - Optional verification code from the login flow.
+   * @param signal - Cancels this request or subscription.
+   * @returns Current QR login response.
+   */
   async getQrStatus(qrcode: string, verifyCode = '', signal?: AbortSignal): Promise<IlinkEnvelope> {
     const query = new URLSearchParams({ qrcode })
     if (verifyCode) query.set('verify_code', verifyCode)
@@ -85,17 +133,32 @@ export class IlinkClient {
     })
   }
 
+  /**
+   * Notify iLink that the local bot is starting.
+   * @param signal - Cancels this request or subscription.
+   * @returns Successful iLink notification response.
+   */
   async notifyStart(signal?: AbortSignal): Promise<IlinkEnvelope> {
     const result = await this.request('ilink/bot/msg/notifystart', signal === undefined ? {} : { signal })
     assertSuccess(result)
     return result
   }
 
+  /**
+   * Notify iLink that the local bot is stopping.
+   */
   async notifyStop(): Promise<void> {
     const result = await this.request('ilink/bot/msg/notifystop')
     assertSuccess(result)
   }
 
+  /**
+   * Read bot configuration for the linked owner and message context.
+   * @param ownerUserId - Linked account owner identifier.
+   * @param contextToken - Optional iLink message-context token.
+   * @param signal - Cancels this request or subscription.
+   * @returns Successful bot configuration response.
+   */
   async getConfig(ownerUserId: string, contextToken?: string, signal?: AbortSignal): Promise<IlinkEnvelope> {
     const result = await this.request('ilink/bot/getconfig', {
       body: { ilink_user_id: ownerUserId, ...(contextToken ? { context_token: contextToken } : {}) },
@@ -105,6 +168,12 @@ export class IlinkClient {
     return result
   }
 
+  /**
+   * Send a typing indication using the current iLink ticket.
+   * @param ownerUserId - Linked account owner identifier.
+   * @param ticket - Current iLink typing ticket.
+   * @param signal - Cancels this request or subscription.
+   */
   async sendTyping(ownerUserId: string, ticket: string, signal?: AbortSignal): Promise<void> {
     const result = await this.request('ilink/bot/sendtyping', {
       body: { ilink_user_id: ownerUserId, typing_ticket: ticket, typing_status: 1 },
@@ -113,6 +182,12 @@ export class IlinkClient {
     assertSuccess(result)
   }
 
+  /**
+   * Long-poll incoming messages from the saved cursor.
+   * @param cursor - Last accepted iLink update cursor.
+   * @param signal - Cancels this request or subscription.
+   * @returns Update response containing messages and the next cursor.
+   */
   async getUpdates(cursor: string, signal?: AbortSignal): Promise<IlinkEnvelope> {
     return await this.request('ilink/bot/getupdates', {
       body: { get_updates_buf: cursor },
@@ -121,6 +196,14 @@ export class IlinkClient {
     })
   }
 
+  /**
+   * Send a text reply to the linked private chat.
+   * @param toUserId - Linked private-chat recipient identifier.
+   * @param text - Text to send or parse.
+   * @param contextToken - Optional iLink message-context token.
+   * @param signal - Cancels this request or subscription.
+   * @returns Successful message-send response.
+   */
   async sendText(toUserId: string, text: string, contextToken?: string, signal?: AbortSignal): Promise<IlinkEnvelope> {
     const result = await this.request('ilink/bot/sendmessage', {
       body: { msg: {
@@ -138,6 +221,16 @@ export class IlinkClient {
     return result
   }
 
+  /**
+   * Encrypt and upload an attachment, then send its chat message.
+   * @param kind - Media or message kind being handled.
+   * @param filename - Attachment display filename.
+   * @param bytes - Plaintext attachment bytes.
+   * @param toUserId - Linked private-chat recipient identifier.
+   * @param contextToken - Optional iLink message-context token.
+   * @param signal - Cancels this request or subscription.
+   * @returns Upload and message-send responses.
+   */
   async sendMedia(
     kind: 'image' | 'video' | 'file',
     filename: string,
@@ -205,6 +298,12 @@ export class IlinkClient {
     return { upload, send }
   }
 
+  /**
+   * Download and decrypt a supported incoming attachment.
+   * @param item - Incoming attachment message item.
+   * @param signal - Cancels this request or subscription.
+   * @returns Decrypted attachment bytes.
+   */
   async downloadMedia(item: IlinkItem, signal?: AbortSignal): Promise<Buffer> {
     const type = Number(item.type)
     const key = type === ITEM_TYPE.image ? 'image_item'
@@ -288,6 +387,10 @@ export class IlinkClient {
   }
 }
 
+/**
+ * Throw an iLink application error when the response carries a failure code.
+ * @param envelope - iLink response envelope to validate.
+ */
 export function assertSuccess(envelope: IlinkEnvelope): void {
   if (nonzero(envelope.ret) || nonzero(envelope.errcode)) {
     throw new IlinkApiError(
@@ -298,14 +401,29 @@ export function assertSuccess(envelope: IlinkEnvelope): void {
   }
 }
 
+/**
+ * Recognize timeout or cancellation errors from the transport.
+ * @param error - Failure to classify.
+ * @returns Whether the error represents timeout or cancellation.
+ */
 export function isTimeoutError(error: unknown): boolean {
   return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
 }
 
+/**
+ * Recognize the iLink expired-session response code.
+ * @param error - Failure to classify.
+ * @returns Whether the provider rejected an expired login.
+ */
 export function isExpiredSession(error: unknown): boolean {
   return error instanceof IlinkApiError && (Number(error.ret) === -14 || Number(error.errcode) === -14)
 }
 
+/**
+ * Decode an attachment key from the iLink base64 or encoded-hex representation.
+ * @param value - Value to transform or persist.
+ * @returns Validated 16-byte attachment key.
+ */
 export function parseAesKey(value: string): Buffer {
   const decoded = Buffer.from(value, 'base64')
   if (decoded.length === 16) return decoded
@@ -314,6 +432,12 @@ export function parseAesKey(value: string): Buffer {
   throw new Error('WeChat attachment AES key is invalid')
 }
 
+/**
+ * Decrypt an iLink AES-128-ECB attachment and validate its padding.
+ * @param ciphertext - Encrypted attachment bytes.
+ * @param key - Option name or attachment encryption key.
+ * @returns Decrypted attachment bytes without padding.
+ */
 export function decryptAesEcb(ciphertext: Uint8Array, key: Uint8Array): Buffer {
   if (key.byteLength !== 16 || ciphertext.byteLength === 0 || ciphertext.byteLength % 16 !== 0) {
     throw new Error('WeChat attachment encryption is invalid')
@@ -329,11 +453,23 @@ export function decryptAesEcb(ciphertext: Uint8Array, key: Uint8Array): Buffer {
   return plaintext.subarray(0, plaintext.length - padding)
 }
 
+/**
+ * Encrypt an attachment using the iLink AES-128-ECB wire format.
+ * @param plaintext - Attachment bytes to encrypt.
+ * @param key - Option name or attachment encryption key.
+ * @returns Encrypted and padded attachment bytes.
+ */
 export function encryptAesEcb(plaintext: Uint8Array, key: Uint8Array): Buffer {
   const cipher = createCipheriv('aes-128-ecb', key, null)
   return Buffer.concat([cipher.update(plaintext), cipher.final()])
 }
 
+/**
+ * Reduce an attachment name to a usable local filename.
+ * @param value - Value to transform or persist.
+ * @param fallback - Filename used if the supplied name becomes empty.
+ * @returns Sanitized filename or the fallback.
+ */
 export function safeFilename(value: string, fallback: string): string {
   const leaf = value.replaceAll('\\', '/').split('/').at(-1) ?? ''
   const clean = leaf.replace(/[\x00-\x1f<>:"|?*]/g, '_').replace(/^\.+$/, '').slice(0, 120)
@@ -355,6 +491,11 @@ function normalizeQrImage(value: string): string | undefined {
   return `data:${mime};base64,${base64}`
 }
 
+/**
+ * Join text items from an incoming iLink message.
+ * @param message - Incoming iLink message.
+ * @returns Text items joined with newlines.
+ */
 export function messageText(message: IlinkMessage): string {
   return (message.item_list ?? [])
     .filter(item => Number(item.type) === ITEM_TYPE.text)
@@ -363,6 +504,11 @@ export function messageText(message: IlinkMessage): string {
     .join('\n')
 }
 
+/**
+ * Read transcripts supplied by iLink with incoming voice messages.
+ * @param message - Incoming iLink message.
+ * @returns Available voice transcripts joined with newlines.
+ */
 export function voiceTranscript(message: IlinkMessage): string {
   return (message.item_list ?? [])
     .filter(item => Number(item.type) === ITEM_TYPE.voice)
@@ -374,6 +520,11 @@ export function voiceTranscript(message: IlinkMessage): string {
     .join('\n')
 }
 
+/**
+ * Read a stable message identifier without narrowing large integer IDs.
+ * @param message - Incoming iLink message.
+ * @returns Message ID as text, or an empty string when absent.
+ */
 export function messageId(message: IlinkMessage): string {
   const value = message.message_id ?? message.client_id
   if (typeof value === 'string') return value
@@ -382,6 +533,12 @@ export function messageId(message: IlinkMessage): string {
   return ''
 }
 
+/**
+ * Mask credentials and supplied secrets in diagnostic messages.
+ * @param value - Value to transform or persist.
+ * @param secrets - Additional exact secret values to mask.
+ * @returns Diagnostic text with secrets masked.
+ */
 export function redact(value: unknown, secrets: readonly string[] = []): string {
   let text = typeof value === 'string' ? value
     : value instanceof Error ? value.message
@@ -394,10 +551,20 @@ export function redact(value: unknown, secrets: readonly string[] = []): string 
     .slice(0, 300)
 }
 
+/**
+ * Return a partially masked identifier for local status display.
+ * @param id - Identifier to mask for display.
+ * @returns Masked identifier.
+ */
 export function maskId(id: string): string {
   return id.length <= 5 ? '*'.repeat(id.length) : `${id.slice(0, 3)}…${id.slice(-2)}`
 }
 
+/**
+ * Parse iLink JSON without truncating integer message identifiers.
+ * @param text - Text to send or parse.
+ * @returns Parsed response with large message IDs preserved as text.
+ */
 export function parseLosslessJson(text: string): unknown {
   const ids = new Set(['message_id', 'msg_id', 'svr_id'])
   let output = '', index = 0

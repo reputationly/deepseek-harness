@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import type { CanvasDocument } from '@deepseek-ai/dsh-canvas/client'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { ShotId } from '@deepseek-ai/dsh-canvas/client'
+import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
+import type { CanvasNodeId, ShotId } from '@deepseek-ai/dsh-canvas/client'
 import { CanvasFlow, type CanvasFlowProps } from '../src/client/CanvasFlow.tsx'
 import { EditHistory } from '../src/client/model/history.ts'
 
@@ -17,7 +18,7 @@ afterEach(() => { cleanup() })
 
 const t = (key: string, params?: Record<string, unknown>) => params === undefined ? key : `${key}:${JSON.stringify(params)}`
 const doc: CanvasDocument = {
-  version: 2, revision: 1, nextId: 4,
+  version: 3, revision: 1, nextId: 4,
   edges: [{ id: 'n1->n2:prompt', source: 'n1' as never, target: 'n2' as never, kind: 'reference', role: 'prompt' }],
   nodes: [
     { id: 'n1' as never, type: 'text', title: 'Brief', x: 0, y: 0, width: 280, height: 160, activeVersion: 'v1' as never,
@@ -44,6 +45,19 @@ it('renders one flow node per document node', async () => {
   expect(globalThis.document.querySelectorAll('.react-flow__node')).toHaveLength(2)
 })
 
+it('refreshes a timeline card when only its saved timeline changes', async () => {
+  const node = brandString<CanvasNodeId>('n1')
+  const document: CanvasDocument = { ...doc, edges: [], nodes: [{ ...doc.nodes[0]!, type: 'timeline', timeline: { file: 'cut.json', durationMs: 0, exports: [] } }] }
+  const props = { document, readFile: async () => ({ ok: false as const, message: 'unused' }), t, edit: async () => {}, reload: async () => {} }
+  const view = render(<CanvasFlow {...props} timelineSummary={{ node, clips: 5, durationMs: 8000 }} />)
+  await waitFor(() => { expect(screen.getByText('timeline.clips:{"clips":5,"duration":"8.0"}')).toBeTruthy() })
+  view.rerender(<CanvasFlow {...props} timelineSummary={{ node, clips: 2, durationMs: 4000 }} />)
+  await waitFor(() => { expect(screen.getByText('timeline.clips:{"clips":2,"duration":"4.0"}')).toBeTruthy() })
+  view.rerender(<CanvasFlow {...props} />)
+  await waitFor(() => { expect(screen.getByText('editor.open')).toBeTruthy() })
+  expect(screen.queryByText(/timeline.clips/u)).toBeNull()
+})
+
 it('passes generation to a card retry action', async () => {
   const image = doc.nodes.find(node => node.id === 'n2')!
   const retryDocument: CanvasDocument = {
@@ -59,6 +73,22 @@ it('passes generation to a card retry action', async () => {
   await waitFor(() => { expect(screen.getByRole('button', { name: 'status.retry' })).toBeTruthy() })
   fireEvent.click(screen.getByRole('button', { name: 'status.retry' }))
   expect(generate).toHaveBeenCalledWith('n2')
+})
+
+it('refreshes card copy when the language changes and the bound translator keeps its identity', async () => {
+  let language = 'en'
+  const translated = (key: string): string => `${language}:${key}`
+  const props = {
+    document: { ...doc, nodes: [{ ...doc.nodes[1]!, status: { state: 'queued' as const, jobId: brandString<JobId>('queued-job'), at: 'now' } }] },
+    readFile: async () => ({ ok: false as const, message: 'unused' }),
+    edit: async () => {}, reload: async () => {}, t: translated,
+  }
+  const mounted = render(<CanvasFlow {...props} localeRevision={1} />)
+  await waitFor(() => { expect(screen.getByText('en:status.queued')).toBeTruthy() })
+  language = 'zh'
+  mounted.rerender(<CanvasFlow {...props} localeRevision={2} />)
+  await waitFor(() => { expect(screen.getByText('zh:status.queued')).toBeTruthy() })
+  expect(screen.queryByText('en:status.queued')).toBeNull()
 })
 
 it('reports the clicked node and clears the selection on the pane', async () => {
@@ -86,7 +116,7 @@ it('undoes and redoes with the keyboard, and groups selected nodes with G', asyn
 it('uses Ctrl+Z to undo a table cell edit stored in the shared history', async () => {
   const history = new EditHistory()
   const board: CanvasDocument = {
-    version: 2, revision: 1, nextId: 2, edges: [],
+    version: 3, revision: 1, nextId: 2, edges: [],
     nodes: [{
       id: 'b1' as never, type: 'storyboard', title: 'Board', x: 0, y: 0, width: 320, height: 200,
       activeVersion: 'v1' as never,
@@ -180,7 +210,7 @@ it('passes host segments into a storyboard node', async () => {
     id: 'b' as never, type: 'storyboard' as const, title: 'b', x: 0, y: 0, width: 1, height: 1,
     versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user' as const, shots: [] }], activeVersion: 'v1' as never,
   }
-  const nodes = flowNodes({ version: 2, revision: 1, nextId: 2, edges: [], nodes: [board] },
+  const nodes = flowNodes({ version: 3, revision: 1, nextId: 2, edges: [], nodes: [board] },
     { readFile: async () => ({ ok: false, message: 'no' }), t, edit: async () => {} }, { b: [{ shots: [] } as never] })
   expect(nodes[0]?.data.segments).toHaveLength(1)
 })
@@ -188,7 +218,7 @@ it('passes host segments into a storyboard node', async () => {
 it('derives the segment badge of a video from its storyboard and scene group', async () => {
   const { flowNodes } = await import('../src/client/flow.ts')
   const doc2: CanvasDocument = {
-    version: 2, revision: 1, nextId: 5, edges: [],
+    version: 3, revision: 1, nextId: 5, edges: [],
     nodes: [
       { id: 'g' as never, type: 'group', title: '场1', x: 0, y: 0, width: 1, height: 1, sceneOrigin: { script: 's' as never, scene: 1 } },
       { id: 'b' as never, type: 'storyboard', title: 'b', x: 0, y: 0, width: 1, height: 1, activeVersion: 'v1' as never,
@@ -207,7 +237,7 @@ it('derives the segment badge of a video from its storyboard and scene group', a
 it('leaves the badge empty when the storyboard or its segments are missing', async () => {
   const { flowNodes } = await import('../src/client/flow.ts')
   const doc3: CanvasDocument = {
-    version: 2, revision: 1, nextId: 4, edges: [],
+    version: 3, revision: 1, nextId: 4, edges: [],
     nodes: [
       { id: 'b' as never, type: 'storyboard', title: 'b', x: 0, y: 0, width: 1, height: 1, activeVersion: 'v1' as never,
         versions: [{ id: 'v1' as never, createdAt: 'now', origin: 'user', shots: [] }] },

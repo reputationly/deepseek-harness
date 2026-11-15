@@ -3,16 +3,16 @@ import { useEffect, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { Handle, Position } from '@xyflow/react'
 import { Button, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { CanvasNode, NodeStatus } from '@deepseek-ai/dsh-canvas/client'
+import type { CanvasNode, NodeStatus, NodeVersion } from '@deepseek-ai/dsh-canvas/client'
+import { previewVersionOf } from '../model/versions.ts'
 import type { CanvasFlowNode } from '../flow.ts'
 import { cardState, versionChoices } from '../model/cards.ts'
 import type { ReadCanvasFile } from '../face.ts'
 import css from '../CanvasFlow.module.css'
 
-/** Content of the version a node currently shows. */
-export function shownVersion(node: CanvasNode): { path?: string; text?: string; durationMs?: number; shots?: unknown } {
-  const versions = node.versions ?? []
-  return versions.find(version => version.id === node.activeVersion) ?? versions.at(-1) ?? {}
+/** Read-only card preview; showing a candidate does not adopt it. */
+export function shownVersion(node: CanvasNode): Partial<NodeVersion> {
+  return previewVersionOf(node) ?? {}
 }
 
 const MEDIA_TYPES: Readonly<Record<string, string>> = {
@@ -34,29 +34,34 @@ export function mediaType(path: string): string {
 export type Media =
   | { readonly status: 'idle' }
   | { readonly status: 'loading' }
-  | { readonly status: 'failed' }
+  | { readonly status: 'failed'; readonly message?: string }
   | { readonly status: 'ready'; readonly url: string; readonly bytes: Uint8Array<ArrayBuffer> }
 
 /** Object URL of one media file, read while `wanted`. */
-export function useMedia(path: string | undefined, wanted: boolean, readFile: ReadCanvasFile): Media {
-  const [media, setMedia] = useState<Media>({ status: 'idle' })
+export function useMedia(path: string | undefined, wanted: boolean, readFile: ReadCanvasFile, refresh = 0): Media {
+  const [loaded, setLoaded] = useState({ path, wanted, readFile, refresh, media: { status: 'idle' } as Media })
   useEffect(() => {
     if (path === undefined || !wanted) return
     const lifetime = new AbortController()
     let url: string | undefined
-    setMedia({ status: 'loading' })
+    const publish = (media: Media): void => { setLoaded({ path, wanted, readFile, refresh, media }) }
+    publish({ status: 'loading' })
     void readFile(path, lifetime.signal).then((file) => {
       if (lifetime.signal.aborted) return
-      if (!file.ok) { setMedia({ status: 'failed' }); return }
+      if (!file.ok) { publish({ status: 'failed', message: file.message }); return }
       url = URL.createObjectURL(new Blob([file.data], { type: mediaType(path) }))
-      setMedia({ status: 'ready', url, bytes: file.data })
+      publish({ status: 'ready', url, bytes: file.data })
+    }).catch((error: unknown) => {
+      if (!lifetime.signal.aborted) publish({ status: 'failed', ...error instanceof Error ? { message: error.message } : {} })
     })
     return () => {
       lifetime.abort()
       if (url !== undefined) URL.revokeObjectURL(url)
     }
-  }, [path, wanted, readFile])
-  return media
+  }, [path, wanted, readFile, refresh])
+  if (path === undefined || !wanted) return { status: 'idle' }
+  return loaded.path === path && loaded.wanted === wanted && loaded.readFile === readFile && loaded.refresh === refresh
+    ? loaded.media : { status: 'loading' }
 }
 
 /** Loading and failure feedback inside a media area. */
@@ -89,13 +94,13 @@ function VersionBar({ data }: { data: CanvasFlowNode['data'] }): ReactNode {
       type="button"
       className={clsx(css.versionChip, choice.active && css.versionChipActive, 'nodrag')}
       aria-pressed={choice.active}
-      title={t('version.switch', { label: choice.label })}
+      title={t('media.adoptVersion', { label: choice.label })}
       onClick={(event) => {
         event.stopPropagation()
         if (choice.active) return
         void edit([{ op: 'set_version', node: node.id, version: choice.id }])
       }}
-    >{choice.label}</button>)}
+    >{t('media.adoptVersion', { label: choice.label })}</button>)}
   </div>
 }
 
@@ -118,7 +123,7 @@ function StatusLayer({ data }: { data: CanvasFlowNode['data'] }): ReactNode {
       size="sm" variant="outline" className="nodrag"
       onClick={(event) => {
         event.stopPropagation()
-        generate?.(node.id)
+        generate(node.id)
       }}
     >{t('status.retry')}</Button>}
   </div>
@@ -136,6 +141,7 @@ export function NodeCard(props: {
   return <div className={clsx(css.card, selected && css.selected, props.className)} data-canvas-node>
     <Handle type="target" position={Position.Left} className={css.handle} />
     {props.children}
+    {node.activeVersion === undefined && (node.versions?.length ?? 0) > 0 && <div className={css.caption}>{data.t('media.candidate')}</div>}
     <VersionBar data={data} />
     <div className={css.caption} title={node.title}>{node.title}</div>
     <StatusLayer data={data} />

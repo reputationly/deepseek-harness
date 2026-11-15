@@ -1,6 +1,7 @@
 /** The small menu that asks which role a connection carries when more than one fits. */
 import { useEffect, type ReactNode } from 'react'
 import type { CanvasEdgeRole } from '@deepseek-ai/dsh-canvas/client'
+import { MenuSurface } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { roleMenu, type RoleChoice } from './model/edges.ts'
 import type { NS } from './locales.ts'
@@ -29,7 +30,7 @@ export function RoleMenu({ x, y, choices, onPick, onClose, t }: RoleMenuProps): 
   }, [onClose])
   return <>
     <div className={css.backdrop} onClick={onClose} role="presentation" />
-    <div className={css.menu} style={{ left: x, top: y }} role="menu">
+    <MenuSurface className={css.menu} style={{ left: x, top: y }} role="menu">
       {choices.map(choice => <button
         key={choice.role}
         type="button"
@@ -38,7 +39,7 @@ export function RoleMenu({ x, y, choices, onPick, onClose, t }: RoleMenuProps): 
         disabled={choice.taken}
         onClick={() => { onPick(choice.role) }}
       >{t(choice.labelKey, { n: 1 })}{choice.taken ? ` · ${t('edge.taken')}` : ''}</button>)}
-    </div>
+    </MenuSurface>
   </>
 }
 
