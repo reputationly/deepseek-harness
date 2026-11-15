@@ -51,7 +51,7 @@ describe('parseCanvas', () => {
     const document = parseCanvas(JSON.stringify(v1))
     expect(document.version).toBe(3)
     expect(document.revision).toBe(0)
-    expect(document.nextId).toBe(3)
+    expect(document.nextId).toBe(5)
     const [image, , , group] = document.nodes
     expect(image?.versions).toEqual([{
       id: 'v1', path: '/a.png', prompt: 'a cat', model: 'm1', createdAt: '1970-01-01T00:00:00.000Z', origin: 'import',
@@ -65,6 +65,15 @@ describe('parseCanvas', () => {
       // video to image has no input meaning, so the edge keeps its id and carries no role.
       ['n2->n1', 'reference', undefined],
     ])
+  })
+
+  it('repairs a nextId that predates the node ids already in use', () => {
+    const document = parseCanvas(JSON.stringify({
+      version: 3, revision: 0, nextId: 2,
+      nodes: ['n1', 'n7', 'g3', 'brief'].map(id => ({ id, type: 'text', title: id, x: 0, y: 0, width: 1, height: 1 })),
+      edges: [],
+    }))
+    expect(document.nextId).toBe(8)
   })
 
   it('round-trips a migrated document through format-3 serialization', () => {

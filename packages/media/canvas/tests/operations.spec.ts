@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveConfig } from '../src/config.ts'
-import { EMPTY_CANVAS } from '../src/document.ts'
+import { EMPTY_CANVAS, parseCanvas } from '../src/document.ts'
 import { applyOperations, CanvasConflictError, checkRevision } from '../src/operations.ts'
 import type { CanvasDocument, CanvasOperation, Shot } from '../src/types.ts'
 
@@ -32,6 +32,23 @@ const shot = (id: string, overrides: Partial<Shot> = {}): Shot => ({
 })
 
 describe('applyOperations', () => {
+  it('allocates ids above the repaired nextId instead of colliding with migrated nodes', () => {
+    const from = parseCanvas(JSON.stringify({
+      version: 1, nextId: 3,
+      nodes: [
+        { id: 'n1', type: 'image', title: 'a', x: 0, y: 0, width: 1, height: 1, path: '/a.png' },
+        { id: 'n2', type: 'video', title: 'b', x: 0, y: 1, width: 1, height: 1, path: '/v.mp4' },
+        { id: 'n3', type: 'text', title: 'keep', x: 0, y: 2, width: 1, height: 1, text: 'stay' },
+        { id: 'n4', type: 'group', title: 'g', x: 0, y: 0, width: 3, height: 3 },
+      ],
+      edges: [],
+    }))
+    expect(from.nextId).toBe(5)
+    const { document, result } = build([{ op: 'add', type: 'text', title: 'New', text: 'fresh' }], from)
+    expect(result.created).toEqual(['n5'])
+    expect(document.nodes.find(node => node.id === 'n3')?.title).toBe('keep')
+  })
+
   it('creates, connects, and groups nodes of one call through refs', () => {
     const { document, result, changed } = build([
       { op: 'add', ref: 'brief', type: 'text', title: 'Brief', text: 'A cat brand' },

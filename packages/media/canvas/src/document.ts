@@ -405,7 +405,7 @@ export function migrateCanvas(value: unknown): CanvasDocument {
   const document: CanvasDocument = {
     version: 3,
     revision: 0,
-    nextId: positive(raw.nextId, 'nextId'),
+    nextId: repairedNextId(positive(raw.nextId, 'nextId'), nodes),
     nodes,
     edges,
   }
@@ -466,19 +466,30 @@ export function parseCanvas(source: string, limits?: ResolvedConfig): CanvasDocu
   return document
 }
 
+/** Repair a persisted nextId that predates node ids already occupying the same counter. */
+function repairedNextId(declared: number, nodes: readonly CanvasNode[]): number {
+  let next = declared
+  for (const node of nodes) {
+    const suffix = /^[a-z]+(\d+)$/u.exec(node.id)?.[1]
+    if (suffix !== undefined) next = Math.max(next, Number(suffix) + 1)
+  }
+  return next
+}
+
 /** Preserve legacy implicit selection when reading format 2; format 3 requires explicit adoption. */
 function parseCurrentDocument(value: unknown): CanvasDocument {
   const raw = record(value, 'document')
+  const nodes = array(raw.nodes, 'nodes').map((value, index) => {
+    const node = parseNode(value, index)
+    const legacy = raw.version === 2 && node.activeVersion === undefined ? node.versions?.at(-1) : undefined
+    const activeVersion = legacy?.id ?? node.activeVersion
+    return { ...node, ...activeVersion === undefined ? {} : { activeVersion } }
+  })
   const document: CanvasDocument = {
     version: 3,
     revision: count(raw.revision, 'revision'),
-    nextId: positive(raw.nextId, 'nextId'),
-    nodes: array(raw.nodes, 'nodes').map((value, index) => {
-      const node = parseNode(value, index)
-      const legacy = raw.version === 2 && node.activeVersion === undefined ? node.versions?.at(-1) : undefined
-      const activeVersion = legacy?.id ?? node.activeVersion
-      return { ...node, ...activeVersion === undefined ? {} : { activeVersion } }
-    }),
+    nextId: repairedNextId(positive(raw.nextId, 'nextId'), nodes),
+    nodes,
     edges: array(raw.edges, 'edges').map(parseEdge),
   }
   assertCanvas(document)
