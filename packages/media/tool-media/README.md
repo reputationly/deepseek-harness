@@ -91,7 +91,7 @@ Media generation and local editing use separate execution paths and share media 
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-Music and video use asynchronous tasks. Speech follows the catalog's transport: `videos_task` preserves a remote task id for recovery, while `audio_speech` retains the legacy `/audio/speech` request. Music3 sends lyrics as the prompt and style as instructions. YuE2 records planning settings and returned ABC for subsequent composition; ACE-Step supports creation, reference cover, and range repaint. Breeze TTS 2 uses voice-design instructions and vocal events; reference cloning is refused because this transport does not expose it. Resolved audio inputs record their source node, version, role, and path.
+Music and video use asynchronous tasks. Speech follows the catalog's transport: `videos_task` preserves a remote task id for recovery, while `audio_speech` retains the legacy `/audio/speech` request. Music3 sends lyrics as the prompt and style as instructions. YuE2 records planning settings and returned ABC for subsequent composition; ACE-Step supports creation, reference cover, and range repaint. Breeze TTS 2 uses voice-design instructions and vocal events; reference cloning is refused because this transport does not expose it. TTS2 supports three modes: neither voice nor instructions selects the gateway default voice, instructions alone design a voice, and a voice reference is accepted only together with `ref_text`, the exact transcript of the reference audio; its language is detected from the text and must not be set. Resolved audio inputs record their source node, version, role, and path.
 
 Speech and music return `{ path, model }` and add the file as an audio canvas node when possible; the gateway's media URLs expire, so the file is written before the tool returns.
 
@@ -163,7 +163,7 @@ Append-only; calls and results follow the reusable request prefix and do not inv
 
 Media generation and local editing require separate gateway and executable dependencies.
 
-- IndexTTS requires a reference audio source; Breeze uses voice-design instructions instead of preset voice names or reference cloning.
+- IndexTTS requires a reference audio source; Breeze uses voice-design instructions instead of preset voice names or reference cloning; TTS2 takes a bare request for the default voice, instructions for a designed voice, or a reference plus `ref_text` for cloning.
 - Audio models must be offered by the key's catalog when discovery is enabled. Standalone tool defaults still come from deployment configuration; canvas nodes can select an offered model explicitly.
 - Video and music run inside the tool budget, so very long renders need a larger `taskTimeoutMs` rather than a background job.
 - Local editing requires usable FFmpeg and FFprobe executables. Non-ASCII `drawtext` requires a configured font file.

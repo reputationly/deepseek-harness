@@ -91,7 +91,7 @@ FFmpeg 和 FFprobe 默认从 `PATH` 查找。macOS arm64 和 Windows x64 的 Des
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-音乐和视频使用异步任务。语音遵循目录声明的传输方式：`videos_task` 保存远端任务 id 以便恢复，`audio_speech` 保留旧的 `/audio/speech` 请求。Music3 将歌词作为提示词，风格作为 instructions。YuE2 保存规划参数和返回的 ABC 乐谱以便继续创作；ACE-Step 支持新建、参考改编和区间重绘。Breeze TTS 2 使用音色设计指令和表达事件；当前传输未开放参考克隆，因此会明确拒绝。解析后的音频输入保存来源节点、版本、角色和路径。
+音乐和视频使用异步任务。语音遵循目录声明的传输方式：`videos_task` 保存远端任务 id 以便恢复，`audio_speech` 保留旧的 `/audio/speech` 请求。Music3 将歌词作为提示词，风格作为 instructions。YuE2 保存规划参数和返回的 ABC 乐谱以便继续创作；ACE-Step 支持新建、参考改编和区间重绘。Breeze TTS 2 使用音色设计指令和表达事件；当前传输未开放参考克隆，因此会明确拒绝。TTS2 支持三种方式：不提供音色和指令时使用网关默认音色；仅用 instructions 设计音色；参考音色克隆必须同时提供 ref_text，即参考音频的逐字稿；语言由文本自动判定，不要设置 language。解析后的音频输入保存来源节点、版本、角色和路径。
 
 语音和音乐返回 `{ path, model }`，并在可用时把文件添加为画布音频节点；网关的媒体 URL 会过期，因此工具在返回前写入文件。
 
@@ -163,7 +163,7 @@ FFmpeg 和 FFprobe 默认从 `PATH` 查找。macOS arm64 和 Windows x64 的 Des
 
 媒体生成和本地剪辑依赖不同的网关与本地程序。
 
-- IndexTTS 需要参考音频；Breeze 使用音色设计指令，不使用预设音色名或参考克隆。
+- IndexTTS 需要参考音频；Breeze 使用音色设计指令，不使用预设音色名或参考克隆；TTS2 可以不带音色使用默认音色、用 instructions 设计音色，或提供参考音频加 ref_text 逐字稿进行克隆。
 - 开启目录发现时，音频模型必须由该 key 的目录提供。独立工具的默认模型仍来自部署配置；画布节点可以明确选择目录中的模型。
 - 视频和音乐在工具预算内运行，因此很长的渲染需要更大的 `taskTimeoutMs`，而不是后台任务。
 - 本地剪辑需要可用的 FFmpeg 和 FFprobe 程序。非 ASCII 的 `drawtext` 需要配置字体文件。

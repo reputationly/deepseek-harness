@@ -77,13 +77,20 @@ export function resolveAudioPlan(input: AudioPlanInput): AudioPlan {
   if (kind === 'speech') {
     if (text(params, 'task_type') !== '' && params.task_type !== 'tts') throw new AudioPlanError('unsupported_mode', 'Speech generation requires the tts task type')
     const design = /breeze-tts-2/iu.test(model)
+    const tts2 = /^tts2$/iu.test(model)
     const voice = reference ?? text(params, 'voice')
     const instructions = text(params, 'instructions')
     if (input.prompt.trim() === '') throw new AudioPlanError('missing_input', 'Enter the text to speak')
     if (design && voice !== '') throw new AudioPlanError('unsupported_reference', 'Breeze voice cloning is not enabled by this gateway; remove the reference to design a voice')
     if (design && instructions === '') throw new AudioPlanError('missing_input', 'Describe the Breeze voice and delivery in instructions')
-    if (!design && voice === '') throw new AudioPlanError('missing_input', 'Speech needs a voice before it can speak')
-    const effective = selected(params, ['instructions', 'seed', 'language', 'speed', 'max_new_tokens', 'format'])
+    if (!design && !tts2 && voice === '') throw new AudioPlanError('missing_input', 'Speech needs a voice before it can speak')
+    if (tts2 && voice !== '' && text(params, 'ref_text') === '') {
+      throw new AudioPlanError('missing_input', 'tts2 voice cloning needs ref_text: the exact transcript of the reference audio')
+    }
+    if (tts2 && text(params, 'language') !== '') {
+      throw new AudioPlanError('unsupported_mode', 'tts2 detects the language from the text; remove language')
+    }
+    const effective = selected(params, ['instructions', 'seed', 'language', 'speed', 'max_new_tokens', 'format', ...(tts2 ? ['ref_text'] : [])])
     const base = { model, prompt: input.prompt, params: { ...effective, ...reference !== undefined || voice === '' ? {} : { voice } }, ...voice === '' ? {} : { reference: { field: 'voice' as const, value: voice } } }
     return transport === 'videos_task'
       ? { ...base, transport, metadata: { ...effective, task_type: 'tts' } }

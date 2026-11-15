@@ -22,6 +22,7 @@ const catalog: MediaCatalog = { version: 'audio', source: 'live', capabilities: 
     taskTypes: model === 'ace-step' ? ['t2m', 'cover', 'repaint'] : ['t2m'], transport: { kind: 'videos_task' } })),
   { id: 'breeze', operation: 'generate_speech', model: 'breeze-tts-2', transport: { kind: 'videos_task' } },
   { id: 'index', operation: 'generate_speech', model: 'indextts-2.5', transport: { kind: 'videos_task' } },
+  { id: 'tts2', operation: 'generate_speech', model: 'tts2', transport: { kind: 'audio_speech' } },
 ] }
 
 beforeEach(async () => {
@@ -140,6 +141,57 @@ it('preserves the requested speech format through native transport and the saved
   expect(request).toMatchObject({ response_format: 'wav', voice: 'data:audio/wav;base64,dm9pY2U=' })
   expect(request).not.toHaveProperty('format')
   expect(result.params?.format).toBe('wav')
+})
+
+it('sends tts2 speech without a voice or instructions and lets the gateway pick the default voice', async () => {
+  fetchMock.mockResolvedValueOnce(new Response('audio', { headers: { 'content-type': 'audio/wav' } }))
+  const result = await generator().speech(call('tts2', {}, 'speech'))
+  expect(fetchMock.mock.calls[0]?.[0]).toBe('https://gateway.example/v1/audio/speech')
+  const request = JSON.parse(requestText()) as Record<string, unknown>
+  expect(request).toMatchObject({ model: 'tts2', input: '温暖的民谣' })
+  expect(request).not.toHaveProperty('voice')
+  expect(request).not.toHaveProperty('instructions')
+  expect(result.params).toEqual({})
+})
+
+it('forwards tts2 voice-design instructions while keeping the reference optional', async () => {
+  fetchMock.mockResolvedValueOnce(new Response('audio', { headers: { 'content-type': 'audio/wav' } }))
+  await generator().speech(call('tts2', { instructions: '年轻女性，语速稍慢' }, 'speech'))
+  const request = JSON.parse(requestText()) as Record<string, unknown>
+  expect(request).toMatchObject({ model: 'tts2', instructions: '年轻女性，语速稍慢' })
+  expect(request).not.toHaveProperty('voice')
+})
+
+it('clones a tts2 reference voice only with its transcript and records ref_text in the version params', async () => {
+  fetchMock.mockResolvedValueOnce(new Response('audio', { headers: { 'content-type': 'audio/wav' } }))
+  const source = join(directory, '参考音.wav')
+  await writeFile(source, 'voice')
+  const result = await generator().speech({ ...call('tts2', { ref_text: '你好，这里是参考音频的逐字稿。' }, 'speech'), audioReferences: [source] })
+  const request = JSON.parse(requestText()) as Record<string, unknown>
+  expect(request).toMatchObject({ model: 'tts2', ref_text: '你好，这里是参考音频的逐字稿。', voice: 'data:audio/wav;base64,dm9pY2U=' })
+  expect(result.params?.ref_text).toBe('你好，这里是参考音频的逐字稿。')
+})
+
+it.each([{}, { ref_text: '' }, { ref_text: '   ' }])('rejects a tts2 reference voice without its transcript before any request', async (params) => {
+  const source = join(directory, '参考音.wav')
+  await writeFile(source, 'voice')
+  await expect(generator().speech({ ...call('tts2', params, 'speech'), audioReferences: [source] }))
+    .rejects.toMatchObject({ code: 'missing_input', status: 400 })
+  expect(fetchMock).not.toHaveBeenCalled()
+})
+
+it('rejects a tts2 voice path in params without ref_text before any request', async () => {
+  const source = join(directory, '参考音.wav')
+  await writeFile(source, 'voice')
+  await expect(generator().speech(call('tts2', { voice: source }, 'speech')))
+    .rejects.toMatchObject({ code: 'missing_input', status: 400 })
+  expect(fetchMock).not.toHaveBeenCalled()
+})
+
+it('rejects tts2 language because the gateway detects it from the text', async () => {
+  await expect(generator().speech(call('tts2', { language: 'zh' }, 'speech')))
+    .rejects.toMatchObject({ code: 'unsupported_mode', status: 400 })
+  expect(fetchMock).not.toHaveBeenCalled()
 })
 
 it('does not infer paid audio editing modes from a model name when the catalog omits task modes', async () => {

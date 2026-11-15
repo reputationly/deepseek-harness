@@ -470,8 +470,27 @@ it.each([false, true])('distinguishes preparation failures from uncertain paid s
   const status = (await store.readCanvas(directory)).nodes[0]?.status
   expect(status).toMatchObject({ state: 'failed', retryable: !submitted })
   expect(status?.state === 'failed' ? status.recoveryRequired : undefined).toBe(submitted ? true : undefined)
+  if (submitted) {
+    expect(status?.state === 'failed' ? status.error : undefined)
+      .toBe('Remote submission outcome is unknown (connection interrupted); verify provider history before starting another generation')
+  }
   expect((await journal.read())[0]?.submissionStarted).toBe(submitted)
   if (submitted) expect((await startPlan(h.services, ['n1'], undefined)).status).toBe('blocked')
+})
+
+it('keeps a non-Error submission reason in the unknown-outcome message', async () => {
+  await seed('video')
+  const h = fixture()
+  h.generator.video = async (call) => {
+    await call.onSubmitting?.()
+    throw 'connection reset'
+  }
+  const outcome = await startPlan(h.services, ['n1'], undefined)
+  if (outcome.status !== 'started') throw new Error('expected started job')
+  await outcome.settle
+  const status = (await store.readCanvas(directory)).nodes[0]?.status
+  expect(status?.state === 'failed' ? status.error : undefined)
+    .toBe('Remote submission outcome is unknown (connection reset); verify provider history before starting another generation')
 })
 
 it('reports a remote cancellation as local and prevents an accidental second paid request', async () => {

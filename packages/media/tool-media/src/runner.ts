@@ -542,7 +542,7 @@ function attemptFailure(
       ? new SubmissionUnknownError(
         signal.aborted
           ? 'Cancelled locally; the remote generation may still be running. Verify provider history before retrying'
-          : 'Remote submission outcome is unknown; verify provider history before starting another generation',
+          : `Remote submission outcome is unknown (${error instanceof Error ? error.message : String(error)}); verify provider history before starting another generation`,
       )
       : error,
     signal,
