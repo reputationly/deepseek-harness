@@ -1,12 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  MediaGatewayError, awaitTask, downloadMedia, editImage, generateImage, generateSpeech, readTask, submitTask,
+  MediaGatewayError, MediaSubmissionRejectedError, awaitTask, downloadMedia, editImage, editImages, generateImage,
+  generateSpeech, readTask, submitTask,
 } from '../src/gateway.ts'
 
 const credential = { baseURL: 'https://gateway.example/v1/', apiKey: 'sk-test', signal: AbortSignal.timeout(5_000) }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'content-type': 'application/json' },
 })
+
+/** Await a rejection as a typed gateway error. */
+async function rejection(promise: Promise<unknown>): Promise<MediaGatewayError> {
+  try {
+    await promise
+  } catch (error) {
+    if (error instanceof MediaGatewayError) return error
+    throw error
+  }
+  throw new Error('expected the request to fail')
+}
 
 describe('image requests', () => {
   it('posts a generation request to the joined endpoint and returns the first URL', async () => {
@@ -27,6 +39,33 @@ describe('image requests', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ error: { message: 'bad model' } }, 400))
     try {
       await expect(generateImage(credential, { model: 'm', prompt: 'p' })).rejects.toThrow('bad model')
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('marks a refused generation submission as rejected, not uncertain', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ error: { message: 'upstream exploded' } }, 500))
+    try {
+      const error = await rejection(generateImage(credential, { model: 'm', prompt: 'p' }))
+      expect(error).toBeInstanceOf(MediaSubmissionRejectedError)
+      expect(error.status).toBe(500)
+      expect(error.message).toBe('upstream exploded')
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('marks a refused multi-image edit submission as rejected', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ error: { message: 'upstream exploded' } }, 500))
+    try {
+      const error = await rejection(editImages(credential, {
+        model: 'm', prompt: 'p', images: ['https://cdn.example/a.png'],
+      }))
+      expect(fetchSpy.mock.calls[0]![0]).toBe('https://gateway.example/v1/images/edits')
+      expect(error).toBeInstanceOf(MediaSubmissionRejectedError)
+      expect(error.status).toBe(500)
+      expect(error.message).toBe('upstream exploded')
     } finally {
       fetchSpy.mockRestore()
     }
@@ -92,6 +131,33 @@ describe('speech requests', () => {
       fetchSpy.mockRestore()
     }
   })
+
+  it('marks a refused speech submission as rejected', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ error: { message: 'upstream exploded' } }, 500))
+    try {
+      const error = await rejection(generateSpeech(credential, { model: 'm', text: 'hi' }))
+      expect(error).toBeInstanceOf(MediaSubmissionRejectedError)
+      expect(error.status).toBe(500)
+      expect(error.message).toBe('upstream exploded')
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('keeps a failed audio download as a plain gateway error', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(json({ data: [{ url: 'https://cdn.example/a.wav' }] }))
+      .mockResolvedValueOnce(json({ error: { message: 'cdn exploded' } }, 500))
+    try {
+      const error = await rejection(generateSpeech(credential, { model: 'm', text: 'hi' }))
+      expect(error).toBeInstanceOf(MediaGatewayError)
+      expect(error).not.toBeInstanceOf(MediaSubmissionRejectedError)
+      expect(error.status).toBe(500)
+      expect(error.message).toBe('cdn exploded')
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
 })
 
 describe('asynchronous tasks', () => {
@@ -100,6 +166,18 @@ describe('asynchronous tasks', () => {
     try {
       await expect(submitTask(credential, 'minimax-music3', { instructions: 'calm piano' })).resolves.toBe('task_1')
       expect(JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string)).toEqual({ model: 'minimax-music3', instructions: 'calm piano' })
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('marks a refused task submission as rejected', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ error: { message: 'upstream exploded' } }, 500))
+    try {
+      const error = await rejection(submitTask(credential, 'minimax-music3', { instructions: 'calm piano' }))
+      expect(error).toBeInstanceOf(MediaSubmissionRejectedError)
+      expect(error.status).toBe(500)
+      expect(error.message).toBe('upstream exploded')
     } finally {
       fetchSpy.mockRestore()
     }
@@ -188,6 +266,19 @@ describe('media download', () => {
       const media = await downloadMedia(credential, 'https://cdn.example/a.png')
       expect(media.contentType).toBe('image/png')
       expect([...media.bytes]).toEqual([7])
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('keeps a failed media download as a plain gateway error', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ error: { message: 'cdn exploded' } }, 500))
+    try {
+      const error = await rejection(downloadMedia(credential, 'https://cdn.example/a.png'))
+      expect(error).toBeInstanceOf(MediaGatewayError)
+      expect(error).not.toBeInstanceOf(MediaSubmissionRejectedError)
+      expect(error.status).toBe(500)
+      expect(error.message).toBe('cdn exploded')
     } finally {
       fetchSpy.mockRestore()
     }

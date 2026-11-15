@@ -29,6 +29,9 @@ export class MediaGatewayError extends Error {
 /** A provider confirmed its asynchronous task ended in failure or cancellation. */
 export class MediaTaskFailedError extends MediaGatewayError {}
 
+/** The gateway answered a submission request itself with an HTTP error status, so it did not accept the request. */
+export class MediaSubmissionRejectedError extends MediaGatewayError {}
+
 /** Request headers accepted by both bearer and API-key relays. */
 function headers(request: GatewayRequest, contentType = 'application/json'): Record<string, string> {
   return {
@@ -73,9 +76,19 @@ async function ensureOk(response: Response): Promise<Response> {
   return response
 }
 
+/**
+ * Throw the gateway's message for a failed submission response.
+ * @param response - response to a request that submits paid work; an HTTP error means the gateway did not accept it.
+ * @returns the response when the gateway accepted the submission.
+ */
+async function ensureAccepted(response: Response): Promise<Response> {
+  if (!response.ok) throw new MediaSubmissionRejectedError(await failure(response), response.status)
+  return response
+}
+
 /** One `{url}` image entry from an image response. */
 async function imageURL(response: Response): Promise<string> {
-  const body = (await (await ensureOk(response)).json()) as { data?: Array<{ url?: string; b64_json?: string }> }
+  const body = (await (await ensureAccepted(response)).json()) as { data?: Array<{ url?: string; b64_json?: string }> }
   const first = body.data?.[0]
   if (first?.url !== undefined && first.url !== '') return first.url
   if (first?.b64_json !== undefined && first.b64_json !== '') return `data:image/png;base64,${first.b64_json}`
@@ -167,7 +180,7 @@ export async function generateSpeech(
     params?: Readonly<Record<string, string | number | boolean>>
   },
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
-  const response = await ensureOk(
+  const response = await ensureAccepted(
     await fetch(`${root(request.baseURL)}/audio/speech`, {
       method: 'POST',
       headers: headers(request),
@@ -211,7 +224,7 @@ export async function submitTask(
   model: string,
   body: Record<string, unknown>,
 ): Promise<string> {
-  const response = await ensureOk(
+  const response = await ensureAccepted(
     await fetch(`${root(request.baseURL)}/videos`, {
       method: 'POST',
       headers: headers(request),

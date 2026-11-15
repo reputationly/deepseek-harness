@@ -24,7 +24,7 @@ import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import { budgetOf, type Budget, type ConfirmLimits } from './budget.ts'
 import { collectInputs, planNodes, type NodePlan, type PlanLimits, type PlannedGeneration } from './node-runner.ts'
 import type { MediaAttemptId, MediaCheckpoint, MediaJournal, RemoteMediaTask } from './journal.ts'
-import { MediaGatewayError, MediaTaskFailedError } from './gateway.ts'
+import { MediaGatewayError, MediaSubmissionRejectedError, MediaTaskFailedError } from './gateway.ts'
 
 /** Admission and recovery coordination owned by one tool-media plugin instance. */
 export interface MediaRunnerState {
@@ -529,7 +529,8 @@ function attemptFailure(
     }
   }
   const rejected =
-    error instanceof MediaGatewayError && error.status !== undefined && error.status >= 400 && error.status < 500
+    error instanceof MediaSubmissionRejectedError ||
+    (error instanceof MediaGatewayError && error.status !== undefined && error.status >= 400 && error.status < 500)
   const uncertain =
     checkpoint.submissionStarted !== false &&
     checkpoint.state === 'running' &&

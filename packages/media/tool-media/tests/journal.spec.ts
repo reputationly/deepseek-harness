@@ -12,6 +12,7 @@ import { applyOperations } from '@deepseek-ai/dsh-canvas/src/operations.ts'
 import { CanvasStore, canvasFile } from '@deepseek-ai/dsh-canvas/src/store.ts'
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import { FileMediaJournal, type MediaAttemptId, type MediaCheckpoint, type MediaJournal } from '../src/journal.ts'
+import { MediaGatewayError, MediaSubmissionRejectedError } from '../src/gateway.ts'
 import { createRunnerState, MediaInterruptedError, recoverInterrupted, runPlan, startPlan, type GeneratedMedia, type MediaCall, type MediaGenerator, type MediaJob, type RunnerServices } from '../src/runner.ts'
 import { bibleFixture } from './bible-fixture.ts'
 
@@ -476,6 +477,59 @@ it.each([false, true])('distinguishes preparation failures from uncertain paid s
   }
   expect((await journal.read())[0]?.submissionStarted).toBe(submitted)
   if (submitted) expect((await startPlan(h.services, ['n1'], undefined)).status).toBe('blocked')
+})
+
+it.each([500, 503])('retries a submission the gateway answered with HTTP %s', async (status) => {
+  await seed('video')
+  const h = fixture()
+  h.generator.video = async (call) => {
+    await call.onSubmitting?.()
+    throw new MediaSubmissionRejectedError('upstream failed', status)
+  }
+  const outcome = await startPlan(h.services, ['n1'], undefined)
+  if (outcome.status !== 'started') throw new Error('expected started job')
+  await outcome.settle
+  const nodeStatus = (await store.readCanvas(directory)).nodes[0]?.status
+  expect(nodeStatus).toMatchObject({ state: 'failed', error: 'upstream failed', retryable: true })
+  expect(nodeStatus?.state === 'failed' ? nodeStatus.recoveryRequired : undefined).toBeUndefined()
+  const retry = await startPlan(h.services, ['n1'], undefined)
+  expect(retry.status).toBe('started')
+  if (retry.status === 'started') await retry.settle
+})
+
+it('does not mark a 4xx submission refusal as recoverable or retryable', async () => {
+  await seed('video')
+  const h = fixture()
+  h.generator.video = async (call) => {
+    await call.onSubmitting?.()
+    throw new MediaSubmissionRejectedError('bad request', 400)
+  }
+  const outcome = await startPlan(h.services, ['n1'], undefined)
+  if (outcome.status !== 'started') throw new Error('expected started job')
+  await outcome.settle
+  const nodeStatus = (await store.readCanvas(directory)).nodes[0]?.status
+  expect(nodeStatus).toMatchObject({ state: 'failed', error: 'bad request', retryable: false })
+  expect(nodeStatus?.state === 'failed' ? nodeStatus.recoveryRequired : undefined).toBeUndefined()
+  const retry = await startPlan(h.services, ['n1'], undefined)
+  expect(retry.status).toBe('started')
+  if (retry.status === 'started') await retry.settle
+})
+
+it('keeps a post-acceptance gateway failure uncertain and blocked', async () => {
+  await seed('video')
+  const h = fixture()
+  h.generator.video = async (call) => {
+    await call.onSubmitting?.()
+    throw new MediaGatewayError('download failed', 500)
+  }
+  const outcome = await startPlan(h.services, ['n1'], undefined)
+  if (outcome.status !== 'started') throw new Error('expected started job')
+  await outcome.settle
+  const nodeStatus = (await store.readCanvas(directory)).nodes[0]?.status
+  expect(nodeStatus).toMatchObject({ state: 'failed', retryable: false, recoveryRequired: true })
+  expect(nodeStatus?.state === 'failed' ? nodeStatus.error : undefined)
+    .toBe('Remote submission outcome is unknown (download failed); verify provider history before starting another generation')
+  expect((await startPlan(h.services, ['n1'], undefined)).status).toBe('blocked')
 })
 
 it('keeps a non-Error submission reason in the unknown-outcome message', async () => {
