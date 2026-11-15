@@ -703,7 +703,7 @@ export class TimelineRenderer {
         const video = probe.streams?.find(stream => stream.codec_type === 'video')
         const expectedDuration =
           ((segment?.toFrame ?? entry.plan.frames) - (segment?.fromFrame ?? 0)) / entry.plan.document.spec.fps
-        const duration = Number(probe.format?.duration ?? video?.duration)
+        const duration = Number(video?.duration ?? probe.format?.duration)
         const [numerator, denominator] = (video?.avg_frame_rate ?? video?.r_frame_rate ?? '').split('/').map(Number)
         const frameRate = numerator === undefined || denominator === undefined ? NaN : numerator / denominator
         const expectedFrames = (segment?.toFrame ?? entry.plan.frames) - (segment?.fromFrame ?? 0)
@@ -723,6 +723,14 @@ export class TimelineRenderer {
           const audio = probe.streams?.find(stream => stream.codec_type === 'audio')
           if (audio?.codec_name !== 'aac' || Number(audio.sample_rate) !== 48000 || audio.channels !== 2) {
             throw new TimelineRenderError('probe', 'render output is missing its stereo AAC mix')
+          }
+          const audioDuration = Number(audio.duration)
+          if (
+            !Number.isFinite(audioDuration) ||
+            audioDuration < expectedDuration - 1 / entry.plan.document.spec.fps ||
+            audioDuration > expectedDuration + 2048 / 48000 + 1 / entry.plan.document.spec.fps
+          ) {
+            throw new TimelineRenderError('probe', 'render output audio does not match the timeline duration')
           }
         }
       }

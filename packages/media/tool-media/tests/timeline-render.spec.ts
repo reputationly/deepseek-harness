@@ -78,7 +78,7 @@ beforeEach(async () => {
       probe: async path => ({
         streams: [
           { codec_type: 'video', codec_name: 'h264', width: 320, height: 240, avg_frame_rate: '24/1' },
-          { codec_type: 'audio', codec_name: 'aac', sample_rate: '48000', channels: 2 },
+          { codec_type: 'audio', codec_name: 'aac', sample_rate: '48000', channels: 2, duration: '1' },
         ],
         format: { duration: path.includes('.video.mp4') ? '0.5' : '1' },
       }),
@@ -191,6 +191,72 @@ it('isolates resumed segment identities when the browser encoder environment cha
   expect(second?.plan.segments[0]?.key).not.toBe(first.plan.segments[0]?.key)
   expect(second?.plan.segments.every(segment => !segment.cached)).toBe(true)
 })
+async function uploadBlocks(work: TimelineRenderWork): Promise<void> {
+  for (const segment of work.plan.segments) {
+    const video = { kind: 'video', segment: segment.key } as const,
+      audio = { kind: 'audio', segment: segment.key } as const
+    await renderer.append(session, work.jobId, work.lease, video, 0, new Uint8Array([1, 2, 3]))
+    await renderer.complete(session, work.jobId, work.lease, video)
+    await renderer.append(session, work.jobId, work.lease, audio, 0, new Uint8Array(192000))
+    await renderer.complete(session, work.jobId, work.lease, audio)
+  }
+}
+
+function outputProbe(durations: { video?: string; audio?: string; format?: string }) {
+  return {
+    streams: [
+      { codec_type: 'video', codec_name: 'h264', width: 320, height: 240, avg_frame_rate: '24/1', duration: durations.video },
+      { codec_type: 'audio', codec_name: 'aac', sample_rate: '48000', channels: 2, duration: durations.audio },
+    ],
+    format: { duration: durations.format },
+  }
+}
+
+it('accepts an output whose container duration exceeds the video by encoder audio padding', async () => {
+  const work = await claim()
+  await uploadBlocks(work)
+  vi.spyOn(deps.ffmpeg, 'probe').mockResolvedValue(outputProbe({ video: '1', audio: '1.08', format: '1.08' }) as never)
+  await renderer.append(session, work.jobId, work.lease, { kind: 'output' }, 0, new Uint8Array([7]))
+  const completed = await renderer.complete(session, work.jobId, work.lease, { kind: 'output' })
+  expect(completed.state).toBe('ready')
+})
+
+it('rejects an output whose video stream is three frames short', async () => {
+  const work = await claim()
+  await uploadBlocks(work)
+  vi.spyOn(deps.ffmpeg, 'probe').mockResolvedValue(outputProbe({ video: '0.875', audio: '0.875', format: '0.875' }) as never)
+  await renderer.append(session, work.jobId, work.lease, { kind: 'output' }, 0, new Uint8Array([7]))
+  await expect(renderer.complete(session, work.jobId, work.lease, { kind: 'output' })).rejects.toMatchObject({
+    code: 'probe', message: 'render video does not match its output specification',
+  })
+})
+
+it('rejects an output whose audio runs far past the timeline', async () => {
+  const work = await claim()
+  await uploadBlocks(work)
+  vi.spyOn(deps.ffmpeg, 'probe').mockResolvedValue(outputProbe({ video: '1', audio: '1.3', format: '1.3' }) as never)
+  await renderer.append(session, work.jobId, work.lease, { kind: 'output' }, 0, new Uint8Array([7]))
+  await expect(renderer.complete(session, work.jobId, work.lease, { kind: 'output' })).rejects.toMatchObject({
+    code: 'probe', message: 'render output audio does not match the timeline duration',
+  })
+})
+
+it('keeps validating a segment block against its own video stream duration', async () => {
+  const work = await claim()
+  const segment = work.plan.segments[0]!
+  const video = { kind: 'video', segment: segment.key } as const
+  const originalProbe = await deps.ffmpeg.probe('fixture')
+  vi.spyOn(deps.ffmpeg, 'probe').mockResolvedValue({
+    ...originalProbe,
+    streams: originalProbe.streams!.map(stream =>
+      stream.codec_type === 'video' ? { ...stream, duration: '0.5' } : stream),
+    format: { duration: '0.5' },
+  })
+  await renderer.append(session, work.jobId, work.lease, video, 0, new Uint8Array([1, 2, 3]))
+  const completed = await renderer.complete(session, work.jobId, work.lease, video)
+  expect(completed.state).not.toBe('failed')
+})
+
 it('rejects a video block with a different frame rate before publishing the block', async () => {
   const work = await claim(),
     part = { kind: 'video', segment: work.plan.segments[0]!.key } as const
