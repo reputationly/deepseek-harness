@@ -69,6 +69,8 @@ function generator(withCatalog = false): ReturnType<typeof createGenerator> {
     taskTimeoutMs: 5_000,
     pollIntervalMs: 1,
     videoDefaultDuration: 5,
+    videoModel: 'video-model',
+    videoRefModel: 'video-ref-model',
   })
 }
 
@@ -139,6 +141,42 @@ describe('generators', () => {
     expect(body.duration).toBe(6)
     expect(media.model).toBe('video-model')
     expect(await readFile(media.path)).toEqual(MP4)
+  })
+
+  it('picks the configured video model by references when no catalog is published', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(json({ id: 't1' }))
+      .mockResolvedValueOnce(json({ status: 'succeeded', url: `data:video/mp4;base64,${MP4.toString('base64')}` }))
+      .mockResolvedValueOnce(json({ id: 't2' }))
+      .mockResolvedValueOnce(json({ status: 'succeeded', url: `data:video/mp4;base64,${MP4.toString('base64')}` }))
+    const ref = join(directory, 'ref.png')
+    await writeFile(ref, PNG)
+    const entry = { node: 'n1' as never, kind: 'video' as const, calls: 1, seconds: 6, lines: 1 }
+    await generator().video(call({ node: node('video'), entry: { ...entry, model: 'video-ref-model' } }))
+    await generator().video(call({ node: node('video'), refs: [ref], entry: { ...entry, model: 'video-model' } }))
+    const first = JSON.parse(fetchSpy.mock.calls[0]?.[1]?.body as string) as { model: string; metadata: { task_type: string } }
+    const second = JSON.parse(fetchSpy.mock.calls[2]?.[1]?.body as string) as { model: string; metadata: { task_type: string } }
+    expect(first.model).toBe('video-model')
+    expect(first.metadata.task_type).toBe('t2v')
+    expect(second.model).toBe('video-ref-model')
+    expect(second.metadata.task_type).toBe('r2va')
+  })
+
+  it('passes an unconfigured video model through unchanged without a catalog', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(json({ id: 't1' }))
+      .mockResolvedValueOnce(json({ status: 'succeeded', url: `data:video/mp4;base64,${MP4.toString('base64')}` }))
+      .mockResolvedValueOnce(json({ id: 't2' }))
+      .mockResolvedValueOnce(json({ status: 'succeeded', url: `data:video/mp4;base64,${MP4.toString('base64')}` }))
+    const ref = join(directory, 'ref.png')
+    await writeFile(ref, PNG)
+    const entry = { node: 'n1' as never, kind: 'video' as const, calls: 1, seconds: 6, lines: 1 }
+    await generator().video(call({ node: node('video'), entry: { ...entry, model: 'other-video' } }))
+    await generator().video(call({ node: node('video'), refs: [ref], entry: { ...entry, model: 'other-video' } }))
+    const first = JSON.parse(fetchSpy.mock.calls[0]?.[1]?.body as string) as { model: string }
+    const second = JSON.parse(fetchSpy.mock.calls[2]?.[1]?.body as string) as { model: string }
+    expect(first.model).toBe('other-video')
+    expect(second.model).toBe('other-video')
   })
 
   it('checkpoints the remote task before polling and can resume with GET alone', async () => {
@@ -219,6 +257,7 @@ describe('generators', () => {
       catalog: () => Promise.reject(new Error('catalog down')),
       write: async () => join(directory, 'v.mp4'),
       taskTimeoutMs: 5_000, pollIntervalMs: 1, videoDefaultDuration: 5,
+      videoModel: 'video-model', videoRefModel: 'video-ref-model',
     })
     await failing.video(call({ node: node('video'), entry: { node: 'n1' as never, kind: 'video', model: 'video-model', calls: 1, lines: 1 } }))
 
@@ -229,6 +268,7 @@ describe('generators', () => {
       catalog: () => Promise.reject(new Error('catalog down')),
       write: async () => join(directory, 'v.mp4'),
       taskTimeoutMs: 5_000, pollIntervalMs: 1, videoDefaultDuration: 5,
+      videoModel: 'video-model', videoRefModel: 'video-ref-model',
     })
     await expect(aborted.video(call({
       node: node('video'), entry: { node: 'n1' as never, kind: 'video', model: 'video-model', calls: 1, lines: 1 },

@@ -46,6 +46,7 @@ function generator(load = async () => catalog) {
       return path
     },
     taskTimeoutMs: 1000, pollIntervalMs: 1, videoDefaultDuration: 5,
+    videoModel: 'video-model', videoRefModel: 'video-ref-model',
   })
 }
 

@@ -56,7 +56,7 @@ function runtime(overrides: { document?: CanvasDocument; bible?: Bible; kill?: (
       state: createRunnerState(),
       canvas: () => canvas,
       limits: {
-        maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'm', videoRefModel: 'm', imageModel: 'm',
+        maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'm', videoRefModel: 'm', imageModel: 'm',
         speechModel: 'm', musicModel: 'm',
       },
       confirmLimits: {

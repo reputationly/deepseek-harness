@@ -26,6 +26,8 @@ import type { GenerationPlan, PlannedNode } from './budget.ts'
 export interface PlanLimits {
   /** Longest video segment one call may cover, in seconds. */
   readonly maxVideoSeconds: number
+  /** Shortest video segment one call may request, in seconds. */
+  readonly minVideoSeconds: number
   /** Video length used when a node states none, in seconds. */
   readonly videoDefaultDuration: number
   /** Video model for a segment that has a first frame. */
@@ -356,7 +358,7 @@ export function planNodes(
           model: existing?.gen?.model ?? model,
           calls: 1,
           lines: 1,
-          seconds: Math.min(segment.durationSec, limits.maxVideoSeconds),
+          seconds: Math.max(limits.minVideoSeconds, Math.min(segment.durationSec, limits.maxVideoSeconds)),
           shots: covered.map(shot => shot.title),
           storyboard: node.id,
           ...(segment.needsTailChain && existing?.gen?.tailChain !== false ? { chain: true } : {}),

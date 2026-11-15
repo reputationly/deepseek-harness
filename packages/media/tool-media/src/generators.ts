@@ -38,6 +38,10 @@ export interface GeneratorDeps {
   readonly pollIntervalMs: number
   /** Video duration used when a node states none. */
   readonly videoDefaultDuration: number
+  /** Configured video model for a call without reference images. */
+  readonly videoModel: string
+  /** Configured video model for a call that carries reference images. */
+  readonly videoRefModel: string
 }
 
 /** Read one image file as a reference. */
@@ -167,6 +171,13 @@ export function createGenerator(deps: GeneratorDeps): MediaGenerator {
       const params = call.node.gen?.params ?? {}
       const aspectRatio = typeof params.aspectRatio === 'string' ? params.aspectRatio : call.aspectRatio
       const resolution = typeof params.resolution === 'string' ? params.resolution : generationTier(catalog, call.resolution)
+      const model =
+        catalog === undefined &&
+        (call.entry.model === deps.videoModel || call.entry.model === deps.videoRefModel)
+          ? references.length > 0
+            ? deps.videoRefModel
+            : deps.videoModel
+          : call.entry.model
       const plan = planVideo(catalog, {
         prompt: call.prompt,
         references,
@@ -176,7 +187,7 @@ export function createGenerator(deps: GeneratorDeps): MediaGenerator {
         ...aspectRatio === undefined ? {} : { aspectRatio },
         ...resolution === undefined ? {} : { resolution },
         ...typeof params.audio !== 'boolean' ? {} : { audio: params.audio },
-      }, call.entry.model, deps.videoDefaultDuration)
+      }, model, deps.videoDefaultDuration)
       if (plan.kind === 'ask') {
         throw new Error(`video generation needs a choice: ${plan.choices.map(choice => `${choice.id} (${choice.options.join(' / ')}, recommended ${choice.recommended})`).join('; ')}`)
       }

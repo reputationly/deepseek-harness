@@ -4,6 +4,7 @@ import { adoptedTailOf, collectInputs, planNodes, segmentPrompt, type PlanLimits
 
 const limits: PlanLimits = {
   maxVideoSeconds: 15,
+  minVideoSeconds: 4,
   videoDefaultDuration: 5,
   videoModel: 'video-model',
   videoRefModel: 'video-ref-model',
@@ -191,6 +192,26 @@ describe('planNodes', () => {
     expect(plan.create).toHaveLength(1)
     expect(plan.create[0]).toMatchObject({ op: 'add', type: 'video', title: 'n2 · 段1', gen: { kind: 'video', shot: { storyboard: 'n2' } } })
     expect(plan.segments).toEqual([{ storyboard: 'n2', index: 0, shots: ['s1', 's2', 's3', 's4', 's5'] }])
+  })
+
+  it('raises a sub-minimum segment to the shortest requested clip', () => {
+    const board = boardNode('n2', [shot('s1')])
+    const plan = planNodes(documentOf([board]), bible, ['n2'], limits)
+    expect(plan.entries.map(entry => entry.seconds)).toEqual([4])
+    expect(plan.create[0]).toMatchObject({ gen: { params: { duration: 4 } } })
+  })
+
+  it('keeps a sub-minimum segment when the configured floor is lower', () => {
+    const board = boardNode('n2', [shot('s1')])
+    const plan = planNodes(documentOf([board]), bible, ['n2'], { ...limits, minVideoSeconds: 2 })
+    expect(plan.entries.map(entry => entry.seconds)).toEqual([3])
+    expect(plan.create[0]).toMatchObject({ gen: { params: { duration: 3 } } })
+  })
+
+  it('still caps an over-long segment at the maximum', () => {
+    const board = boardNode('n2', [shot('s1', { durationSec: 20 })])
+    const plan = planNodes(documentOf([board]), bible, ['n2'], limits)
+    expect(plan.entries.map(entry => entry.seconds)).toEqual([15])
   })
 
   it('reuses the video node that already covers a segment and marks the others stale', () => {

@@ -740,7 +740,7 @@ export async function startPlan(
         prompt: inputs.prompt,
         model: entry.model,
         params: { ...current.gen?.params, ...(entry.seconds === undefined ? {} : { duration: entry.seconds }) },
-        inputs: inputsOf(inputs),
+        inputs: inputsOf(chainedTail === undefined ? inputs : { ...inputs, refs: [] }),
       },
     }
     services.state.liveAttempts.add(checkpoint.id)
@@ -764,7 +764,7 @@ export async function startPlan(
             entry,
             {
               prompt: inputs.prompt,
-              refs: inputs.refs.map(ref => ref.path),
+              refs: chainedTail === undefined ? inputs.refs.map(ref => ref.path) : [],
               audioReferences: inputs.audio.map(ref => ref.path),
               ...(firstFramePath === undefined ? {} : { firstFramePath }),
               ...(inputs.lastFrame === undefined ? {} : { lastFramePath: inputs.lastFrame.path }),

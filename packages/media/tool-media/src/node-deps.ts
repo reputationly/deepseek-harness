@@ -41,6 +41,7 @@ export interface FfmpegPort {
 /** Deployment values the node tools read. */
 export interface NodeDepsConfig {
   readonly maxSegmentSeconds: number
+  readonly minSegmentSeconds: number
   readonly videoDefaultDuration: number
   readonly videoModel: string
   readonly videoRefModel: string
@@ -115,6 +116,7 @@ export function createNodeToolDeps(input: NodeDepsInput): NodeToolDeps {
     canvas,
     limits: {
       maxVideoSeconds: resolved.maxSegmentSeconds,
+      minVideoSeconds: resolved.minSegmentSeconds,
       videoDefaultDuration: resolved.videoDefaultDuration,
       videoModel: resolved.videoModel,
       videoRefModel: resolved.videoRefModel,

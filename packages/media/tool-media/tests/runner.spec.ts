@@ -9,7 +9,7 @@ import { createRunnerState, runPlan, startPlan, type MediaGenerator, type Runner
 import { bibleFixture } from './bible-fixture.ts'
 
 const limits = {
-  maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
+  maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
   imageModel: 'image-model', speechModel: 'speech-model', musicModel: 'music-model',
 }
 
@@ -469,7 +469,7 @@ describe('segment regeneration', () => {
   it('regenerates both segments from the latest tail, reconnects the frame, and clears input changes', async () => {
     const directory = '/tmp/media-runner'
     const limitsLocal = {
-      maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
+      maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
       imageModel: 'image-model', speechModel: 'speech-model', musicModel: 'music-model',
     }
     const confirmLimitsLocal = {
@@ -547,5 +547,81 @@ describe('segment regeneration', () => {
       && edge.kind === 'reference' && edge.role === 'first_frame')).toBe(true)
     expect(refreshed.inputChanged).toBe(true)
     expect((document.nodes.find(node => node.id === second.id) as CanvasNode).inputChanged).toBe(true)
+  })
+
+  it('sends only the first frame for a tail-chained segment that also has references', async () => {
+    const canvasLimits = resolveConfig({})
+    let document: CanvasDocument = EMPTY_CANVAS
+    let revision = 0
+    const directory = '/tmp/media-runner'
+    const limitsLocal = {
+      maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
+      imageModel: 'image-model', speechModel: 'speech-model', musicModel: 'music-model',
+    }
+    const confirmLimitsLocal = {
+      confirmVideoCalls: 9, confirmVideoSeconds: 90, confirmSpeechLines: 50, confirmImageCalls: 50, confirmMusicCalls: 5,
+    }
+    const videoCalls: { readonly node: string; readonly refs: readonly string[]; readonly firstFramePath: string | undefined }[] = []
+    const apply = (operations: readonly CanvasOperation[], origin: 'user' | 'agent'): void => {
+      const outcome = applyOperations(document, operations, { limits: canvasLimits, origin, now: () => '2026-11-12T00:00:00.000Z' })
+      document = outcome.document
+      revision += 1
+    }
+    apply([{
+      op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
+      shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
+    }], 'user')
+    apply([{
+      op: 'add', ref: 'img', type: 'image', title: 'ref', path: `${directory}/ref.png`,
+    }], 'user')
+    const services: RunnerServices = {
+      state: createRunnerState(),
+      canvas: {
+        read: async () => ({ document, revision }),
+        bible: async () => bibleFixture,
+        edit: async (operations, baseRevision) => {
+          if (baseRevision !== revision) throw new CanvasConflictError(baseRevision, revision)
+          const outcome = applyOperations(document, operations, { limits: canvasLimits, origin: 'agent', now: () => '2026-11-12T00:00:00.000Z' })
+          document = outcome.document
+          revision += 1
+          return outcome.result
+        },
+      },
+      limits: limitsLocal,
+      confirmLimits: confirmLimitsLocal,
+      concurrency: 1,
+      generate: {
+        image: async () => ({ path: `${directory}/tail.png`, model: 'image-model' }),
+        video: async (call) => {
+          videoCalls.push({ node: String(call.node.id), refs: call.refs, firstFramePath: call.firstFramePath })
+          return { path: `${directory}/video-${String(videoCalls.length)}.mp4`, model: 'video-model' }
+        },
+        speech: async () => ({ path: `${directory}/speech.mp3`, model: 'speech-model' }),
+        music: async () => ({ path: `${directory}/music.mp3`, model: 'music-model' }),
+      },
+      jobs: { start: (spec) => { const c = new AbortController(); return { id: `media-${String(videoCalls.length)}` as never, done: spec.run(c.signal), signal: c.signal } }, live: () => [] },
+      probe: async () => ({ durationMs: 3000, width: 720, height: 1280 }),
+      tailFrame: async path => `${path}.tail.png`,
+      now: () => '2026-11-12T00:00:00.000Z',
+    }
+    const boardId = String(document.nodes.find(node => node.type === 'storyboard')?.id)
+    expect((await runPlan(services, [boardId], undefined)).status).toBe('done')
+    const second = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 5) as CanvasNode
+    const first = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 1) as CanvasNode
+    const image = document.nodes.find(node => node.type === 'image') as CanvasNode
+    apply([
+      { op: 'connect', from: image.id, to: second.id, kind: 'reference', role: 'ref' },
+      { op: 'set_input_changed', node: first.id, changed: true },
+      { op: 'set_input_changed', node: second.id, changed: true },
+    ], 'user')
+    videoCalls.length = 0
+    expect((await runPlan(services, [boardId], undefined)).status).toBe('done')
+    const chained = videoCalls.find(call => call.firstFramePath !== undefined)
+    expect(chained?.refs).toEqual([])
+    const chainedNode = document.nodes.find(node => node.id === second.id) as CanvasNode
+    const inputs = chainedNode.versions?.at(-1)?.inputs ?? []
+    expect(inputs.some(input => input.role === 'first_frame')).toBe(true)
+    expect(inputs.some(input => input.role === 'ref')).toBe(false)
+    expect(document.edges.some(edge => edge.source === image.id && edge.target === second.id && edge.role === 'ref')).toBe(true)
   })
 })

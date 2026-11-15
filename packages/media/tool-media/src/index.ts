@@ -86,6 +86,8 @@ export interface Config {
   videoRefModel?: string
   /** Longest video segment one generation call may cover, in seconds. */
   maxSegmentSeconds?: number
+  /** Shortest clip one storyboard-segment video call requests, in seconds. */
+  minSegmentSeconds?: number
   /** Generation tasks one call may run at once. */
   generateConcurrency?: number
   /** Video calls above which a plan needs the user's confirmation. */
@@ -167,6 +169,7 @@ export const Config: z<Config> = z.object({
   videoDefaultDuration: z.number().default(5),
   videoRefModel: z.string().default('minimax-h3-ref2va'),
   maxSegmentSeconds: z.number().default(15),
+  minSegmentSeconds: z.number().default(4),
   generateConcurrency: z.number().default(3),
   confirmVideoCalls: z.number().default(2),
   confirmVideoSeconds: z.number().default(20),
@@ -221,6 +224,7 @@ const CONFIG_KEYS = [
   'videoDefaultDuration',
   'videoRefModel',
   'maxSegmentSeconds',
+  'minSegmentSeconds',
   'generateConcurrency',
   'confirmVideoCalls',
   'confirmVideoSeconds',
@@ -422,6 +426,8 @@ export function apply(ctx: Context, config: Config): void {
     taskTimeoutMs: resolved.taskTimeoutMs,
     pollIntervalMs: resolved.pollIntervalMs,
     videoDefaultDuration: resolved.videoDefaultDuration,
+    videoModel: resolved.videoModel,
+    videoRefModel: resolved.videoRefModel,
   })
   const jobsRegistry = ctx.get('jobs')
   const nodeToolDeps = createNodeToolDeps({

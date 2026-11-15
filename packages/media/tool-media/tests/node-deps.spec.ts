@@ -10,6 +10,7 @@ import type { MediaGenerator } from '../src/runner.ts'
 
 const config = {
   maxSegmentSeconds: 15,
+  minSegmentSeconds: 4,
   videoDefaultDuration: 5,
   videoModel: 'vm',
   videoRefModel: 'vrm',

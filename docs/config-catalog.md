@@ -4340,6 +4340,8 @@ export interface Config {
   videoRefModel?: string
   /** Longest video segment one generation call may cover, in seconds. */
   maxSegmentSeconds?: number
+  /** Shortest clip one storyboard-segment video call requests, in seconds. */
+  minSegmentSeconds?: number
   /** Generation tasks one call may run at once. */
   generateConcurrency?: number
   /** Video calls above which a plan needs the user's confirmation. */

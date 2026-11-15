@@ -16,7 +16,7 @@ import { createRunnerState, type GeneratedMedia, type MediaGenerator } from '../
 import { bibleFixture } from './bible-fixture.ts'
 
 const limits = {
-  maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
+  maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
   imageModel: 'image-model', speechModel: 'speech-model', musicModel: 'music-model',
 }
 

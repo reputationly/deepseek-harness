@@ -87,7 +87,7 @@ function fixture() {
         return result
       },
     },
-    limits: { maxVideoSeconds: 15, videoDefaultDuration: 5, videoModel: 'm', videoRefModel: 'm', imageModel: 'm', speechModel: 'm', musicModel: 'm' },
+    limits: { maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'm', videoRefModel: 'm', imageModel: 'm', speechModel: 'm', musicModel: 'm' },
     confirmLimits: {
       confirmVideoCalls: 10, confirmVideoSeconds: 100, confirmSpeechLines: 100, confirmImageCalls: 100, confirmMusicCalls: 10,
     },
