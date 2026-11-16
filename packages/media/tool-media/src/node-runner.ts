@@ -281,11 +281,13 @@ export function collectInputs(
         )
         .map(entry => entryReference(document, entry))
         .filter((input): input is ResolvedInput => input !== undefined)
+  const firstFrame = resolved.find(entry => entry.edge.role === 'first_frame')?.input
   const refs = [...edgeRefs]
-  for (const input of mentioned) {
+  // A video's first frame already carries the mentioned people and place; the frame-driven model
+  // accepts no reference images beside it.
+  for (const input of node.type === 'video' && firstFrame !== undefined ? [] : mentioned) {
     if (!refs.some(ref => ref.node === input.node)) refs.push(input)
   }
-  const firstFrame = resolved.find(entry => entry.edge.role === 'first_frame')?.input
   const lastFrame = resolved.find(entry => entry.edge.role === 'last_frame')?.input
   const audio = resolved
     .filter(
