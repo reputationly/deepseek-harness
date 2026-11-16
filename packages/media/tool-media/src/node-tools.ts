@@ -139,7 +139,7 @@ export function registerNodeTools(ctx: import('@deepseek-ai/cordis').Context, de
       name: 'canvas_generate',
       description:
         'Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one ' +
-        'video node per segment.',
+        'keyframe image per segment, then one video node per segment driven by those keyframes.',
       parameters: {
         nodes: {
           type: 'array',

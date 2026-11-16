@@ -3407,8 +3407,7 @@ Read or advance the production stage of the episode this conversation edits. Sta
         "G2_storyboard_quality",
         "G3_one_video_per_shots",
         "G4_stage_order",
-        "G5_destructive",
-        "tail_chain"
+        "G5_destructive"
       ]
     },
     "reason": {
@@ -4394,7 +4393,7 @@ The canvas belongs to the project directory of the calling Session; Web ui-sideb
 
 ### `canvas_generate`
 
-Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one video node per segment.
+Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one keyframe image per segment, then one video node per segment driven by those keyframes.
 
 ```json
 {

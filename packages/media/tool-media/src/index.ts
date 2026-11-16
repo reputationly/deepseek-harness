@@ -160,7 +160,7 @@ export const Config: z<Config> = z.object({
   videoRefModel: z.string().default('minimax-h3-ref2va'),
   maxSegmentSeconds: z.number().default(15),
   minSegmentSeconds: z.number().default(4),
-  generateConcurrency: z.number().default(3),
+  generateConcurrency: z.number().default(8),
   ffmpegPath: z.string().default('ffmpeg'),
   ffprobePath: z.string().default('ffprobe'),
   editTimeoutMs: z.number().default(600_000),

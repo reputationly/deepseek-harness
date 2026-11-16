@@ -21,6 +21,7 @@ import {
   type VersionId,
 } from '@deepseek-ai/dsh-canvas'
 import type { GenerationPlan, PlannedNode } from './budget.ts'
+import { imagePixelSize } from './planner.ts'
 
 /** Bounds and model defaults one plan runs with. */
 export interface PlanLimits {
@@ -30,13 +31,19 @@ export interface PlanLimits {
   readonly minVideoSeconds: number
   /** Video length used when a node states none, in seconds. */
   readonly videoDefaultDuration: number
-  /** Video model for a segment that has a first frame. */
+  /** Video model for a segment driven by keyframe images. */
   readonly videoModel: string
   /** Video model for a segment with reference images only. */
   readonly videoRefModel: string
   readonly imageModel: string
   readonly speechModel: string
   readonly musicModel: string
+}
+
+/** Project frame spec a plan lays keyframes out for. */
+export interface PlanSpec {
+  readonly aspect?: string
+  readonly resolution?: string
 }
 
 /** One file an input edge supplies, resolved to the version it points at. */
@@ -63,10 +70,11 @@ export interface NodeInputs {
 export interface PlannedGeneration extends PlannedNode {
   /** Storyboard this entry belongs to. */
   readonly storyboard?: CanvasNodeId
-  /** Tail-frame image that becomes this segment's first frame. */
-  readonly tailChain?: { readonly node: CanvasNodeId; readonly version: VersionId }
-  /** Whether this segment must continue the picture of the segment before it. */
-  readonly chain?: boolean
+  /**
+   * Keys this entry waits on before it may start: a plan `ref` for a node created in this run,
+   * or an existing node id for one already adopted. Empty or absent means ready at once.
+   */
+  readonly after?: readonly string[]
 }
 
 /** One plan plus the generation entries the runner executes. */
@@ -143,6 +151,31 @@ export function segmentPrompt(shots: readonly Shot[], bible: Bible | undefined):
   return lines.join('\n')
 }
 
+/** `@name` mention for one bible entry id, or the bare id when the bible lacks it. */
+function mentionOf(bible: Bible | undefined, id: string): string {
+  const entry = bible?.entries.find(candidate => candidate.id === id)
+  return `@${entry?.name ?? id}`
+}
+
+/**
+ * Prompt a keyframe image sends for the first shot it covers: framing, what the frame shows,
+ * the people and place as `@name` mentions, and the camera move. Dialogue stays out — the
+ * keyframe is a still.
+ * @param shot - shot the keyframe opens on.
+ * @param bible - bible that names the mentioned entries.
+ * @returns the image prompt.
+ */
+export function keyframePrompt(shot: Shot, bible: Bible | undefined): string {
+  const parts = [
+    `[${shot.shotSize}] ${shot.visual}`,
+    ...(shot.characters.length === 0 ? [] : [`角色：${shot.characters.map(id => mentionOf(bible, id)).join('、')}`]),
+    ...(shot.scene === undefined ? [] : [`场景：${mentionOf(bible, shot.scene)}`]),
+    ...(shot.props.length === 0 ? [] : [`道具：${shot.props.map(id => mentionOf(bible, id)).join('、')}`]),
+    `运镜：${shot.camera}`,
+  ]
+  return parts.join('。')
+}
+
 /** Edges into one node, in a stable order. */
 function incoming(document: CanvasDocument, node: CanvasNodeId): readonly CanvasEdge[] {
   return document.edges
@@ -151,10 +184,18 @@ function incoming(document: CanvasDocument, node: CanvasNodeId): readonly Canvas
 }
 
 /** File and version one edge's source currently shows. */
-function resolveInput(document: CanvasDocument, edge: CanvasEdge): ResolvedInput | undefined {
+function resolveInput(
+  document: CanvasDocument,
+  edge: CanvasEdge,
+  produced?: ReadonlyMap<CanvasNodeId, { readonly version: VersionId; readonly path: string }>,
+): ResolvedInput | undefined {
   const source = document.nodes.find(node => node.id === edge.source)
   if (source === undefined) return undefined
-  const version = activeVersionOf(source)
+  const made = produced?.get(source.id)
+  const version =
+    made === undefined
+      ? activeVersionOf(source)
+      : { id: made.version, path: made.path } as ReturnType<typeof activeVersionOf>
   if (version?.path === undefined) {
     if (
       edge.kind === 'reference' &&
@@ -194,14 +235,15 @@ function entryReference(
  * @param document - the episode's canvas.
  * @param node - node being generated.
  * @param bible - bible that names speakers and locates storyboard prompts.
- * @param firstFrameOverride - exact tail version supplied by this production run.
+ * @param produced - versions this run already generated, keyed by node; a dependent consumes these
+ *   instead of the node's possibly-unadopted active version.
  * @returns the prompt, reference images in edge order, and the frame slots.
  */
 export function collectInputs(
   document: CanvasDocument,
   node: CanvasNode,
   bible: Bible | undefined,
-  firstFrameOverride?: ResolvedInput,
+  produced?: ReadonlyMap<CanvasNodeId, { readonly version: VersionId; readonly path: string }>,
 ): NodeInputs {
   const edges = incoming(document, node.id)
   const sources = edges.map(edge => ({
@@ -225,10 +267,7 @@ export function collectInputs(
   const prompt = expandMentions(joined, bible)
   const resolved = edges.map(edge => ({
     edge,
-    input:
-      edge.role === 'first_frame' && firstFrameOverride !== undefined
-        ? firstFrameOverride
-        : resolveInput(document, edge),
+    input: resolveInput(document, edge, produced),
   }))
   const edgeRefs = resolved
     .filter(entry => entry.edge.role === 'ref' && entry.input !== undefined)
@@ -246,7 +285,7 @@ export function collectInputs(
   for (const input of mentioned) {
     if (!refs.some(ref => ref.node === input.node)) refs.push(input)
   }
-  const firstFrame = firstFrameOverride ?? resolved.find(entry => entry.edge.role === 'first_frame')?.input
+  const firstFrame = resolved.find(entry => entry.edge.role === 'first_frame')?.input
   const lastFrame = resolved.find(entry => entry.edge.role === 'last_frame')?.input
   const audio = resolved
     .filter(
@@ -286,6 +325,27 @@ function videoForSegment(
   )
 }
 
+/** Existing keyframe image that already stands for one segment. */
+function keyframeForSegment(
+  document: CanvasDocument,
+  storyboard: CanvasNodeId,
+  segment: StoryboardSegment,
+): CanvasNode | undefined {
+  const wanted = [...segment.shots].sort().join(',')
+  return document.nodes.find(
+    node =>
+      node.type === 'image' &&
+      node.gen?.shot?.storyboard === storyboard &&
+      [...node.gen.shot.shots].sort().join(',') === wanted &&
+      node.stale !== true,
+  )
+}
+
+/** Whether one node already has an adopted media version to feed a frame slot. */
+function hasAdoptedMedia(node: CanvasNode | undefined): boolean {
+  return node !== undefined && activeVersionOf(node)?.path !== undefined
+}
+
 /** Model default for one node's kind. */
 function defaultModel(node: CanvasNode, limits: PlanLimits): string {
   if (node.type === 'image') return limits.imageModel
@@ -304,6 +364,7 @@ function refused(gate: NonNullable<GenerationPlan['blocked']>): NodePlan {
  * @param bible - the project's bible, when it has one.
  * @param requested - node ids to generate; a storyboard plans one node per segment.
  * @param limits - segment bounds and model defaults.
+ * @param spec - project frame spec the keyframes lay out for.
  * @returns the plan, the canvas edits it needs, and the gate that blocks it when one does.
  */
 export function planNodes(
@@ -311,6 +372,7 @@ export function planNodes(
   bible: Bible | undefined,
   requested: readonly string[],
   limits: PlanLimits,
+  spec?: PlanSpec,
 ): NodePlan {
   const create: CanvasOperation[] = []
   const edits: CanvasOperation[] = []
@@ -338,62 +400,165 @@ export function planNodes(
       if (quality !== undefined) return refused(quality)
       const shots = activeVersionOf(node)?.shots ?? []
       const plan = planShotSegments(shots, { maxSegmentSec: limits.maxVideoSeconds })
-      let previous:
-        | {
-          readonly node: CanvasNodeId
-          readonly generated: boolean
-          readonly tail?: { readonly node: CanvasNodeId; readonly version: VersionId }
-        }
-        | undefined
+      const keyframeSize =
+        spec?.aspect === undefined ? undefined : imagePixelSize(spec.aspect, spec.resolution ?? '')
+
+      // Pass A: one keyframe image per segment. `keyIds[i]`/`vidIds[i]` hold the identifier a
+      // plan ref for a node created now or a node id for an existing one; '' means no keyframe.
+      // `keyGen[i]` is set when the keyframe must generate this run.
+      const keyIds: string[] = []
+      const keyGen: ({ node: CanvasNodeId; ref?: string; model: string } | undefined)[] = []
       for (const [index, segment] of plan.segments.entries()) {
-        const existing = videoForSegment(document, node.id, segment)
+        const existingVideo = videoForSegment(document, node.id, segment)
         const covered = shotsOfSegment(shots, segment)
-        const prompt = segmentPrompt(covered, bible)
-        const model = previous?.tail === undefined ? limits.videoRefModel : limits.videoModel
-        const createdRef = `segment-${String(index)}`
+        // A manual first frame (an adopted image that is not this segment's keyframe) means the
+        // segment needs no generated keyframe; an edge to the keyframe itself still manages it.
+        const frameSource = existingVideo === undefined
+          ? undefined
+          : incoming(document, existingVideo.id).find(edge => edge.role === 'first_frame')?.source
+        const frameNode = frameSource === undefined
+          ? undefined
+          : document.nodes.find(candidate => candidate.id === frameSource)
+        const manualFrame =
+          frameNode !== undefined &&
+          !(frameNode.type === 'image' && frameNode.gen?.shot?.storyboard === node.id &&
+            [...frameNode.gen.shot.shots].sort().join(',') === [...segment.shots].sort().join(','))
+        let keyId = ''
+        let gen: { node: CanvasNodeId; ref?: string; model: string } | undefined
+        if (!manualFrame && covered.length > 0) {
+          const existingKey = keyframeForSegment(document, node.id, segment)
+          const prompt = keyframePrompt(covered[0] as Shot, bible)
+          if (existingKey === undefined) {
+            const keyRef = `keyframe-${node.id}-${String(index)}`
+            create.push({
+              op: 'add',
+              ref: keyRef,
+              type: 'image',
+              title: `${node.title} · 段${String(index + 1)} 分镜图`,
+              gen: {
+                kind: 'image',
+                prompt,
+                model: limits.imageModel,
+                params: keyframeSize === undefined ? {} : { size: keyframeSize },
+                shot: { storyboard: node.id, shots: segment.shots },
+              },
+            })
+            keyId = keyRef
+            gen = { node: keyRef as CanvasNodeId, ref: keyRef, model: limits.imageModel }
+          } else {
+            keyId = existingKey.id
+            const adopted = hasAdoptedMedia(existingKey)
+            const drift = existingKey.gen?.prompt !== prompt
+            if (drift) edits.push({ op: 'set_gen', node: existingKey.id, gen: { prompt } })
+            if (!adopted || drift) {
+              gen = { node: existingKey.id, model: existingKey.gen?.model ?? limits.imageModel }
+            }
+          }
+        }
+        keyIds[index] = keyId
+        keyGen[index] = gen
+      }
+      const firstKey = keyIds[0]
+
+      // Pass B: videos always regenerate; entries carry their dependency lists.
+      const vidIds: string[] = []
+      const tailAllowed: boolean[] = []
+      for (const [index, segment] of plan.segments.entries()) {
+        const existingVideo = videoForSegment(document, node.id, segment)
+        const covered = shotsOfSegment(shots, segment)
+        const videoPrompt = segmentPrompt(covered, bible)
+        const videoRef = `segment-${node.id}-${String(index)}`
+        const model = limits.videoModel
+        const keyId = keyIds[index]
+        const nextKey = keyIds[index + 1]
+        const usesLastFrame =
+          index + 1 < plan.segments.length &&
+          plan.segments[index + 1]?.needsTailChain === true &&
+          existingVideo?.gen?.tailChain !== false &&
+          nextKey !== undefined &&
+          nextKey !== ''
+        const after = [
+          ...(keyId !== undefined && keyId !== '' ? [keyId] : []),
+          ...(usesLastFrame ? [nextKey] : []),
+        ]
         const chosen: PlannedGeneration = {
-          node: (existing?.id ?? createdRef) as CanvasNodeId,
-          ...(existing === undefined ? { ref: createdRef } : {}),
+          node: (existingVideo?.id ?? videoRef) as CanvasNodeId,
+          ...(existingVideo === undefined ? { ref: videoRef } : {}),
           kind: 'video',
-          model: existing?.gen?.model ?? model,
+          model: existingVideo?.gen?.model ?? model,
           calls: 1,
           lines: 1,
           seconds: Math.max(limits.minVideoSeconds, Math.min(segment.durationSec, limits.maxVideoSeconds)),
           shots: covered.map(shot => shot.title),
           storyboard: node.id,
-          ...(segment.needsTailChain && existing?.gen?.tailChain !== false ? { chain: true } : {}),
-          ...(segment.needsTailChain && existing?.gen?.tailChain !== false && previous?.tail !== undefined
-            ? { tailChain: previous.tail }
-            : {}),
+          ...(after.length === 0 ? {} : { after }),
         }
-        if (existing === undefined) {
+        if (existingVideo === undefined) {
           create.push({
             op: 'add',
-            ref: createdRef,
+            ref: videoRef,
             type: 'video',
             title: `${node.title} · 段${String(index + 1)}`,
             gen: {
               kind: 'video',
-              prompt,
+              prompt: videoPrompt,
               model,
               params: { duration: Number(chosen.seconds) },
               shot: { storyboard: node.id, shots: segment.shots },
             },
           })
-        } else if (existing.gen?.prompt !== prompt) {
-          edits.push({ op: 'set_gen', node: existing.id, gen: { prompt } })
+        } else if (existingVideo.gen?.prompt !== videoPrompt) {
+          edits.push({ op: 'set_gen', node: existingVideo.id, gen: { prompt: videoPrompt } })
         }
         entries.push(chosen)
+        vidIds[index] = existingVideo?.id ?? videoRef
+        tailAllowed[index] = existingVideo?.gen?.tailChain !== false
         segments.push({ storyboard: node.id, index, shots: segment.shots })
-        const tail = adoptedTailOf(document, existing)
-        previous = {
-          node: chosen.node,
-          generated: existing === undefined,
-          ...(tail === undefined ? {} : { tail }),
+
+        // The segment's keyframe entry, when it must generate, waits on the scene's first keyframe.
+        const gen = keyGen[index]
+        if (gen !== undefined) {
+          const keyAfter = index > 0 && firstKey !== undefined && firstKey !== '' ? [firstKey] : []
+          entries.push({
+            node: gen.node,
+            ...(gen.ref === undefined ? {} : { ref: gen.ref }),
+            kind: 'image',
+            model: gen.model,
+            calls: 1,
+            lines: 0,
+            storyboard: node.id,
+            ...(keyAfter.length === 0 ? {} : { after: keyAfter }),
+          })
+        }
+      }
+
+      // Pass C: frame edges. K0 feeds every later keyframe as a ref; Ki feeds Vi as first_frame;
+      // K(i+1) feeds Vi as last_frame only for a continuous next segment the video did not opt out of.
+      const link = (from: string, to: string, role: CanvasEdgeRole, order?: number): void => {
+        create.push({ op: 'connect', from, to, kind: 'reference', role, ...(order === undefined ? {} : { order }) })
+      }
+      for (const [index, keyId] of keyIds.entries()) {
+        if (keyId === '') continue
+        if (index > 0 && firstKey !== undefined && firstKey !== '') link(firstKey, keyId, 'ref', 0)
+        const videoId = vidIds[index]
+        if (videoId !== undefined) link(keyId, videoId, 'first_frame')
+        const nextSegment = plan.segments[index + 1]
+        if (
+          nextSegment !== undefined &&
+          nextSegment.needsTailChain &&
+          tailAllowed[index] === true &&
+          vidIds[index] !== undefined
+        ) {
+          const nextKey = keyIds[index + 1]
+          if (nextKey !== undefined && nextKey !== '') link(nextKey, vidIds[index], 'last_frame')
         }
       }
       for (const candidate of document.nodes) {
-        if (candidate.type !== 'video' || candidate.gen?.shot?.storyboard !== node.id || candidate.stale === true)
+        if (
+          (candidate.type !== 'video' && candidate.type !== 'image') ||
+          candidate.gen?.shot?.storyboard !== node.id ||
+          candidate.stale === true
+        )
           continue
         const wanted = [...candidate.gen.shot.shots].sort().join(',')
         if (!plan.segments.some(segment => [...segment.shots].sort().join(',') === wanted)) stale.push(candidate.id)
@@ -436,25 +601,105 @@ export function planNodes(
       )
       if (quality !== undefined) return refused(quality)
     }
-    let tailChain: ResolvedInput | undefined
-    if (node.type === 'video' && node.gen.shot !== undefined && node.gen.tailChain !== false) {
-      const board = document.nodes.find(candidate => candidate.id === node.gen?.shot?.storyboard)
-      const ordered =
-        board === undefined
-          ? []
-          : planShotSegments(activeVersionOf(board)?.shots ?? [], { maxSegmentSec: limits.maxVideoSeconds }).segments
-      const wanted = [...node.gen.shot.shots].sort().join(',')
+    // A lone segment video still needs its keyframes: its own, the scene's first when it is not
+    // segment 0, and the next segment's when continuity calls for a last frame.
+    const after: string[] = []
+    if (node.type === 'video' && node.gen.shot !== undefined) {
+      const shotRef = node.gen.shot
+      const board = document.nodes.find(candidate => candidate.id === shotRef.storyboard)
+      const boardShots = board === undefined ? [] : (activeVersionOf(board)?.shots ?? [])
+      const ordered = planShotSegments(boardShots, { maxSegmentSec: limits.maxVideoSeconds }).segments
+      const wanted = [...shotRef.shots].sort().join(',')
       const position = ordered.findIndex(segment => [...segment.shots].sort().join(',') === wanted)
-      if (position > 0 && ordered[position]?.needsTailChain === true) {
-        const before = videoForSegment(document, node.gen.shot.storyboard, ordered[position - 1] as StoryboardSegment)
-        tailChain = adoptedTailOf(document, before)
-        if (tailChain === undefined) {
-          return refused({
-            gate: 'tail_chain',
-            missing: [
-              `${node.id} needs the tail frame of segment ${String(position - 1)}, which has not been generated`,
-            ],
-          })
+      const keyframeSize =
+        spec?.aspect === undefined ? undefined : imagePixelSize(spec.aspect, spec.resolution ?? '')
+      // Keyframes this video consumes: its own segment's, the scene root's when it is not first,
+      // and the next segment's when that segment continues this one.
+      const needed = new Set<number>()
+      if (position >= 0) {
+        needed.add(position)
+        if (position > 0) needed.add(0)
+        const next = ordered[position + 1]
+        if (next?.needsTailChain === true && node.gen.tailChain !== false) needed.add(position + 1)
+      }
+      const keyIds = new Map<number, string>()
+      for (const index of [...needed].sort((a, b) => a - b)) {
+        const segment = ordered[index]
+        if (segment === undefined) continue
+        const covered = shotsOfSegment(boardShots, segment)
+        const existingKey = keyframeForSegment(document, shotRef.storyboard, segment)
+        const videoNode = videoForSegment(document, shotRef.storyboard, segment)
+        const frameSource = videoNode === undefined
+          ? undefined
+          : incoming(document, videoNode.id).find(edge => edge.role === 'first_frame')?.source
+        const frameNode = frameSource === undefined
+          ? undefined
+          : document.nodes.find(candidate => candidate.id === frameSource)
+        const manualFrame =
+          frameNode !== undefined &&
+          !(frameNode.type === 'image' && frameNode.gen?.shot?.storyboard === shotRef.storyboard &&
+            [...frameNode.gen.shot.shots].sort().join(',') === [...segment.shots].sort().join(','))
+        let keyId = ''
+        if (!manualFrame && covered.length > 0) {
+          const prompt = keyframePrompt(covered[0] as Shot, bible)
+          if (existingKey === undefined) {
+            const keyRef = `keyframe-${shotRef.storyboard}-${String(index)}`
+            create.push({
+              op: 'add',
+              ref: keyRef,
+              type: 'image',
+              title: `${board?.title ?? shotRef.storyboard} · 段${String(index + 1)} 分镜图`,
+              gen: {
+                kind: 'image',
+                prompt,
+                model: limits.imageModel,
+                params: keyframeSize === undefined ? {} : { size: keyframeSize },
+                shot: { storyboard: shotRef.storyboard, shots: segment.shots },
+              },
+            })
+            keyId = keyRef
+            const keyAfter = index > 0 && keyIds.get(0) !== undefined ? [keyIds.get(0) as string] : []
+            entries.push({
+              node: keyRef as CanvasNodeId,
+              ref: keyRef,
+              kind: 'image',
+              model: limits.imageModel,
+              calls: 1,
+              lines: 0,
+              storyboard: shotRef.storyboard,
+              ...(keyAfter.length === 0 ? {} : { after: keyAfter }),
+            })
+          } else {
+            keyId = existingKey.id
+            const adopted = hasAdoptedMedia(existingKey)
+            const drift = existingKey.gen?.prompt !== prompt
+            if (drift) edits.push({ op: 'set_gen', node: existingKey.id, gen: { prompt } })
+            if (!adopted || drift) {
+              const keyAfter = index > 0 && keyIds.get(0) !== undefined ? [keyIds.get(0) as string] : []
+              entries.push({
+                node: existingKey.id,
+                kind: 'image',
+                model: existingKey.gen?.model ?? limits.imageModel,
+                calls: 1,
+                lines: 0,
+                storyboard: shotRef.storyboard,
+                ...(keyAfter.length === 0 ? {} : { after: keyAfter }),
+              })
+            }
+          }
+        }
+        keyIds.set(index, keyId)
+        // Edges this keyframe participates in for THIS video only.
+        if (index === position && keyId !== '') {
+          create.push({ op: 'connect', from: keyId, to: node.id, kind: 'reference', role: 'first_frame' })
+          after.push(keyId)
+        }
+        if (index === position + 1 && keyId !== '' && node.gen.tailChain !== false) {
+          create.push({ op: 'connect', from: keyId, to: node.id, kind: 'reference', role: 'last_frame' })
+          after.push(keyId)
+        }
+        if (index > 0 && keyId !== '' && keyIds.get(0) !== undefined && keyIds.get(0) !== '') {
+          create.push({ op: 'connect', from: keyIds.get(0) as string, to: keyId, kind: 'reference', role: 'ref', order: 0 })
         }
       }
     }
@@ -465,7 +710,7 @@ export function planNodes(
       model,
       calls: 1,
       lines: 1,
-      ...(tailChain === undefined ? {} : { chain: true, tailChain }),
+      ...(after.length === 0 ? {} : { after }),
       ...(node.gen.kind === 'video'
         ? { seconds: Number(node.gen.params.duration ?? limits.videoDefaultDuration) }
         : {}),

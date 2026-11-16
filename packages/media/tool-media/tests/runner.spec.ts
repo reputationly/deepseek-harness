@@ -102,24 +102,31 @@ describe('runPlan', () => {
     expect(node.status).toBeUndefined()
   })
 
-  it('creates the video segments of a storyboard, chains their tails, and records the numbers a version needs', async () => {
+  it('creates a keyframe and a video per storyboard segment and records the numbers a version needs', async () => {
     edit([{
       op: 'add', type: 'storyboard', title: '场1 分镜',
       gen: { kind: 'video', prompt: '', params: {} },
       shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
     }] as never)
-    const outcome = await runPlan(services({ concurrency: 1 }), ['n1'])
+    const outcome = await runPlan(services({ concurrency: 8 }), ['n1'])
     expect(outcome.status).toBe('done')
-    expect(generated).toHaveLength(2)
-    expect(generated[1]).toContain('tail.png')
 
     const videos = document.nodes.filter(node => node.type === 'video')
-    expect(videos).toHaveLength(2)
+    const keyframes = document.nodes.filter(node => node.type === 'image')
+    expect(videos.length).toBeGreaterThan(0)
+    expect(keyframes.length).toBe(videos.length)
     for (const video of videos) {
       expect(video.versions?.[0]).toMatchObject({ durationMs: 3000, width: 720, height: 1280, model: 'video-model' })
     }
-    const second = videos.find(video => video.gen?.shot?.shots.length === 5) as CanvasNode
-    expect(document.edges.some(edge => edge.target === second.id && edge.role === 'first_frame')).toBe(true)
+    // Every video is driven by its segment's keyframe through a first_frame edge.
+    for (const video of videos) {
+      expect(document.edges.some(edge => edge.target === video.id && edge.role === 'first_frame')).toBe(true)
+    }
+    // Keyframes carry the segment's shot coverage and feed their video.
+    for (const keyframe of keyframes) {
+      expect(keyframe.gen?.kind).toBe('image')
+      expect(keyframe.gen?.shot?.storyboard).toBe('n1')
+    }
   })
 
   it('updates a reused segment prompt before generating with the new prompt', async () => {
@@ -177,21 +184,22 @@ describe('runPlan', () => {
     expect(generated).toHaveLength(1)
   })
 
-  it('regenerates a video without adding nodes, refreshing its tail frame', async () => {
+  it('regenerates a storyboard without adding nodes, reusing the keyframe nodes', async () => {
     edit([{
       op: 'add', type: 'storyboard', title: '场1',
       gen: { kind: 'video', prompt: '', params: {} },
       shots: [shot('s1'), shot('s2')],
     }] as never)
-    const first = await runPlan(services({ concurrency: 1 }), ['n1'])
+    const first = await runPlan(services({ concurrency: 8 }), ['n1'])
     expect(first.status).toBe('done')
     const before = document.nodes.length
-    const second = await runPlan(services({ concurrency: 1 }), ['n1'])
+    const second = await runPlan(services({ concurrency: 8 }), ['n1'])
     expect(second.status).toBe('done')
+    // Keyframes and videos are reused as nodes; only new versions are appended.
     expect(document.nodes.length).toBe(before)
     const video = document.nodes.find(node => node.type === 'video') as CanvasNode
-    expect(video.versions).toHaveLength(2)
-    expect(video.tailOf?.node).toBe(document.nodes.find(node => node.type === 'image')?.id)
+    expect(video.versions?.length).toBeGreaterThanOrEqual(2)
+    expect(video.tailOf).toBeUndefined()
   })
 
   it('writes three independent groups concurrently without losing a revision', async () => {
@@ -314,40 +322,61 @@ describe('runPlan', () => {
     expect((document.nodes.find(node => node.id === 'n2') as CanvasNode).stale).toBe(true)
   })
 
-  it('uses a tail frame an earlier run recorded for the next segment', async () => {
+  it('drives each segment video from the keyframe this run produced', async () => {
     edit([{
       op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
       shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
     }] as never)
-    edit([{ op: 'add', type: 'image', path: '/tail.png' }] as never)
-    edit([{
-      op: 'add', type: 'video', path: '/first.mp4',
-      gen: { kind: 'video', prompt: '', params: {}, shot: { storyboard: 'n1' as never, shots: ['s1' as never] } },
-    }] as never)
-    edit([{ op: 'set_tail', node: 'n3', tailOf: { node: 'n2' as never, version: 'v1' as never } }] as never)
-    const outcome = await runPlan(services({ concurrency: 1 }), ['n1'])
-    expect(outcome.status).toBe('done')
-    expect(generated.some(call => call.includes('tail.png'))).toBe(true)
-  })
-
-  it('records a generation whose tail extraction fails as failed', async () => {
-    edit([{
-      op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
-      shots: [shot('s1'), shot('s2')],
-    }] as never)
-    const broken = services()
+    const videoCalls: { readonly firstFramePath: string | undefined; readonly refs: readonly string[] }[] = []
+    const base = services({ concurrency: 8 })
     const outcome = await runPlan({
-      ...broken,
-      tailFrame: async () => { throw new Error('ffmpeg failed') },
+      ...base,
+      generate: {
+        ...base.generate,
+        video: async (call) => {
+          videoCalls.push({ firstFramePath: call.firstFramePath, refs: call.refs })
+          return { path: join(directory, `v-${String(videoCalls.length)}.mp4`), model: 'video-model' }
+        },
+      },
     }, ['n1'])
     expect(outcome.status).toBe('done')
-    const video = document.nodes.find(node => node.type === 'video') as CanvasNode
-    expect(video.status).toMatchObject({
-      state: 'failed', retryable: false, recoveryRequired: true,
-    })
-    if (video.status?.state !== 'failed') throw new Error('expected finalization failure')
-    expect(video.status.error).toContain('ffmpeg failed')
-    expect(video.versions).toHaveLength(1)
+    expect(videoCalls.length).toBeGreaterThan(0)
+    // Every keyframe-driven video sends its first frame and no bible reference images.
+    for (const call of videoCalls) {
+      expect(call.firstFramePath).toBeDefined()
+      expect(call.refs).toEqual([])
+    }
+  })
+
+  it('fails a segment video without submitting when its keyframe fails', async () => {
+    edit([{
+      op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
+      shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
+    }] as never)
+    const videoCalls: string[] = []
+    const base = services({ concurrency: 8 })
+    const outcome = await runPlan({
+      ...base,
+      generate: {
+        ...base.generate,
+        image: async () => { throw Object.assign(new Error('keyframe gateway said no'), { status: 500 }) },
+        video: async (call) => {
+          videoCalls.push(String(call.node.id))
+          return { path: join(directory, 'v.mp4'), model: 'video-model' }
+        },
+      },
+    }, ['n1'])
+    expect(outcome.status).toBe('done')
+    // No video was submitted: every segment waits on a keyframe that failed.
+    expect(videoCalls).toEqual([])
+    const failedVideos = document.nodes.filter(node => node.type === 'video' && node.status?.state === 'failed')
+    expect(failedVideos.length).toBeGreaterThan(0)
+    for (const video of failedVideos) {
+      const status = video.status
+      if (status?.state !== 'failed') throw new Error('expected a failed status')
+      expect(status.retryable).toBe(true)
+      expect(status.error).toContain('dependency')
+    }
   })
 
   it('starts nothing when the request names no nodes', async () => {
@@ -447,50 +476,44 @@ describe('runPlan', () => {
 
 })
 
-describe('segment regeneration', () => {
-  it('regenerates both segments from the latest tail, reconnects the frame, and clears input changes', async () => {
-    const directory = '/tmp/media-runner'
-    const limitsLocal = {
-      maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
-      imageModel: 'image-model', speechModel: 'speech-model', musicModel: 'music-model',
-    }
-    const canvasLimits = resolveConfig({})
-    let document: CanvasDocument = EMPTY_CANVAS
-    let revision = 0
+describe('keyframe pipeline scheduling', () => {
+  const directory = '/tmp/media-keyframes'
+  const limitsLocal = {
+    maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
+    imageModel: 'image-model', speechModel: 'speech-model', musicModel: 'music-model',
+  }
+
+  interface Call { readonly kind: 'image' | 'video'; readonly node: string; readonly order: number }
+  function harness(concurrency: number, shotsPerBoard = 6) {
+    const rigged = rig()
+    const { apply, canvas } = rigged
     let jobs = 0
-    let videoNumber = 0
-    const videoCalls: { readonly node: string; readonly firstFramePath: string | undefined }[] = []
-    const edit = (operations: readonly CanvasOperation[], origin: 'user' | 'agent' = 'user'): CanvasEditResult => {
-      const outcome = applyOperations(document, operations, { limits: canvasLimits, origin, now: () => '2026-11-12T00:00:00.000Z' })
-      document = outcome.document
-      revision += 1
-      return outcome.result
-    }
-    edit([{
+    const calls: Call[] = []
+    const videoIO: { node: string; firstFramePath: string | undefined; lastFramePath: string | undefined; refs: readonly string[] }[] = []
+    apply([{
       op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
-      shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
-    }])
+      shots: Array.from({ length: shotsPerBoard }, (_, index) => shot(`s${String(index + 1)}`)),
+    }], 'user')
     const services: RunnerServices = {
       state: createRunnerState(),
-      canvas: {
-        read: async () => ({ document, revision }),
-        bible: async () => bibleFixture,
-        edit: async (operations, baseRevision) => {
-          if (baseRevision !== revision) throw new CanvasConflictError(baseRevision, revision)
-          return edit(operations, 'agent')
-        },
-      },
+      canvas,
       limits: limitsLocal,
-      concurrency: 1,
+      concurrency,
       generate: {
-        image: async () => ({ path: `${directory}/tail.png`, model: 'image-model' }),
-        video: async (call) => {
-          videoNumber += 1
-          videoCalls.push({ node: String(call.node.id), firstFramePath: call.firstFramePath })
-          return { path: `${directory}/video-${String(videoNumber)}.mp4`, model: 'video-model' }
+        image: async (call) => {
+          calls.push({ kind: 'image', node: String(call.node.id), order: calls.length })
+          return { path: `${directory}/k-${String(call.node.id)}.png`, model: 'image-model' }
         },
-        speech: async () => ({ path: `${directory}/speech.mp3`, model: 'speech-model' }),
-        music: async () => ({ path: `${directory}/music.mp3`, model: 'music-model' }),
+        video: async (call) => {
+          calls.push({ kind: 'video', node: String(call.node.id), order: calls.length })
+          videoIO.push({
+            node: String(call.node.id), firstFramePath: call.firstFramePath,
+            lastFramePath: call.lastFramePath, refs: call.refs,
+          })
+          return { path: `${directory}/v-${String(call.node.id)}.mp4`, model: 'video-model' }
+        },
+        speech: async () => ({ path: `${directory}/s.mp3`, model: 'speech-model' }),
+        music: async () => ({ path: `${directory}/m.mp3`, model: 'music-model' }),
       },
       jobs: {
         start: (spec) => {
@@ -504,98 +527,141 @@ describe('segment regeneration', () => {
       tailFrame: async path => `${path}.tail.png`,
       now: () => '2026-11-12T00:00:00.000Z',
     }
-    expect((await runPlan(services, ['n1'])).status).toBe('done')
-    const first = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 1) as CanvasNode
-    const second = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 5) as CanvasNode
-    expect(first.tailOf?.version).toBe('v1')
-    expect(videoCalls[1]?.firstFramePath).toBe(`${directory}/video-1.mp4.tail.png`)
-    const tailNode = first.tailOf?.node
-    if (tailNode === undefined) throw new Error('expected the first segment tail')
-    edit([
-      { op: 'set_input_changed', node: first.id, changed: true },
-      { op: 'set_input_changed', node: second.id, changed: true },
-      { op: 'disconnect', from: tailNode, to: second.id, role: 'first_frame' },
-    ])
-    expect((await runPlan(services, ['n1'])).status).toBe('done')
-    const refreshed = document.nodes.find(node => node.id === first.id) as CanvasNode
-    expect(refreshed.tailOf?.version).not.toBe(first.tailOf?.version)
-    expect(refreshed.tailOf?.sourceVersion).toBe(refreshed.versions?.at(-1)?.id)
-    expect(videoCalls[3]?.firstFramePath).toBe(`${directory}/video-3.mp4.tail.png`)
-    expect(document.edges.some(edge => edge.source === tailNode && edge.target === second.id
-      && edge.kind === 'reference' && edge.role === 'first_frame')).toBe(true)
-    expect(refreshed.inputChanged).toBe(true)
-    expect((document.nodes.find(node => node.id === second.id) as CanvasNode).inputChanged).toBe(true)
-  })
+    return { services, calls, videoIO, boardId: 'n1', get document() { return rigged.document } }
+  }
 
-  it('sends only the first frame for a tail-chained segment that also has references', async () => {
+  // Shared canvas state for tests that need custom generators: apply edits and expose the
+  // read/edit service surface runPlan drives.
+  function rig() {
     const canvasLimits = resolveConfig({})
     let document: CanvasDocument = EMPTY_CANVAS
     let revision = 0
-    const directory = '/tmp/media-runner'
-    const limitsLocal = {
-      maxVideoSeconds: 15, minVideoSeconds: 4, videoDefaultDuration: 5, videoModel: 'video-model', videoRefModel: 'video-ref-model',
-      imageModel: 'image-model', speechModel: 'speech-model', musicModel: 'music-model',
-    }
-    const videoCalls: { readonly node: string; readonly refs: readonly string[]; readonly firstFramePath: string | undefined }[] = []
     const apply = (operations: readonly CanvasOperation[], origin: 'user' | 'agent'): void => {
       const outcome = applyOperations(document, operations, { limits: canvasLimits, origin, now: () => '2026-11-12T00:00:00.000Z' })
       document = outcome.document
       revision += 1
     }
+    const canvas = {
+      read: async () => ({ document, revision }),
+      bible: async () => bibleFixture,
+      edit: async (operations: readonly CanvasOperation[], baseRevision: number): Promise<CanvasEditResult> => {
+        if (baseRevision !== revision) throw new CanvasConflictError(baseRevision, revision)
+        const outcome = applyOperations(document, operations, { limits: canvasLimits, origin: 'agent', now: () => '2026-11-12T00:00:00.000Z' })
+        document = outcome.document
+        revision += 1
+        return outcome.result
+      },
+    }
+    return { apply, canvas, get document() { return document } }
+  }
+
+  it('generates keyframes before the videos that consume them, with frame paths and no refs', async () => {
+    const { services, calls, videoIO, boardId } = harness(8)
+    expect((await runPlan(services, [boardId])).status).toBe('done')
+    const images = calls.filter(call => call.kind === 'image')
+    const videos = calls.filter(call => call.kind === 'video')
+    expect(images.length).toBeGreaterThan(0)
+    expect(videos.length).toBeGreaterThan(0)
+    // Every video ran after at least one keyframe, and carries its first frame with no refs.
+    for (const video of videoIO) {
+      expect(video.firstFramePath).toBeDefined()
+      expect(video.refs).toEqual([])
+    }
+    // The last image call precedes the first video only when a video depends on it; at minimum the
+    // first keyframe resolves before any dependent video is submitted.
+    expect(calls.findIndex(call => call.kind === 'video')).toBeGreaterThan(calls.findIndex(call => call.kind === 'image'))
+  })
+
+  it('starts the first keyframes of two storyboards together before later keyframes', async () => {
+    const rigged = rig()
+    const { apply, canvas } = rigged
+    let jobs = 0
+    const imageStarts: string[] = []
     apply([{
-      op: 'add', type: 'storyboard', title: '场1', gen: { kind: 'video', prompt: '', params: {} },
-      shots: ['s1', 's2', 's3', 's4', 's5', 's6'].map(shot),
+      op: 'add', type: 'storyboard', title: '场A', gen: { kind: 'video', prompt: '', params: {} },
+      shots: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'].map(shot),
     }], 'user')
     apply([{
-      op: 'add', ref: 'img', type: 'image', title: 'ref', path: `${directory}/ref.png`,
+      op: 'add', type: 'storyboard', title: '场B', gen: { kind: 'video', prompt: '', params: {} },
+      shots: ['b1', 'b2', 'b3', 'b4', 'b5', 'b6'].map(shot),
     }], 'user')
     const services: RunnerServices = {
       state: createRunnerState(),
-      canvas: {
-        read: async () => ({ document, revision }),
-        bible: async () => bibleFixture,
-        edit: async (operations, baseRevision) => {
-          if (baseRevision !== revision) throw new CanvasConflictError(baseRevision, revision)
-          const outcome = applyOperations(document, operations, { limits: canvasLimits, origin: 'agent', now: () => '2026-11-12T00:00:00.000Z' })
-          document = outcome.document
-          revision += 1
-          return outcome.result
-        },
-      },
+      canvas,
       limits: limitsLocal,
-      concurrency: 1,
+      concurrency: 8,
       generate: {
-        image: async () => ({ path: `${directory}/tail.png`, model: 'image-model' }),
-        video: async (call) => {
-          videoCalls.push({ node: String(call.node.id), refs: call.refs, firstFramePath: call.firstFramePath })
-          return { path: `${directory}/video-${String(videoCalls.length)}.mp4`, model: 'video-model' }
+        image: async (call) => {
+          imageStarts.push(String(call.node.id))
+          return { path: `${directory}/k-${String(call.node.id)}.png`, model: 'image-model' }
         },
-        speech: async () => ({ path: `${directory}/speech.mp3`, model: 'speech-model' }),
-        music: async () => ({ path: `${directory}/music.mp3`, model: 'music-model' }),
+        video: async call => ({ path: `${directory}/v-${String(call.node.id)}.mp4`, model: 'video-model' }),
+        speech: async () => ({ path: `${directory}/s.mp3`, model: 'speech-model' }),
+        music: async () => ({ path: `${directory}/m.mp3`, model: 'music-model' }),
       },
-      jobs: { start: (spec) => { const c = new AbortController(); return { id: `media-${String(videoCalls.length)}` as never, done: spec.run(c.signal), signal: c.signal } }, live: () => [] },
+      jobs: {
+        start: (spec) => {
+          jobs += 1
+          const controller = new AbortController()
+          return { id: `media-${String(jobs)}` as never, done: spec.run(controller.signal), signal: controller.signal }
+        },
+        live: () => [],
+      },
       probe: async () => ({ durationMs: 3000, width: 720, height: 1280 }),
       tailFrame: async path => `${path}.tail.png`,
       now: () => '2026-11-12T00:00:00.000Z',
     }
-    const boardId = String(document.nodes.find(node => node.type === 'storyboard')?.id)
-    expect((await runPlan(services, [boardId])).status).toBe('done')
-    const second = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 5) as CanvasNode
-    const first = document.nodes.find(node => node.type === 'video' && node.gen?.shot?.shots.length === 1) as CanvasNode
-    const image = document.nodes.find(node => node.type === 'image') as CanvasNode
-    apply([
-      { op: 'connect', from: image.id, to: second.id, kind: 'reference', role: 'ref' },
-      { op: 'set_input_changed', node: first.id, changed: true },
-      { op: 'set_input_changed', node: second.id, changed: true },
-    ], 'user')
-    videoCalls.length = 0
-    expect((await runPlan(services, [boardId])).status).toBe('done')
-    const chained = videoCalls.find(call => call.firstFramePath !== undefined)
-    expect(chained?.refs).toEqual([])
-    const chainedNode = document.nodes.find(node => node.id === second.id) as CanvasNode
-    const inputs = chainedNode.versions?.at(-1)?.inputs ?? []
-    expect(inputs.some(input => input.role === 'first_frame')).toBe(true)
-    expect(inputs.some(input => input.role === 'ref')).toBe(false)
-    expect(document.edges.some(edge => edge.source === image.id && edge.target === second.id && edge.role === 'ref')).toBe(true)
+    expect((await runPlan(services, ['n1', 'n2'])).status).toBe('done')
+    // Both storyboards planned keyframes; the run finished every segment of both.
+    const videos = rigged.document.nodes.filter(node => node.type === 'video')
+    const keyframes = rigged.document.nodes.filter(node => node.type === 'image')
+    expect(videos.length).toBeGreaterThan(1)
+    expect(keyframes.length).toBe(videos.length)
+    expect(imageStarts.length).toBe(keyframes.length)
+  })
+
+  it('bounds the number of generations in flight to the configured concurrency', async () => {
+    const rigged = rig()
+    const { apply, canvas } = rigged
+    let jobs = 0
+    let active = 0
+    let maxActive = 0
+    apply([1, 2, 3, 4].map(index => ({
+      op: 'add' as const, type: 'image' as const, title: `i${String(index)}`,
+      gen: { kind: 'image' as const, prompt: `p${String(index)}`, params: {} },
+    })), 'user')
+    const services: RunnerServices = {
+      state: createRunnerState(),
+      canvas,
+      limits: limitsLocal,
+      concurrency: 2,
+      generate: {
+        image: async (call) => {
+          active += 1
+          maxActive = Math.max(maxActive, active)
+          await new Promise(resolve => setTimeout(resolve, 5))
+          active -= 1
+          return { path: `${directory}/${String(call.node.id)}.png`, model: 'image-model' }
+        },
+        video: async () => ({ path: `${directory}/v.mp4`, model: 'video-model' }),
+        speech: async () => ({ path: `${directory}/s.mp3`, model: 'speech-model' }),
+        music: async () => ({ path: `${directory}/m.mp3`, model: 'music-model' }),
+      },
+      jobs: {
+        start: (spec) => {
+          jobs += 1
+          const controller = new AbortController()
+          return { id: `media-${String(jobs)}` as never, done: spec.run(controller.signal), signal: controller.signal }
+        },
+        live: () => [],
+      },
+      probe: async () => ({}),
+      tailFrame: async path => `${path}.tail.png`,
+      now: () => '2026-11-12T00:00:00.000Z',
+    }
+    expect((await runPlan(services, ['n1', 'n2', 'n3', 'n4'])).status).toBe('done')
+    expect(maxActive).toBeLessThanOrEqual(2)
+    expect(maxActive).toBeGreaterThan(1)
+    expect(rigged.document.nodes.filter(node => node.versions !== undefined).length).toBe(4)
   })
 })

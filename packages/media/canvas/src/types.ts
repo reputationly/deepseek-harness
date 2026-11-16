@@ -20,7 +20,7 @@ export type CanvasNodeId = Branded<'CanvasNodeId'>
 export type StageId = 'brief' | 'bible' | 'assets' | 'script' | 'storyboard' | 'generating' | 'post' | 'delivered'
 
 /** A check that must pass before a stage advances or a generation runs. */
-export type GateId = 'G1_bible_first' | 'G2_storyboard_quality' | 'G3_one_video_per_shots' | 'G4_stage_order' | 'G5_destructive' | 'tail_chain'
+export type GateId = 'G1_bible_first' | 'G2_storyboard_quality' | 'G3_one_video_per_shots' | 'G4_stage_order' | 'G5_destructive'
 
 /** One stage record of an episode, with the gate overrides a user granted. */
 export interface EpisodeProduction {
@@ -135,11 +135,11 @@ export interface GenerationSpec {
   readonly model?: string
   /** Parameters as the capability catalog names them. */
   readonly params: Readonly<Record<string, string | number | boolean>>
-  /** Which shots of which storyboard this video stands for. */
+  /** Which shots of which storyboard this node stands for: a segment's video, or the keyframe image that opens it. */
   readonly shot?: { readonly storyboard: CanvasNodeId; readonly shots: readonly ShotId[] }
   /** Which line of which shot this audio voices. */
   readonly dialogue?: { readonly storyboard: CanvasNodeId; readonly shot: ShotId; readonly line: DialogueId }
-  /** `false` opts this segment out of tail-frame chaining; absent means chain when the segment asks for it. */
+  /** `false` keeps the next segment's keyframe out of this segment's last-frame slot; absent means use it when the segment continues. */
   readonly tailChain?: boolean
 }
 
@@ -291,7 +291,7 @@ export interface StoryboardSegment {
   readonly durationSec: number
   readonly kind: 'opening' | 'continuation' | 'scene_change' | 'new_character' | 'closeup'
   readonly join: 'strict' | 'loose' | 'cut'
-  /** Whether the segment takes the previous segment's tail frame as its first frame. */
+  /** Whether the segment continues the previous picture; the previous video then takes this segment's keyframe as its last frame. */
   readonly needsTailChain: boolean
 }
 

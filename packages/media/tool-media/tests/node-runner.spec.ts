@@ -182,36 +182,47 @@ describe('input edge edge cases', () => {
 })
 
 describe('planNodes', () => {
-  it('plans one video per segment and creates the missing nodes', () => {
+  it('plans one keyframe and one video per segment and creates the missing nodes', () => {
     const board = boardNode('n2', ['s1', 's2', 's3', 's4', 's5'].map(shotId => shot(shotId)))
-    const plan = planNodes(documentOf([board]), bible, ['n2'], limits)
+    const plan = planNodes(documentOf([board]), bible, ['n2'], limits, { aspect: '9:16', resolution: '1K' })
     expect(plan.blocked).toBeUndefined()
+    // One segment: the video entry then its keyframe entry.
     expect(plan.entries.map(entry => [entry.kind, entry.seconds, entry.model, entry.shots?.length])).toEqual([
-      ['video', 15, 'video-ref-model', 5],
+      ['video', 15, 'video-model', 5],
+      ['image', undefined, 'image-model', undefined],
     ])
-    expect(plan.create).toHaveLength(1)
-    expect(plan.create[0]).toMatchObject({ op: 'add', type: 'video', title: 'n2 · 段1', gen: { kind: 'video', shot: { storyboard: 'n2' } } })
+    const adds = plan.create.filter(op => op.op === 'add')
+    expect(adds).toHaveLength(2)
+    expect(adds[0]).toMatchObject({
+      op: 'add', type: 'image', title: 'n2 · 段1 分镜图',
+      gen: { kind: 'image', model: 'image-model', params: { size: '1024x1824' }, shot: { storyboard: 'n2' } },
+    })
+    expect(adds[1]).toMatchObject({ op: 'add', type: 'video', title: 'n2 · 段1', gen: { kind: 'video', shot: { storyboard: 'n2' } } })
+    expect(plan.create).toContainEqual({ op: 'connect', from: 'keyframe-n2-0', to: 'segment-n2-0', kind: 'reference', role: 'first_frame' })
     expect(plan.segments).toEqual([{ storyboard: 'n2', index: 0, shots: ['s1', 's2', 's3', 's4', 's5'] }])
   })
 
   it('raises a sub-minimum segment to the shortest requested clip', () => {
     const board = boardNode('n2', [shot('s1')])
     const plan = planNodes(documentOf([board]), bible, ['n2'], limits)
-    expect(plan.entries.map(entry => entry.seconds)).toEqual([4])
-    expect(plan.create[0]).toMatchObject({ gen: { params: { duration: 4 } } })
+    const video = plan.entries.find(entry => entry.kind === 'video')
+    expect(video?.seconds).toBe(4)
+    expect(plan.create.find(op => op.op === 'add' && op.type === 'video')).toMatchObject({ gen: { params: { duration: 4 } } })
   })
 
   it('keeps a sub-minimum segment when the configured floor is lower', () => {
     const board = boardNode('n2', [shot('s1')])
     const plan = planNodes(documentOf([board]), bible, ['n2'], { ...limits, minVideoSeconds: 2 })
-    expect(plan.entries.map(entry => entry.seconds)).toEqual([3])
-    expect(plan.create[0]).toMatchObject({ gen: { params: { duration: 3 } } })
+    const video = plan.entries.find(entry => entry.kind === 'video')
+    expect(video?.seconds).toBe(3)
+    expect(plan.create.find(op => op.op === 'add' && op.type === 'video')).toMatchObject({ gen: { params: { duration: 3 } } })
   })
 
   it('still caps an over-long segment at the maximum', () => {
     const board = boardNode('n2', [shot('s1', { durationSec: 20 })])
     const plan = planNodes(documentOf([board]), bible, ['n2'], limits)
-    expect(plan.entries.map(entry => entry.seconds)).toEqual([15])
+    const video = plan.entries.find(entry => entry.kind === 'video')
+    expect(video?.seconds).toBe(15)
   })
 
   it('reuses the video node that already covers a segment and marks the others stale', () => {
@@ -225,8 +236,7 @@ describe('planNodes', () => {
       activeVersion: 'v1' as never,
     })
     const plan = planNodes(documentOf([board, existing, orphan]), bible, ['n2'], limits)
-    expect(plan.entries.map(entry => entry.node)).toEqual(['v1'])
-    expect(plan.create).toEqual([])
+    expect(plan.entries.filter(entry => entry.kind === 'video').map(entry => entry.node)).toEqual(['v1'])
     expect(plan.stale).toEqual(['v2'])
   })
 
@@ -313,7 +323,7 @@ describe('planNodes', () => {
     expect(plan.segments).toEqual([])
   })
 
-  it('chains the second segment from an existing tail frame and picks the frame model', () => {
+  it('fans a scene out from its first keyframe and gives continuous segments a last frame', () => {
     const board = node('n2', 'storyboard', {
       versions: [{
         id: 'v1' as never, createdAt: 'now', origin: 'user',
@@ -321,16 +331,36 @@ describe('planNodes', () => {
       }],
       activeVersion: 'v1' as never,
     })
-    const first = videoNode('v1', 'n2', ['s1'], {
-      versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
-      activeVersion: 'v1' as never,
-      tailOf: { node: 't1' as never, version: 'v1' as never, sourceVersion: 'v1' as never },
-    })
-    const plan = planNodes(documentOf([board, first, imageNode('t1', '/tail.png')]), bible, ['n2'], limits)
-    expect(plan.entries.map(entry => [entry.node, entry.model, entry.tailChain?.node])).toEqual([
-      ['v1', 'video-ref-model', undefined],
-      ['segment-1', 'video-model', 't1'],
-    ])
+    const tight = { ...limits, maxVideoSeconds: 9 }
+    const plan = planNodes(documentOf([board]), bible, ['n2'], tight)
+    const count = plan.segments.length
+    expect(count).toBeGreaterThan(1)
+    const videos = plan.entries.filter(entry => entry.kind === 'video')
+    const images = plan.entries.filter(entry => entry.kind === 'image')
+    expect(videos).toHaveLength(count)
+    expect(images).toHaveLength(count)
+    expect(videos.every(entry => entry.model === 'video-model')).toBe(true)
+    expect(images.every(entry => entry.model === 'image-model')).toBe(true)
+    // Every keyframe after the first waits on the scene's first keyframe; every video waits on
+    // its own keyframe, plus the next keyframe when that segment continues this one.
+    const keyIds = images.map(entry => entry.ref ?? entry.node)
+    expect(images[0]?.after).toBeUndefined()
+    for (const [index, image] of images.entries()) {
+      if (index > 0) expect(image.after).toEqual([keyIds[0]])
+    }
+    const videoAfter = videos.map(entry => entry.after ?? [])
+    expect(videoAfter.every(after => after.length >= 1)).toBe(true)
+    // Edges: one ref into each later keyframe, one first_frame into each video, and a last_frame
+    // into each video whose next segment continues it.
+    const connects = plan.create.filter(op => op.op === 'connect')
+    expect(connects.filter(op => op.role === 'ref')).toHaveLength(count - 1)
+    expect(connects.filter(op => op.role === 'first_frame')).toHaveLength(count)
+    const lastFrames = connects.filter(op => op.role === 'last_frame')
+    // A video carries a last frame exactly when its `after` lists its own keyframe plus the next one.
+    const withLastFrame = videos.filter(entry => (entry.after ?? []).length === 2).length
+    expect(lastFrames).toHaveLength(withLastFrame)
+    // No video carries bible reference edges.
+    expect(connects.some(op => op.role === 'ref' && op.to.includes('segment-'))).toBe(false)
   })
 
   it('accepts a prompt that mentions entries when the bible exists', () => {
@@ -353,17 +383,19 @@ describe('planNodes', () => {
     })
   })
 
-  it('lets a later video generate when the segment before it already has a tail', () => {
+  it('plans the missing keyframes when a single segment video regenerates', () => {
     const board = boardNode('n2', ['s1', 's2', 's3', 's4', 's5', 's6'].map(shotId => shot(shotId)))
-    const first = videoNode('v1', 'n2', ['s1'], {
-      versions: [{ id: 'v1' as never, path: '/a.mp4', createdAt: 'now', origin: 'user' }],
-      activeVersion: 'v1' as never,
-      tailOf: { node: 't1' as never, version: 'v1' as never, sourceVersion: 'v1' as never },
-    })
-    const later = videoNode('v9', 'n2', ['s2', 's3', 's4', 's5', 's6'])
-    const plan = planNodes(documentOf([board, first, later, imageNode('t1', '/tail.png')]), bible, ['v9'], limits)
+    // Six 3s shots at the default 15s cap make one segment; force two segments with a lower cap.
+    const tight = { ...limits, maxVideoSeconds: 9 }
+    const later = videoNode('v9', 'n2', ['s4', 's5', 's6'])
+    const plan = planNodes(documentOf([board, later]), bible, ['v9'], tight)
     expect(plan.blocked).toBeUndefined()
-    expect(plan.entries[0]?.tailChain?.node).toBe('t1')
+    // The second segment's video needs its own keyframe, the scene's first keyframe, and—because
+    // segment 2 continues segment 1—the next segment does not exist so no last frame is planned.
+    const images = plan.entries.filter(entry => entry.kind === 'image')
+    expect(images.length).toBeGreaterThan(0)
+    const video = plan.entries.find(entry => entry.kind === 'video' && entry.node === 'v9')
+    expect(video?.after?.length).toBeGreaterThan(0)
   })
 
   it('refuses a video whose storyboard is missing when it must chain', () => {

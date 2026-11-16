@@ -828,7 +828,7 @@ export function registerCanvasTools(ctx: Context, canvas: CanvasService): void {
     parameters: {
       action: { type: 'string', required: true, enum: ['status', 'advance'], description: 'status reports the stage; advance moves it.' },
       to: { type: 'string', enum: ['brief', 'bible', 'assets', 'script', 'storyboard', 'generating', 'post', 'delivered'], description: 'Stage to advance to.' },
-      gate: { type: 'string', enum: ['G1_bible_first', 'G2_storyboard_quality', 'G3_one_video_per_shots', 'G4_stage_order', 'G5_destructive', 'tail_chain'], description: 'Gate to record as overridden when the stage move needs one.' },
+      gate: { type: 'string', enum: ['G1_bible_first', 'G2_storyboard_quality', 'G3_one_video_per_shots', 'G4_stage_order', 'G5_destructive'], description: 'Gate to record as overridden when the stage move needs one.' },
       reason: { type: 'string', description: 'Why the override is acceptable; recorded with the gate.' },
       baseRevision: { type: 'integer', description: 'Production revision the caller read; a stale one is refused.' },
     },

@@ -101,7 +101,7 @@ export function createMediaRuntime(deps: MediaRuntimeDeps): MediaRuntime {
         const services = await runnerServicesOf(deps.canvasOf, deps.tools, session, scope?.episode, scope?.directory)
         const loaded = await services.canvas.read()
         const bible = await services.canvas.bible()
-        return blockedView(planNodes(loaded.document, bible, nodes.slice(), deps.tools.limits))
+        return blockedView(planNodes(loaded.document, bible, nodes.slice(), deps.tools.limits, services.spec))
       }),
     generate: (session, nodes, scope) =>
       request(async () => {

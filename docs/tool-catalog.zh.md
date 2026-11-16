@@ -3415,8 +3415,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
         "G2_storyboard_quality",
         "G3_one_video_per_shots",
         "G4_stage_order",
-        "G5_destructive",
-        "tail_chain"
+        "G5_destructive"
       ]
     },
     "reason": {

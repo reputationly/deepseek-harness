@@ -394,7 +394,7 @@
     },
     {
       "name": "canvas_generate",
-      "description": "Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one video node per segment. A large plan returns needs_confirmation with a token; show the totals to the user and call again with that token once they agree.",
+      "description": "Generate the media of the given canvas nodes and add a new version to each. One storyboard becomes one keyframe image per segment, then one video node per segment driven by those keyframes.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -404,10 +404,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "confirmToken": {
-            "type": "string",
-            "description": "Token from a previous needs_confirmation result, after the user agreed."
           }
         },
         "required": [
@@ -980,7 +976,7 @@
     },
     {
       "name": "storyboard_voice",
-      "description": "Create one audio node per spoken line of the given storyboards and synthesize them, reusing nodes that already voice a line. Returns needs_confirmation with a token when the line count crosses the deployment limit.",
+      "description": "Create one audio node per spoken line of the given storyboards and synthesize them, reusing nodes that already voice a line.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -990,10 +986,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "confirmToken": {
-            "type": "string",
-            "description": "Token from a previous needs_confirmation result, after the user agreed."
           }
         },
         "required": [
@@ -1267,8 +1259,7 @@
               "G2_storyboard_quality",
               "G3_one_video_per_shots",
               "G4_stage_order",
-              "G5_destructive",
-              "tail_chain"
+              "G5_destructive"
             ]
           },
           "reason": {

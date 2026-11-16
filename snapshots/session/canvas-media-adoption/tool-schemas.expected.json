@@ -917,8 +917,7 @@
               "G2_storyboard_quality",
               "G3_one_video_per_shots",
               "G4_stage_order",
-              "G5_destructive",
-              "tail_chain"
+              "G5_destructive"
             ]
           },
           "reason": {

@@ -29,6 +29,8 @@ import { MediaGatewayError, MediaSubmissionRejectedError, MediaTaskFailedError }
 export interface MediaRunnerState {
   readonly liveAttempts: Set<string>
   readonly recovering: Map<string, Promise<readonly RecoveryJob[]>>
+  /** Serializes canvas edits so parallel generations cannot lose revision races to each other. */
+  editChain: Promise<void>
 }
 
 /** An existing paid attempt admitted for reconciliation, never a new submission. */
@@ -42,7 +44,7 @@ interface RecoveryJob {
  * @returns coordination shared by its Agent, Remote, and canvas-open entry points.
  */
 export function createRunnerState(): MediaRunnerState {
-  return { liveAttempts: new Set(), recovering: new Map() }
+  return { liveAttempts: new Set(), recovering: new Map(), editChain: Promise.resolve() }
 }
 
 class SubmissionUnknownError extends Error {}
@@ -215,14 +217,23 @@ async function editLatest(
   services: RunnerServices,
   operations: readonly CanvasOperation[] | ((document: CanvasDocument) => readonly CanvasOperation[]),
 ): Promise<CanvasEditResult> {
-  for (let attempt = 0; ; attempt += 1) {
-    const { document, revision } = await services.canvas.read()
-    try {
-      return await services.canvas.edit(typeof operations === 'function' ? operations(document) : operations, revision)
-    } catch (error: unknown) {
-      if (!(error instanceof CanvasConflictError) || attempt >= 4) throw error
+  // Parallel generations would otherwise lose revision races to each other; run edits one at a time.
+  const run = async (): Promise<CanvasEditResult> => {
+    for (let attempt = 0; ; attempt += 1) {
+      const { document, revision } = await services.canvas.read()
+      try {
+        return await services.canvas.edit(typeof operations === 'function' ? operations(document) : operations, revision)
+      } catch (error: unknown) {
+        if (!(error instanceof CanvasConflictError) || attempt >= 4) throw error
+      }
     }
   }
+  const result = services.state.editChain.then(run, run)
+  services.state.editChain = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
 }
 
 /** Mark a node's status through the retrying editor. */
@@ -415,15 +426,6 @@ async function recoverMedia(services: RunnerServices): Promise<readonly Recovery
             await journal.write(checkpoint)
             const probe = node.type === 'video' ? await services.probe(media.path) : {}
             await attachCheckpoint(services, checkpoint, { ...media, ...probe })
-            if (node.type === 'video')
-              await recordTail(
-                services,
-                node.id,
-                node.title,
-                media.path,
-                brandString<VersionId>(`media-${checkpoint.id}`),
-                node.tailOf,
-              )
             await finishCheckpoint(services, checkpoint)
             await journal.remove(saved.id)
             return media
@@ -574,7 +576,7 @@ export async function startPlan(
   const recovered = await recoverInterrupted(services)
   const loaded = await services.canvas.read()
   const bible = await services.canvas.bible()
-  const proposed = planNodes(loaded.document, bible, requested, services.limits)
+  const proposed = planNodes(loaded.document, bible, requested, services.limits, services.spec)
   const selectedRecovery = recovered.filter(
     item => requested.includes(item.node) || proposed.entries.some(entry => entry.node === item.node),
   )
@@ -613,12 +615,28 @@ export async function startPlan(
   ]
   const refs = edits.length === 0 ? {} : (await editLatest(services, edits)).refs
   const entries = plan.entries.map(entry => ({ entry, node: nodeIdOf(entry, refs) }))
-  const groups = new Map<string, typeof entries>()
-  for (const item of entries) {
-    const key =
-      item.entry.storyboard === undefined ? `node:${String(item.node)}` : `board:${String(item.entry.storyboard)}`
-    groups.set(key, [...(groups.get(key) ?? []), item])
-  }
+  // Versions this run produces, keyed by node; a dependent reads these instead of an active version
+  // that adoption has not selected yet.
+  const produced = new Map<CanvasNodeId, { readonly version: VersionId; readonly path: string }>()
+
+  // Dependency graph over this run's entries: an `after` key is a plan ref or a node id; it is a
+  // real dependency only when it names a node this run generates. Reused/adopted nodes satisfy it.
+  const nodeToIndex = new Map<CanvasNodeId, number>()
+  entries.forEach((item, index) => {
+    nodeToIndex.set(item.node, index)
+  })
+  const depIdxs: Set<number>[] = entries.map(() => new Set())
+  const dependents: Set<number>[] = entries.map(() => new Set())
+  entries.forEach((item, index) => {
+    for (const key of item.entry.after ?? []) {
+      const depNode = (refs[key] ?? key) as CanvasNodeId
+      const depIndex = nodeToIndex.get(depNode)
+      if (depIndex !== undefined && depIndex !== index) {
+        depIdxs[index]?.add(depIndex)
+        dependents[depIndex]?.add(index)
+      }
+    }
+  })
 
   const jobs = selectedRecovery.map(item => ({ node: item.node, jobId: item.job.id }))
   const results: NodeRunResult[] = []
@@ -649,68 +667,17 @@ export async function startPlan(
   /** Prepare one entry, start its job, and start recording what it produces. */
   const startEntry = async (
     item: (typeof entries)[number],
-    previousTail: NodeInput | undefined,
+    ready: Promise<void>,
   ): Promise<{
     readonly jobId: JobId
     readonly done: Promise<GeneratedMedia>
-    readonly recorded: Promise<{ readonly tail?: NodeInput; readonly failed?: boolean }>
+    readonly recorded: Promise<{ readonly failed?: boolean; readonly error?: string }>
   }> => {
     const { entry, node } = item
     const document = (await services.canvas.read()).document
     const current = document.nodes.find(candidate => candidate.id === node)
     /* v8 ignore next -- the plan created or found this node in the same run */
     if (current === undefined) throw new Error(`node ${String(node)} disappeared before it could generate`)
-    const plannedTail =
-      entry.tailChain === undefined
-        ? undefined
-        : document.nodes
-          .find(candidate => candidate.id === entry.tailChain?.node)
-          ?.versions?.find(version => version.id === entry.tailChain?.version)
-    const chainedTail =
-      entry.chain !== true
-        ? undefined
-        : (previousTail ??
-          (entry.tailChain === undefined || plannedTail?.path === undefined
-            ? undefined
-            : { node: entry.tailChain.node, version: entry.tailChain.version, path: plannedTail.path }))
-    const inputs = collectInputs(
-      document,
-      current,
-      bible,
-      chainedTail === undefined ? undefined : { ...chainedTail, role: 'first_frame' },
-    )
-    const firstFramePath = chainedTail?.path ?? inputs.firstFrame?.path
-    if (
-      chainedTail !== undefined &&
-      !document.edges.some(
-        edge =>
-          edge.source === chainedTail.node &&
-          edge.target === node &&
-          edge.kind === 'reference' &&
-          edge.role === 'first_frame',
-      )
-    ) {
-      await editLatest(services, [
-        { op: 'connect', from: chainedTail.node, to: node, kind: 'reference', role: 'first_frame' },
-      ])
-    }
-    const missingRefs = inputs.refs.filter(
-      ref => !document.edges.some(edge => edge.source === ref.node && edge.target === node && edge.role === 'ref'),
-    )
-    /* v8 ignore next -- every reference the plan found is not connected yet on a first run */
-    if (missingRefs.length > 0) {
-      await editLatest(
-        services,
-        missingRefs.map((ref, order) => ({
-          op: 'connect' as const,
-          from: ref.node,
-          to: node,
-          kind: 'reference' as const,
-          role: 'ref' as const,
-          order,
-        })),
-      )
-    }
     let checkpoint: MediaCheckpoint = {
       version: 1,
       id: brandString<MediaAttemptId>(randomUUID()),
@@ -721,36 +688,65 @@ export async function startPlan(
       versionBody: {
         createdAt: services.now(),
         origin: 'agent',
-        prompt: inputs.prompt,
         model: entry.model,
         params: { ...current.gen?.params, ...(entry.seconds === undefined ? {} : { duration: entry.seconds }) },
-        inputs: inputsOf(chainedTail === undefined ? inputs : { ...inputs, refs: [] }),
       },
     }
     services.state.liveAttempts.add(checkpoint.id)
     const admission = Promise.withResolvers<void>()
-    let completedTail: NodeInput | undefined
     const job = startCheckpointJob(services, checkpoint, {
       label: current.title,
       run: async (signal) => {
         let acquired = false
         try {
           await admission.promise
+          // Dependencies must succeed first: this is where a dependent consumes the versions the
+          // current run produced, never the possibly-unadopted active version.
+          await ready
           await acquire()
           acquired = true
           signal.throwIfAborted()
+          const latest = (await services.canvas.read()).document
+          const latestNode = latest.nodes.find(candidate => candidate.id === node)
+          /* v8 ignore next -- the node was found in the same run's document */
+          if (latestNode === undefined) throw new Error(`node ${String(node)} disappeared before it could generate`)
+          const inputs = collectInputs(latest, latestNode, bible, produced)
+          const missingRefs = inputs.refs.filter(
+            ref => !latest.edges.some(edge => edge.source === ref.node && edge.target === node && edge.role === 'ref'),
+          )
+          if (missingRefs.length > 0) {
+            await editLatest(
+              services,
+              missingRefs.map((ref, order) => ({
+                op: 'connect' as const,
+                from: ref.node,
+                to: node,
+                kind: 'reference' as const,
+                role: 'ref' as const,
+                order,
+              })),
+            )
+          }
+          checkpoint = {
+            ...checkpoint,
+            versionBody: {
+              ...checkpoint.versionBody,
+              prompt: inputs.prompt,
+              inputs: inputsOf(inputs),
+            },
+          }
           checkpoint = { ...checkpoint, state: 'running' }
           await services.journal?.write(checkpoint)
           await markCheckpointRunning(services, checkpoint, job.id)
           const media = await generate(
             services,
-            current,
+            latestNode,
             entry,
             {
               prompt: inputs.prompt,
-              refs: chainedTail === undefined ? inputs.refs.map(ref => ref.path) : [],
+              refs: inputs.refs.map(ref => ref.path),
               audioReferences: inputs.audio.map(ref => ref.path),
-              ...(firstFramePath === undefined ? {} : { firstFramePath }),
+              ...(inputs.firstFrame === undefined ? {} : { firstFramePath: inputs.firstFrame.path }),
               ...(inputs.lastFrame === undefined ? {} : { lastFramePath: inputs.lastFrame.path }),
               onSubmitting: async (input) => {
                 const submitting = {
@@ -776,18 +772,9 @@ export async function startPlan(
           checkpoint = { ...checkpoint, state: 'produced', media }
           await services.journal?.write(checkpoint)
           const probe =
-            media.durationMs === undefined && current.type === 'video' ? await services.probe(media.path) : {}
+            media.durationMs === undefined && latestNode.type === 'video' ? await services.probe(media.path) : {}
           await attachCheckpoint(services, checkpoint, { ...media, ...probe })
-          if (current.type === 'video') {
-            completedTail = await recordTail(
-              services,
-              node,
-              current.title,
-              media.path,
-              brandString<VersionId>(`media-${checkpoint.id}`),
-              current.tailOf,
-            )
-          }
+          produced.set(node, { version: brandString<VersionId>(`media-${checkpoint.id}`), path: media.path })
           await finishCheckpoint(services, checkpoint)
           await services.journal?.remove(checkpoint.id)
           return media
@@ -817,12 +804,12 @@ export async function startPlan(
     const recorded = job.done.then(
       (media) => {
         results.push({ node, ok: true, jobId: job.id, path: media.path })
-        return completedTail === undefined ? {} : { tail: completedTail }
+        return {}
       },
       (error: unknown) => {
         const failure = retryableOf(error, job.signal)
         results.push({ node, ok: false, jobId: job.id, ...failure })
-        return { failed: true }
+        return { failed: true, error: failure.error }
       },
     )
     try {
@@ -840,42 +827,42 @@ export async function startPlan(
     return { jobId: job.id, done: job.done, recorded }
   }
 
-  // Register the first job of every group before returning, then let the rest follow their group.
-  let noteFirstJob: () => void
-  const firstJobStarted = new Promise<void>((resolve) => {
-    let pending = groups.size
-    noteFirstJob = () => {
-      pending -= 1
-      if (pending === 0) resolve()
-    }
-  })
-  /** Run one storyboard's segments in order, chaining each tail into the next segment. */
-  const runGroup = async (group: typeof entries): Promise<void> => {
-    let previousTail: NodeInput | undefined
-    for (const [index, item] of group.entries()) {
-      try {
-        const startedEntry = await startEntry(item, previousTail)
-        if (index === 0) noteFirstJob()
-        const outcome = await startedEntry.recorded
-        previousTail = outcome.tail ?? previousTail
-        if (outcome.failed === true) break
-      } catch (error: unknown) {
-        const failure = retryableOf(error, new AbortController().signal)
-        await editLatest(services, (document) => {
-          const node = document.nodes.find(candidate => candidate.id === item.node)
-          return node === undefined || node.status?.state === 'running' || node.status?.state === 'queued'
-            ? []
-            : [{ op: 'set_status', node: item.node, status: { state: 'failed', at: services.now(), ...failure } }]
-        })
-        results.push({ node: item.node, ok: false, ...failure })
-        /* v8 ignore next -- a later segment cannot fail before its group's first job was registered */
-        if (index === 0) noteFirstJob()
+  // Register every entry's job up front, then release each as its dependencies succeed. A failed
+  // dependency rejects its dependents' gates so they fail without ever submitting a paid request.
+  const gates = entries.map(() => Promise.withResolvers<void>())
+  const remaining = depIdxs.map(deps => deps.size)
+  const releaseDependents = (index: number, ok: boolean, error?: string): void => {
+    for (const dependent of dependents[index] ?? []) {
+      if (ok) {
+        remaining[dependent] = (remaining[dependent] ?? 0) - 1
+        if (remaining[dependent] === 0) gates[dependent]?.resolve()
+      } else {
+        gates[dependent]?.reject(
+          Object.assign(new Error(`dependency ${String(entries[index]?.node)} failed${error === undefined ? '' : `: ${error}`}`), {
+            retryable: true,
+          }),
+        )
       }
     }
   }
-  const groupTasks = [...groups.values()].map(group => runGroup(group))
-  const settle = Promise.all([...groupTasks, ...recoveredTasks]).then(() => results)
-  if (groups.size > 0) await firstJobStarted
+  const started = entries.map((item, index) =>
+    startEntry(item, gates[index]?.promise ?? Promise.resolve()).then((handle) => {
+      void handle.recorded.then((outcome) => {
+        releaseDependents(index, outcome.failed !== true, outcome.error)
+      })
+      return handle
+    }),
+  )
+  // Entries with no in-run dependencies are ready at once.
+  entries.forEach((_, index) => {
+    if ((depIdxs[index]?.size ?? 0) === 0) gates[index]?.resolve()
+  })
+  const settle = Promise.all([...started.map(handle => handle.then(started => started.recorded)), ...recoveredTasks]).then(
+    () => results,
+  )
+  // startPlan returns once every job is registered; registration is synchronous inside startEntry
+  // up to the first await, so awaiting all started handles guarantees the jobs list is complete.
+  await Promise.all(started)
   return { status: 'started', plan, jobs, settle }
 }
 
@@ -925,73 +912,4 @@ async function generate(
   if (entry.kind === 'video') return services.generate.video(call)
   if (entry.kind === 'speech') return services.generate.speech(call)
   return services.generate.music(call)
-}
-
-/** Store the last frame of a finished video and point the video at the new frame version. */
-async function recordTail(
-  services: RunnerServices,
-  video: CanvasNodeId,
-  title: string,
-  path: string,
-  sourceVersion: VersionId,
-  existing: { readonly node: CanvasNodeId; readonly version: NodeInput['version'] } | undefined,
-): Promise<NodeInput | undefined> {
-  const document = (await services.canvas.read()).document
-  const frame =
-    document.nodes.find(candidate => candidate.id === existing?.node) ??
-    document.nodes.find(
-      candidate =>
-        candidate.type === 'image' &&
-        candidate.versions?.some(
-          version =>
-            version.inputs?.some(input => input.node === video && input.version === sourceVersion) === true,
-        ) === true &&
-        document.edges.some(
-          edge => edge.kind === 'derivation' && edge.source === video && edge.target === candidate.id,
-        ),
-    )
-  const captured = frame?.versions?.find(
-    version =>
-      version.path !== undefined &&
-      version.inputs?.some(input => input.node === video && input.version === sourceVersion) === true,
-  )
-  const tailPath = captured?.path ?? (await services.tailFrame(path))
-  const inputs: readonly NodeInput[] = [{ node: video, version: sourceVersion, path, role: 'source' }]
-  const record = async (node: CanvasNodeId, version: VersionId): Promise<NodeInput> => {
-    await editLatest(services, (document) => {
-      const source = document.nodes.find(node => node.id === video)
-      return source === undefined || (source.activeVersion !== undefined && source.activeVersion !== sourceVersion)
-        ? []
-        : [{ op: 'set_tail', node: video, tailOf: { node, version, sourceVersion } }]
-    })
-    return { node, version, path: tailPath, role: 'first_frame' }
-  }
-  if (frame !== undefined) {
-    const matching = frame.versions?.find(
-      version =>
-        version.path === tailPath &&
-        version.inputs?.some(input => input.node === video && input.version === sourceVersion) === true,
-    )
-    const version = matching?.id ?? brandString<VersionId>(`${sourceVersion}-tail`)
-    if (matching === undefined)
-      await editLatest(services, [
-        {
-          op: 'append_version',
-          node: frame.id,
-          version: { id: version, path: tailPath, createdAt: services.now(), origin: 'agent', inputs },
-        },
-      ])
-    return record(frame.id, version)
-  }
-  const edit = await editLatest(services, [
-    { op: 'add', ref: 'tail', type: 'image', title: `${title} · 尾帧`, path: tailPath, candidate: true, inputs },
-    { op: 'connect', from: video, to: 'tail', kind: 'derivation' },
-  ])
-  const tailId = edit.refs.tail
-  /* v8 ignore next -- the add above always claims its ref */
-  if (tailId === undefined) return undefined
-  const tailVersion = (await services.canvas.read()).document.nodes.find(node => node.id === tailId)?.versions?.[0]
-    ?.id
-  if (tailVersion === undefined) throw new Error('Tail-frame version was not recorded')
-  return record(tailId, tailVersion)
 }

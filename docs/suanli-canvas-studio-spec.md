@@ -32,7 +32,7 @@
 两条路径改的是**同一份数据**，走**同一套校验**。
 
 ### 0.2 范围内
-画布节点扩展（剧本、分镜表、时间线）、设定集、项目与分集、节点多版本、生成状态、按节点生成、切段规划、尾帧接首帧、阶段闸门、逐句配音、音乐节拍、静帧运镜（漫剧）、剪辑台、ffmpeg 导出、Skill、媒体创作预设。
+画布节点扩展（剧本、分镜表、时间线）、设定集、项目与分集、节点多版本、生成状态、按节点生成、切段规划、分镜图驱动的首尾帧、阶段闸门、逐句配音、音乐节拍、静帧运镜（漫剧）、剪辑台、ffmpeg 导出、Skill、媒体创作预设。
 
 ### 0.3 范围外（不要做）
 - 语音识别和自动字幕（用户原话：「字幕这个先不做了」）。时间线的文字轨只支持手动输入的文字。
@@ -87,7 +87,7 @@
 | I5 | 制作阶段和闸门 | `production.js`（PRODUCTION_STAGES、G1 设定集先行、G2 分镜质量、G3 一表一视频、破坏性确认、越序；越过要记录） | 阶段裁剪为 9 个，闸门用 TS 重写 | `canvas/src/production.ts` | P2 |
 | I6 | ~~预算后再付费~~ | `canvas_auto_budget` → `canvas_auto_generate` 两步 | 预算确认已移除：`canvas_generate` 直接开始 | — | P2 |
 | I7 | 媒体历史 8 次 | client 媒体历史 | 版本上限做成 Config，默认 8 | `Config.versionLimit` | P1 |
-| I8 | 尾帧接力 | video 输出 `last`、`tailpick` | 生成后自动抽取尾帧，作为下一段首帧 | `node-runner.ts` 用 ffmpeg 抽尾帧（第 4.5 节） | P2 |
+| I8 | ~~尾帧接力~~ | video 输出 `last`、`tailpick` | 分镜图驱动：每段先生成分镜图作首帧，连续段用下一段分镜图作尾帧，不再抽尾帧接力 | `node-runner.ts` 分镜图与首尾帧边（第 4.5 节） | P2 |
 | I9 | 四层创作配置 | `assets/canvas-director/`（导演透镜、题材、规格、影调） | 技能文本移植，按需加载切片 | `assets/studio-director/`（第 6 节） | P5 |
 | I10 | 先查后建、复用优先 | `cordis.patch.yml` media-studio persona | 写进 skill，并由代码兜底：同一张分镜表不重复建视频组 | `studio-pipeline` skill + 闸门 G3 | P2/P5 |
 | I11 | 布局纪律 | `assets/canvas-layout/SKILL.md` | 文本移植 | `studio-layout` skill | P5 |
@@ -218,7 +218,7 @@ export interface GenerationSpec {
   readonly params: Readonly<Record<string, string | number | boolean>> // ratio, resolution, duration, audio, voice, lyrics…，取值以网关目录为准
   readonly shot?: { readonly storyboard: CanvasNodeId; readonly shots: readonly ShotId[] } // 这个视频节点对应分镜表里的哪几个镜头（按镜头 id，不按段序号）
   readonly dialogue?: { readonly storyboard: CanvasNodeId; readonly shot: ShotId; readonly line: DialogueId } // 这条配音对应哪句台词
-  readonly tailChain?: boolean                   // 显式设 false 表示这一段不接上一段尾帧
+  readonly tailChain?: boolean                   // 显式设 false 表示这一段不用下一段分镜图作尾帧
 }
 
 export type NodeStatus =
@@ -264,7 +264,7 @@ export interface StoryboardSegment {   // 由 planShotSegments 算出，不手�
   readonly durationSec: number
   readonly kind: 'opening' | 'continuation' | 'scene_change' | 'new_character' | 'closeup'
   readonly join: 'strict' | 'loose' | 'cut'
-  readonly needsTailChain: boolean     // 是否用上一段尾帧做首帧
+  readonly needsTailChain: boolean     // 该段是否承接上一段画面（上一段视频因此取本段分镜图作尾帧）
 }
 ```
 一张分镜表最多 `Config.maxShotsPerStoryboard`（默认 24）镜。切段结果不存，每次按镜头和目录算出来，保证预算和实际生成用的是同一份结果。
@@ -327,7 +327,7 @@ export interface StudioProject {
 ### 3.7 制作进度 `.canvas/production.json`
 ```ts ignore-check
 export type StageId = 'brief' | 'bible' | 'assets' | 'script' | 'storyboard' | 'generating' | 'post' | 'delivered'
-export type GateId = 'G1_bible_first' | 'G2_storyboard_quality' | 'G3_one_video_per_shots' | 'G4_stage_order' | 'G5_destructive' | 'tail_chain'
+export type GateId = 'G1_bible_first' | 'G2_storyboard_quality' | 'G3_one_video_per_shots' | 'G4_stage_order' | 'G5_destructive'
 export interface Production {
   readonly version: 1
   readonly revision: number
@@ -424,16 +424,14 @@ type CanvasEditOperation =
    每镜一行，前面加时间码 `0–3s`。
 2. 把 `@角色名` 展开：`expandMentions` 用设定描述替换 `@名字`，并把这个条目的 `imageNodes[0]` 加到参考图列表末尾（已经在列表里的不重复加）。
 3. 参考图：`role=ref` 的入边按 `order` 排序后，取各来源当前版本的 `path`，再接上第 2 步补进来的参考图；数量超过目录允许的上限时，返回 `needs_choice` 让用户选，不自动截掉。
-4. 首帧、尾帧：分别取 `role=first_frame` 和 `role=last_frame` 入边来源的当前版本。如果这一段 `needsTailChain` 为真、`gen.tailChain` 不是 false、而且没有手动设置首帧：
-   - 上一段视频节点已有尾帧节点（`tailOf` 指向它的当前版本）：连 `role=first_frame` 边后生成；
-   - 上一段还没生成：不生成这一段，返回 `blocked`，`gate: 'tail_chain'`，`missing` 写明上一段节点。解决办法是先生成上一段、手动设首帧，或把 `gen.tailChain` 设成 false。
-5. 视频生成成功后：用 ffmpeg 抽出最后一帧（`-sseof -0.05 -frames:v 1`），存成 image 节点，标题「<节点标题> · 尾帧」，从视频连一条派生边过去，节点上写 `tailOf`。下一段视频节点已经存在、且没有手动首帧时，用 `role=first_frame` 连过去；下一段节点还不存在，或已手动设了首帧，就只建尾帧节点，等第 4 步在生成下一段时再连。重新生成上一段时，新版本另建尾帧节点，下一段的 `first_frame` 边改指新尾帧，并把下一段标 `inputChanged`。
-6. 模型选择：`gen.model` 为空时，有首帧用 `videoModel`（fl2va），只有参考图用 `videoRefModel`（新增 Config，默认 `minimax-h3-ref2va`）。首尾帧和参考图同时存在、但模型不支持这种组合时，返回 `needs_choice`。`needs_choice` 的形状沿用 `tool-media/src/choices.ts` 的 `ParamChoice`，不另定义。
+4. 首帧、尾帧：分别取 `role=first_frame` 和 `role=last_frame` 入边来源的当前版本；本段自己刚生成的版本优先于未采用的 activeVersion。一段没有手动首帧时，由它的分镜图节点经 `first_frame` 边供给；下一段 `needsTailChain` 为真且 `gen.tailChain` 不是 false 时，再由下一段的分镜图经 `last_frame` 边供给。不再做尾帧接力：不抽上一段尾帧，也不因上一段未生成而阻塞。
+5. 分镜图：每段一个 image 节点（`gen.shot` 标明所属分镜与镜头集合），提示词取该段第一镜的景别、画面、角色/场景 `@名字` 与运镜（不含台词），尺寸按项目画幅与分辨率换算。同场第 0 段分镜图由文字与设定集生成，其余分镜图作为它的 `ref` 编辑；各场分镜图彼此并行。已有分镜图采用版本时复用，提示词漂移时 `set_gen` 后重生成；分镜图失败时依赖它的视频段不提交生成，标 `failed` 且 `retryable`。
+6. 模型选择：分镜图用 `imageModel`；视频 `gen.model` 为空时用 `videoModel`（帧族），只有参考图用 `videoRefModel`（新增 Config，默认 `minimax-h3-ref2va`）。分镜图驱动的视频不发送参考图，只发首帧与尾帧；首尾帧和参考图同时存在、但模型不支持这种组合时，返回 `needs_choice`。`needs_choice` 的形状沿用 `tool-media/src/choices.ts` 的 `ParamChoice`，不另定义。
 7. 生成结果追加为新版本，`activeVersion` 指向它，`origin` 是触发方（agent 或 user）；同时用 ffprobe 写入 `durationMs`、`width`、`height`。
 
 ### 4.6 并发、取消、失败
 - 异步执行用 `dsh-jobs`：每个节点一个 job，job 的生命周期事件进 session log，满足「模型可见 ⟺ 可回放」；完成时由 `dsh-tool-jobs` 发会话内通知，Agent 不用轮询。节点上的 `status` 只是给界面看的镜像，`jobId` 就是 jobs 注册表的 id。
-- 并发数为 `Config.generateConcurrency`（默认 3），超出的 job 在 runner 里排队；同一个节点同时只能有一个任务，重复提交返回 `already_running`。
+- 并发数为 `Config.generateConcurrency`（默认 8），超出的 job 在 runner 里排队；分镜图与视频段按依赖关系调度（分镜图先行、段视频等其分镜图与所需尾帧分镜图），同一个节点同时只能有一个任务，重复提交返回 `already_running`。
 - 取消（`job_kill` 或 Remote `media.cancel`）中止轮询，节点状态改成 `failed`，`error: 'cancelled'`，`retryable: true`。网关那边已提交的任务是否计费不归我们管，但界面要提示「已提交的任务可能仍会扣费」。
 - 失败时保留之前的所有版本，`status` 写入 `failed` 和错误原因；`retryable` 根据网关错误码判断，5xx 和超时为 true，4xx 参数错误为 false。
 
@@ -509,7 +507,7 @@ type CanvasEditOperation =
 | `studio-craft` | 剧本格式（【场N】）、分场原则、分镜七要素（景别、画面、动作、运镜、时长、台词、音效）、图和视频提示词的写法、角色一致性（主图、三视图、@引用） | 改写自 canvas-craft |
 | `studio-layout` | 布局约定：一类一列、组的命名、批量建节点后调用重排 | 移植 canvas-layout |
 | `studio-director` | 导演透镜、题材、规格、影调。入口文件只放索引，每位导演或每种题材一个子文件，Agent 按需读取 | 移植 canvas-director 文本，保留署名 |
-| `drama-production` | 短剧：每集 60–120 秒、3–6 场、开头 3 秒抓人、结尾留钩子；场次 → 分镜 → 参考图 → 逐段生成（尾帧接首帧）→ 逐句配音 → 粗剪 → 导出 | 新写 |
+| `drama-production` | 短剧：每集 60–120 秒、3–6 场、开头 3 秒抓人、结尾留钩子；场次 → 分镜 → 参考图 → 逐段生成（分镜图作首帧、连续段用下一段分镜图作尾帧）→ 逐句配音 → 粗剪 → 导出 | 新写 |
 | `comic-production` | 漫剧：分格（每格一张图）、立绘一致性、每格选 `still` 运镜还是生成视频（贵）、对白时长决定每格停留多久 | 新写 |
 | `mv-production` | MV：先有歌（上传或 `generate_music`）→ `audio_beats` → 按段落写分镜，`beat` 对齐 → 生成 → `timeline_assemble` 时卡在节拍点切镜 → 导出 | 新写 |
 | `media-editing` | 已有（PR #6）。去掉里面的「字幕」字样，或者写明「不包含语音识别和字幕生成」 | 改 |
@@ -636,7 +634,7 @@ export interface Clip {
 | 期 | 名称 | 改动范围 | 依赖 |
 |:--|:--|:--|:--|
 | P1 | 数据模型与对话改图 | canvas：config、types、document（v1→v2 迁移）、operations（第 4.3 节）、storyboard、project、bible、layout、tools（`canvas_get`/`canvas_edit` 扩展，`studio_project_create`/`studio_episode_*`/`studio_bible_update`/`studio_expand_script`）；tool-media 落画布改为写版本；`studio-pipeline`、`studio-craft`、`studio-layout` 三个 skill；skill 注册改成枚举 `skillsRoot`（含 desktop、prepare.ts、升级指南） | 无（PR #6 已合并） |
-| P2 | 按节点生成 | tool-media：node-runner、budget、voice、`canvas_generate`/`storyboard_voice`（任务走 `dsh-jobs`）；canvas：segments（移植）、production（闸门）、`studio_stage`；尾帧抽取和接力；Remote `media` | P1 |
+| P2 | 按节点生成 | tool-media：node-runner、budget、voice、`canvas_generate`/`storyboard_voice`（任务走 `dsh-jobs`）；canvas：segments（移植）、production（闸门）、`studio_stage`；分镜图与首尾帧边；Remote `media` | P1 |
 | P3 | 画布界面 | ui-sidebar-canvas：顶栏、节点卡片、检查器、分镜表格编辑器、设定集和资产面板、版本条、状态层、连线 role 菜单、全屏、分集切换；canvas：journal（撤销、重做） | P2 |
 | P4 | 剪辑台与出片 | canvas：timeline 纯函数；tool-media：timeline-render、timeline-assemble、beats、`timeline_*`、`audio_beats`；wechat：自动回传名单加 `timeline_export`；ui：剪辑台 | P3。**开工前先把剪辑台界面草图发给用户确认** |
 | P5 | 品类 skill 与预设 | `drama-production`、`comic-production`、`mv-production`、`studio-director`（移植）；`media-studio` 预设；`media-editing` 去掉字幕字样；三个品类各录一条快照 | P4 |
@@ -682,7 +680,7 @@ export interface Clip {
 **单测必须覆盖：**
 - `segments.spec.ts`：用 dsh-infinite_canvas `docs/storyboard-segmentation.md` 里的例子做输入，输出和原实现一致（在测试里写明原实现跑出的期望值）；每种 seg 类型、每种 join 都有用例；预算的调用次数 = 实际生成的段数（同一个函数）。
 - `production.spec.ts`：G1 没有设定集时，拒绝生成参考图；G2 镜头缺少景别时，拒绝生成视频，并列出缺什么；G3 同一张表、同一组镜头 id，第二次不会新建视频节点，镜头组合变了时旧节点标 stale；越过闸门时有记录；阶段不能倒退，除非 override。
-- `node-runner.spec.ts`（用假的生成函数、假的 ffmpeg 和测试用 jobs 注册表）：输入收集（第 4.5 节第 1–4 步各一个用例）、上一段未生成时返回 `tail_chain` 阻塞、`tailChain: false` 时跳过、分镜改写后按镜头集合复用节点和标 stale、参考图顺序、@展开后补上的参考图、超出上限时返回 needs_choice、模型选择（第 6 步）、尾帧建节点并连到下一段、手动首帧不被覆盖、并发上限、同节点重复提交、取消、失败保留旧版本、retryable 判定、重启后 running 改成 failed。
+- `node-runner.spec.ts`（用假的生成函数、假的 ffmpeg 和测试用 jobs 注册表）：输入收集（第 4.5 节第 1–4 步各一个用例）、分镜图建节点并经 `first_frame`/`last_frame`/`ref` 边连到段视频、分镜图依赖调度（先行、段视频等分镜图、连续段等下一段分镜图）、分镜图失败时段视频不提交、`tailChain: false` 时不用下一段分镜图作尾帧、分镜改写后按镜头集合复用节点和标 stale、参考图顺序、@展开后补上的参考图、超出上限时返回 needs_choice、模型选择（第 6 步）、手动首帧不被覆盖、并发上限、同节点重复提交、取消、失败保留旧版本、retryable 判定、重启后 running 改成 failed。
 - `voice.spec.ts`：每句台词一个节点，按 `DialogueLine.id` 复用（换版本后也复用）；音色取设定；旁白取 `narrator`。
 
 **真实 MAAS 对话：** 在 P1 的项目上接着说：
@@ -691,7 +689,7 @@ export interface Clip {
 **验收条件：**
 - [ ] 3 个参考图节点，`bible` 字段指向对应的设定条目，设定条目的 `imageNodes` 已回填；
 - [ ] Agent 直接开始生成视频（不询问预算确认）；会话日志里能看到 `started`；
-- [ ] 场 1 每段 1 个视频节点，入边里有 ref（角色和场景主图，order 正确）；第 2 段起有来自上一段尾帧节点的 `first_frame` 边；
+- [ ] 场 1 每段 1 个视频节点，入边里有 ref（角色和场景主图，order 正确）；每段有来自其分镜图节点的 `first_frame` 边；
 - [ ] 每个视频节点的当前版本都有 `durationMs`、`width`、`height`；
 - [ ] 场 1 每句台词 1 个音频节点，有 `gen.dialogue`；
 - [ ] 让 Agent「重新生成场 1 第 1 段」，节点数不变，版本数 +1；
@@ -783,7 +781,7 @@ export interface Clip {
 | 12 | ~~确认期间画布变了~~ | 预算确认已移除；执行前仍按当前画布重算计划，不一致不落地 | 4.4、5.3 |
 | 13 | 两个会话写同一集 | `baseRevision` 必填 | 2.1、5.2 |
 | 14 | ~~语音、图片、音乐没有预算确认~~ | 预算确认已整体移除，所有生成直接开始 | 5.3 |
-| 15 | 下一段还不存在时的尾帧接力 | 尾帧节点先建，生成下一段时再连；上一段没生成就阻塞；可用 `tailChain: false` 跳过 | 4.5 |
+| 15 | ~~下一段还不存在时的尾帧接力~~ | 尾帧接力已移除：每段由分镜图供首帧、连续段由下一段分镜图供尾帧，依赖未满足的段等待而非阻塞；`tailChain: false` 表示该段不用下一段分镜图作尾帧 | 4.5 |
 | 16 | 旁白和台词下标 | 台词带 id，speaker 可为 narrator，设定集加 `narrator` 音色 | 3.3、3.4、3.5 |
 | 17 | 微信回传怎么判定 | 沿用微信插件按工具名单回传，P4 加 `timeline_export` | 8.4 |
 | 18 | `versionLimit` 与 active | 丢最旧的非 active 版本 | 3.3 |
