@@ -3096,9 +3096,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-file-drag':
         specifier: workspace:*
         version: link:../../client/ui-file-drag
-      '@deepseek-ai/dsh-client-ui-gateway-status':
-        specifier: workspace:*
-        version: link:../../client/ui-gateway-status
       '@deepseek-ai/dsh-client-ui-goal':
         specifier: workspace:*
         version: link:../../client/ui-goal
@@ -3997,6 +3994,12 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-api-gateway-status':
+        specifier: workspace:*
+        version: link:../../api/gateway-status
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:*
+        version: link:../locale
       '@deepseek-ai/dsh-client-ui-conversation':
         specifier: workspace:*
         version: link:../ui-conversation
@@ -4012,6 +4015,9 @@ importers:
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
       react:
         specifier: ^18.2.0
         version: 18.3.1

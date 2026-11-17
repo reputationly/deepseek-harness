@@ -211,7 +211,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       onClose(reason)
       if (reason === 'returned' && page === 'top-up') void refreshAfterReturn(refreshing, reRead)
     })
+  // The product ships the choice as a public build value: a Client row's `config` never
+  // reaches this plugin, so the shipped build hides the account actions here.
+  const accountActions = process.env.DSH_CLIENT_ACCOUNT_ENTRY !== 'hidden'
   const operations: AccountSectionInjected = {
+    accountActions,
     avatarFailed: (value) => { avatar.failed(value) },
     subscribeSessionExpired: listener => ctx.remote.$on('deepseek-account/session-expired', listener),
     subscribeModelSignInRequired: listener => ctx.remote.$on('deepseek-account/model-sign-in-required', listener),
@@ -347,14 +351,13 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       }),
     }, AccountPlatformHost))
   }
-  // The product ships the choice as a public build value: a Client row's `config` never
-  // reaches this plugin, so the shipped build hides the entry here.
-  if ((config.accountSettingsEntry ?? true) && process.env.DSH_CLIENT_ACCOUNT_ENTRY !== 'hidden') {
-    ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.launcher', () => ctx.slots.register({
-      name: 'settings.launcher', locale: 'settings.account', inject: () => operations,
-    }, AccountMenu)))
-  }
-  ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.section', () => {
+  // The launcher stays registered in every deployment: Settings and feedback live behind it.
+  ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.launcher', () => ctx.slots.register({
+    name: 'settings.launcher', locale: 'settings.account', inject: () => operations,
+  }, AccountMenu)))
+  // A deployment without account actions has no hosted account pages to configure either.
+  const accountSection = accountActions && (config.accountSettingsEntry ?? true)
+  if (accountSection) ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.section', () => {
     let unregister: (() => void) | undefined
     const update = () => {
       if (snapshot.view?.status === 'credential-stored') {

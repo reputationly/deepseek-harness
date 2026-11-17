@@ -96,18 +96,23 @@ withoutAccountAccess('opens no account stream and registers no account surface w
   expect(c.ctx.slots.entries('settings.section').some(entry => entry.options.id === 'account')).toBe(false)
 }, 60_000)
 
-withoutAccountEntry('keeps the account row but registers no settings entry for a deployment with its own gateway key', async ({ start }) => {
+withoutAccountEntry('keeps the launcher for Settings and feedback but registers no account section', async ({ start }) => {
   const c = await start()
-  expect(c.ctx.slots.entries('settings.launcher')).toHaveLength(0)
+  // Settings and feedback stay reachable; only the hosted account pages are absent.
+  expect(c.ctx.slots.entries('settings.launcher')).toHaveLength(1)
+  expect(operations(c).accountActions).toBe(true)
+  expect(c.ctx.slots.entries('settings.section').some(entry => entry.options.id === 'account')).toBe(false)
   // The rest of the surface stays: model sign-in and the balance notice still own their slots.
   expect(c.ctx.slots.entries('settings.models.sign-in')).toHaveLength(1)
   expect(quotaNoticeEntry(c)).toBeDefined()
 }, 60_000)
 
-it('registers no settings entry when the shipped client build hides it', async ({ start }) => {
+it('keeps the launcher but drops the account actions when the shipped client build hides them', async ({ start }) => {
   vi.stubEnv('DSH_CLIENT_ACCOUNT_ENTRY', 'hidden')
   const c = await start()
-  expect(c.ctx.slots.entries('settings.launcher')).toHaveLength(0)
+  expect(c.ctx.slots.entries('settings.launcher')).toHaveLength(1)
+  expect(operations(c).accountActions).toBe(false)
+  expect(c.ctx.slots.entries('settings.section').some(entry => entry.options.id === 'account')).toBe(false)
   expect(c.ctx.slots.entries('settings.models.sign-in')).toHaveLength(1)
 }, 60_000)
 

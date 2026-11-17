@@ -1,0 +1,56 @@
+/* Connection light sitting after the product name: a dot plus a short label. */
+.pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .pill:hover {
+    color: var(--dsw-alias-label-secondary);
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.pill:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
+}
+
+.dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  corner-shape: round;
+  border-radius: 50%;
+}
+
+.connected {
+  background: var(--dsw-alias-state-success-primary);
+}
+
+.disconnected {
+  background: var(--dsw-alias-state-warn-primary);
+}
+
+.checking {
+  background: var(--dsw-alias-label-caption);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

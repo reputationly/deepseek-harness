@@ -40,6 +40,12 @@ export interface AccountSnapshot {
 
 /** Host operations injected into the Cordis-free account component. */
 export interface AccountSectionInjected {
+  /**
+   * Whether the launcher offers sign-in and sign-out. A deployment whose model access comes
+   * from its own gateway key sets this false: Settings and feedback stay reachable through the
+   * launcher, while the account actions lead to pages that deployment has no account for.
+   */
+  readonly accountActions: boolean
   /** @param snapshot - picture attempt whose rendered image failed; superseded attempts are ignored. */
   avatarFailed: (snapshot: AccountAvatarSnapshot) => void
   /** Subscribe to live credential-expiry notifications.

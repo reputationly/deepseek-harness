@@ -35,6 +35,7 @@ it('claims onboarding while loading, offers API key fallback, and completes afte
     start: vi.fn(async () => {}), cancel: vi.fn(async () => {}), signOut: vi.fn(async () => {}),
     contactUs: vi.fn(), t: makeTranslate(en),
     refreshAccount: vi.fn(async () => {}), bonusNoticeShown: vi.fn(), bonusNoticeDismissed: vi.fn(),
+    accountActions: true,
     avatarFailed: vi.fn(),
   }
   const view = render(<AccountOnboarding {...props} />)

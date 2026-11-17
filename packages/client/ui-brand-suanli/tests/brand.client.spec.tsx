@@ -5,6 +5,8 @@ import { cleanup, render } from '@testing-library/react'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { apply, inject } from '../src/client/index.ts'
 import { BrandMark, BrandName } from '../src/client/Brand.tsx'
+import { ConnectionPill } from '../src/client/ConnectionPill.tsx'
+import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import { apply as hostApply } from '../src/index.ts'
 
 afterEach(() => {
@@ -18,14 +20,24 @@ const HOLES = ['sidebar.brand.mark', 'sidebar.brand.name'] as const
 
 const HERO_HOLE = 'conversation.hero.brand.mark'
 
+const dictionary = (key: string): string => key
+
+const CONNECTED = async (): Promise<GatewayStatus> => ({ state: 'connected', code: 'connected' })
+
 /**
- * Build a context holding the slot registry with the brand holes declared.
- * @param declare - whether the holes exist before the plugin loads.
+ * Build a context holding the slot registry, the locale registry, and the gateway namespace.
+ * @param declare - whether the brand holes exist before the plugin loads.
  * @returns The context, its registry, and a redeclaration helper.
  */
 async function bench(declare = true) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
+  ctx.provide('locale', { register: () => () => {} } as never)
+  ctx.provide('remote', {} as never)
+  ctx.provide('remote.gatewayStatus', {
+    read: async () => ({ ok: true, value: { state: 'connected', code: 'connected' } }),
+    refresh: async () => ({ ok: true, value: { state: 'connected', code: 'connected' } }),
+  } as never)
   const slots = ctx.get('slots') as SlotRegistry
   const declareHoles = () => slots.register({
     name: 'root',
@@ -40,12 +52,11 @@ describe('product brand plugin', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('declares only the slot service it uses', () => {
-    expect(inject).toEqual(['slots'])
+  it('declares the services it uses', () => {
+    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.gatewayStatus'])
   })
 
-  it('fills every brand hole in any build profile', async () => {
-    vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', 'local')
+  it('fills every brand hole', async () => {
     const subject = await bench()
     await subject.ctx.plugin({ inject: [...inject], apply }).await()
     for (const hole of HOLES) expect(subject.slots.entries(hole)).toHaveLength(1)
@@ -77,16 +88,24 @@ describe('product brand plugin', () => {
     for (const hole of HOLES) expect(after.slots.entries(hole)).toHaveLength(1)
   })
 
-  it('renders the wordmark fallback and the mark at the requested size', () => {
+  it('renders the wordmark with the connection light after it', async () => {
     // The build inlines `DSH_CLIENT_TITLE` at import time, so a spec sees the fallback.
-    const name = render(<BrandName />)
-    expect(name.container.textContent).toBe('Aurora')
-    name.unmount()
+    const view = render(<BrandName read={CONNECTED} refresh={CONNECTED} t={dictionary} />)
+    expect(view.container.textContent).toContain('Aurora')
+    await vi.waitFor(() => { expect(view.container.textContent).toContain('connected') })
+  })
 
+  it('renders the mark at the requested size', () => {
     const mark = render(<BrandMark size={34} className="hero" />)
     expect(mark.container.querySelector('img')?.getAttribute('width')).toBe('34')
     expect(mark.container.querySelector('img')?.className).toBe('hero')
     mark.rerender(<BrandMark size={24} />)
     expect(mark.container.querySelector('img')?.getAttribute('width')).toBe('24')
+  })
+
+  it('names the failure in the light tooltip', async () => {
+    const refresh = async (): Promise<GatewayStatus> => ({ state: 'disconnected', code: 'key-rejected' })
+    const view = render(<ConnectionPill read={refresh} refresh={refresh} t={dictionary} />)
+    await vi.waitFor(() => { expect(view.container.querySelector('button')?.title).toBe('reason.key-rejected') })
   })
 })

@@ -93,7 +93,6 @@
     "@deepseek-ai/dsh-client-ui-entry-customization": "workspace:*",
     "@deepseek-ai/dsh-client-ui-file-actions": "workspace:*",
     "@deepseek-ai/dsh-client-ui-file-drag": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-gateway-status": "workspace:*",
     "@deepseek-ai/dsh-client-ui-goal": "workspace:*",
     "@deepseek-ai/dsh-client-ui-input-trigger": "workspace:*",
     "@deepseek-ai/dsh-client-ui-jobs": "workspace:*",

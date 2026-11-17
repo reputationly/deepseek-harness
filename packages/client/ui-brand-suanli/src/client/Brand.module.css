@@ -1,11 +1,21 @@
+/* Wordmark row: the product name with the gateway connection light after it. */
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .name {
   /* Brush script for the product name: its strokes are thinner than a UI face, so the
-     tracking opens up and the text antialiases rather than turning muddy. */
+     tracking opens up and the text antialiases rather than turning muddy. The subset that
+     ships with ui-theme covers the current product name only. */
   font-family: 'Ma Shan Zheng', var(--dsh-font-family-text-default, system-ui), sans-serif;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 400;
-  letter-spacing: 0.06em;
-  line-height: 1;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  padding-block-start: 1px;
   white-space: nowrap;
   color: inherit;
   -webkit-font-smoothing: antialiased;

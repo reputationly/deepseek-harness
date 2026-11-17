@@ -9,16 +9,16 @@ kind: "package-reference"
 
 ## 概述
 
-提供侧栏与空首页渲染的产品标识：标志、文字标和首页标志。本包占用的三个槽位与上游品牌包相同，因此部署方在 `packages/bundle/web-app/cordis.patch.yml` 中组合其中一行来二选一。
+提供侧栏与空首页渲染的产品标识：标志、带网关连接灯的文字标，以及首页标志。本包占用的三个槽位与上游品牌包相同，因此部署方在 `packages/bundle/web-app/cordis.patch.yml` 中组合其中一行来二选一。
 
-文字标在构建期读取 `DSH_CLIENT_TITLE`，产品名因此是构建输入而不是源码文本。
+文字标在构建期读取 `DSH_CLIENT_TITLE`，产品名因此是构建输入而不是源码文本。旁边的连接灯读取 Host 的 `gatewayStatus` 命名空间：已连接时每 30 秒查询一次，未连接时每 3 秒重试，侧栏折叠成窄条时不显示。
 
 ## 占用的槽位
 
 | 槽位 | 组件 |
 |---|---|
 | `sidebar.brand.mark` | 按侧栏请求的尺寸渲染的标志 |
-| `sidebar.brand.name` | 文字标 |
+| `sidebar.brand.name` | 文字标，以及其后的网关连接灯 |
 | `conversation.hero.brand.mark` | 空首页上的标志 |
 
 空首页的 `conversation.hero.frame` 图层保持空闲，因此标志背后不绘制任何装饰。
