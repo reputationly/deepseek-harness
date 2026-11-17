@@ -113,6 +113,15 @@ describe('brand gateway configuration', () => {
     }
   })
 
+  it('inserts the feedback service beside the connection light so the Host relays reports', () => {
+    const patch = gatewayProfilePatch(GATEWAY)
+    expect(patch).toContain("    - id: gateway-status\n      name: '@deepseek-ai/dsh-api-gateway-status'")
+    expect(patch).toContain("    - id: assistant-feedback\n      name: '@deepseek-ai/dsh-assistant-feedback'")
+    // Both rows carry the gateway endpoint and credential reference the service resolves at call time.
+    expect(patch.match(/      config:\n        baseURL: "https:\/\/gateway\.example\/v1"\n        apiKeyEnv: "EXAMPLE_API_KEY"/gu))
+      .toHaveLength(2)
+  })
+
   it('rewrites the profile patch file and leaves other profiles untouched', () => {
     vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify(GATEWAY))
     const root = mkdtempSync(join(tmpdir(), 'dsh-gateway-'))
