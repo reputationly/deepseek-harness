@@ -36,3 +36,10 @@ The service accepts `channel` (`rating` or `general`), the verdict, the user's c
 ## Model Experience
 
 This package adds no tool, prompt, or context of its own: the model never sees a feedback submission. The snapshot it uploads is derived from the Session log after redaction and is not written back to it.
+
+## Known Limitations and Deferred Work
+
+- **No `request_id`.** The model transport reads `x-oneapi-request-id` only on the error path, and carrying it on the success path would add a field to the persisted assistant message. Reports therefore identify the call by `session_id`, `message_id`, and time; capturing the header needs an `llm`/`llm-deepseek` change to the Session event format first.
+- **Snapshot reads the synchronous history API.** `Session.snapshotEvents()` is deprecated in favor of a projection; this package takes the same narrow exemption `message-feedback` takes, and moves when that domain's projection exists.
+- **A failed relay is silent.** The remark is already durable locally and the dialog closes on that record, so the deployment site simply lacks the submission. Surfacing it needs a warning toast the dialog does not have yet.
+- **`system_prompt` and `request_params` are absent.** The Host does not retain the assembled prompt or the sampling parameters of a finished call, and the site documents that a snapshot must not fabricate them.

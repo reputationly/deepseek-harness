@@ -14,27 +14,38 @@ export interface AssistantFeedbackSubmitRequest {
   /** Rating for a message verdict, general for the feedback dialog. */
   readonly channel: FeedbackChannel
   /** Verdict; required for `rating` and dropped for `general`. */
-  readonly rating?: FeedbackRating
+  readonly rating?: FeedbackRating | undefined
+
   /** Category chip the user picked. */
-  readonly category?: string
+  readonly category?: string | undefined
+
   /** Body the user typed; required for `general`. */
-  readonly content?: string
+  readonly content?: string | undefined
+
   /** Optional contact the user volunteered. */
-  readonly contact?: string
+  readonly contact?: string | undefined
+
   /** Session the feedback is about. */
-  readonly sessionId?: SessionId
+  readonly sessionId?: SessionId | undefined
+
   /** Rated assistant message, for `rating`. */
-  readonly messageId?: string
+  readonly messageId?: string | undefined
+
   /** Model request that produced the rated reply, when the client captured one. */
-  readonly requestId?: string
+  readonly requestId?: string | undefined
+
   /** Model that produced the rated reply. */
-  readonly model?: string
+  readonly model?: string | undefined
+
   /** Surface the submission came from. */
-  readonly platform?: FeedbackPlatform
+  readonly platform?: FeedbackPlatform | undefined
+
   /** Device description such as `macOS 15.1; screen=2560x1440`. */
-  readonly deviceInfo?: string
+  readonly deviceInfo?: string | undefined
+
   /** Whether to attach the recent-conversation snapshot (default true). */
-  readonly attachContext?: boolean
+  readonly attachContext?: boolean | undefined
+
 }
 
 /** Why a submission did not reach the feedback site. */

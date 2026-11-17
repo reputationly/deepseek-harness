@@ -36,3 +36,10 @@ kind: "package-reference"
 ## 模型体验
 
 本包不新增任何工具、提示词或上下文：模型看不到反馈提交。上传的快照脱敏后从 Session 日志派生，并且不会写回日志。
+
+## 已知限制与后续工作
+
+- **没有 `request_id`。** 模型 transport 只在错误路径读 `x-oneapi-request-id`，要在成功路径带上它，就得给已持久化的助手消息增加字段。因此反馈目前用 `session_id`、`message_id` 与时间定位这次调用；捕获该响应头需要先改 `llm`/`llm-deepseek` 的 Session 事件格式。
+- **快照读取同步历史 API。** `Session.snapshotEvents()` 已被投影方案取代；本包沿用 `message-feedback` 的同一处窄豁免，等该领域的投影落地后一起迁移。
+- **上报失败对用户不可见。** 反馈在本地已经落库、弹窗也随之关闭，失败只意味着部署方站点缺少这条记录。要让用户看到，需要弹窗目前还没有的 warning toast。
+- **不带 `system_prompt` 与 `request_params`。** Host 不保留已完成调用的最终提示词与采样参数，站点文档也要求快照不得伪造这两项。
