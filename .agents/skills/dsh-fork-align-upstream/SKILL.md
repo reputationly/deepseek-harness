@@ -75,12 +75,15 @@ corepack pnpm exec tsx scripts/fork-drift.ts --write-baseline
 6. 出对应版本（对齐完成后再 bump，不要先 bump 再合）。
 
 ```sh
-corepack pnpm run release:dsh rc.N        # 或 patch / minor / 显式 x.y.z
+corepack pnpm run release:dsh rc.N        # 或 patch / minor / 显式 x.y.z：只写 manifest 与 lock
 git commit && git push                    # 版本提交进主干
-git tag dsh-vX.Y.Z && git push origin dsh-vX.Y.Z
 ```
 
-   发布动作都是手动 dispatch：`Release publish (dsh)` 从该 tag 发 npm；桌面走 `Package Desktop · macOS/Windows` → `Publish Desktop · COS`；`Release 蒜狸小助手` 自动生成 `<harness 版本>.ov.<UTC 分钟>` 版本。
+   本 fork **不发布 npm**：`dsh-v*` tag 与 `release-publish.yml` 是上游的 npm 发布线，不跑。版本只是 manifest 的事实源，供桌面构建读取。
+
+   发布走手动 dispatch：桌面 `Package Desktop · macOS/Windows`（`source_ref` 填主干或已有 `desktop-v*`）→ `Publish Desktop · COS`（上传 COS、改自动更新指针、传官网安装包）；蒜狸自有线走 `Release 蒜狸小助手`（版本自动为 `<harness 版本>.ov.<UTC 分钟>`，上传 R2 并刷 EdgeOne）。生产发布会自动打 `desktop-v<版本>` tag。
+
+   自有插件若需要分发，不必经过 npm：插件管理器接受 git 地址、http(s) URL、`file:`/`link:` spec，可把插件 tarball 放 R2 后用 URL 安装，或直接内置进产品。
 
 ## 改动该放哪
 
