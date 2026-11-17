@@ -28,6 +28,10 @@ const refs: Capability = {
   paramSchema: videoParams('reference'), limits: { maxReferenceImages: 3, maxInputBytes: 100 },
 }
 const catalog: MediaCatalog = { version: 'v', source: 'live', capabilities: [refs, frames, image] }
+const chatOnly: MediaCatalog = {
+  version: 'v', source: 'live',
+  capabilities: [{ id: 'chat:c', operation: 'chat', model: 'chat-model' }],
+}
 const ref = (bytes = 10) => ({ dataURI: 'data:image/png;base64,AA', bytes })
 
 describe('image planning', () => {
@@ -57,6 +61,26 @@ describe('image planning', () => {
 
   it('keeps the configured model and passes through without a catalog', () => {
     expect(planImage(undefined, { prompt: 'p', references: [] }, 'fallback')).toEqual({ kind: 'ready', model: 'fallback', call: { endpoint: 'generations' } })
+  })
+
+  it('uses the configured model when the catalog lists no image operation', () => {
+    expect(planImage(chatOnly, { prompt: 'p', references: [], aspectRatio: '16:9' }, 'fallback'))
+      .toEqual({ kind: 'ready', model: 'fallback', call: { endpoint: 'generations', size: '1824x1024' } })
+    expect(planImage(chatOnly, { prompt: 'p', references: [], aspectRatio: '16:9', resolution: '2K' }, 'fallback'))
+      .toEqual({ kind: 'ready', model: 'fallback', call: { endpoint: 'generations', size: '2560x1440' } })
+    expect(planImage(chatOnly, { prompt: 'p', references: [] }, 'fallback'))
+      .toEqual({ kind: 'ready', model: 'fallback', call: { endpoint: 'generations' } })
+    expect(planImage(chatOnly, { prompt: 'p', references: [ref()] }, 'fallback'))
+      .toEqual({ kind: 'ready', model: 'fallback', call: { endpoint: 'edits', images: ['data:image/png;base64,AA'] } })
+  })
+
+  it('still rejects references when image operations exist but none accepts them', () => {
+    const textOnly: MediaCatalog = {
+      version: 'v', source: 'live',
+      capabilities: [{ id: 'generate_image:t2i', operation: 'generate_image', model: 'text-only', taskTypes: ['t2i'] }],
+    }
+    expect(planImage(textOnly, { prompt: 'p', references: [ref()] }, 'fallback'))
+      .toEqual({ kind: 'reject', reason: 'no image model available to this key accepts reference images' })
   })
 
   it('rounds pixel sizes to multiples of 8', () => {
@@ -100,5 +124,24 @@ describe('video planning', () => {
     expect(plan).toMatchObject({ kind: 'ready', model: 'refs', body: { metadata: { task_type: 'r2va', src_ref_images: ['data:image/png;base64,AA', 'data:image/png;base64,AA'] } } })
     expect(planVideo(catalog, { prompt: 'p', references: [ref(500)] }, 'fallback', 5)).toMatchObject({ kind: 'reject' })
     expect(planVideo(catalog, { prompt: 'p', references: [ref()], firstFrame: ref() }, 'fallback', 5)).toMatchObject({ kind: 'reject' })
+  })
+
+  it('uses the configured model when the catalog lists no video operation', () => {
+    expect(planVideo(chatOnly, { prompt: 'p', references: [] }, 'fallback', 5))
+      .toEqual({ kind: 'ready', model: 'fallback', body: { prompt: 'p', metadata: { task_type: 't2v' } } })
+    expect(planVideo(chatOnly, { prompt: 'p', references: [ref()] }, 'fallback', 5))
+      .toEqual({ kind: 'ready', model: 'fallback', body: {
+        prompt: 'p',
+        metadata: { task_type: 'r2va', src_ref_images: ['data:image/png;base64,AA'] },
+      } })
+  })
+
+  it('still rejects requests no listed video operation can serve', () => {
+    const framesOnly: MediaCatalog = { version: 'v', source: 'live', capabilities: [frames] }
+    expect(planVideo(framesOnly, { prompt: 'p', references: [ref()] }, 'fallback', 5))
+      .toEqual({ kind: 'reject', reason: 'no video model available to this key accepts reference images' })
+    const refsOnly: MediaCatalog = { version: 'v', source: 'live', capabilities: [refs] }
+    expect(planVideo(refsOnly, { prompt: 'p', references: [] }, 'fallback', 5))
+      .toEqual({ kind: 'reject', reason: 'no video model is available to this key' })
   })
 })

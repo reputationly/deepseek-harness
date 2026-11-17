@@ -95,17 +95,17 @@ export function imagePixelSize(aspectRatio: string, resolution: string): string 
  * Plan one image request.
  * @param catalog - catalog the key sees; undefined when the gateway publishes none.
  * @param input - what the caller stated.
- * @param fallbackModel - configured model used without a catalog.
+ * @param fallbackModel - configured model used when the catalog lists none for this operation.
  * @returns the gateway call, the choices to make first, or why it cannot run.
  */
 export function planImage(catalog: MediaCatalog | undefined, input: ImageInput, fallbackModel: string): ImagePlan {
   const editing = input.references.length > 0
-  if (catalog === undefined) {
-    return editing
-      ? { kind: 'ready', model: fallbackModel, call: { endpoint: 'edits', images: input.references.map(image => image.dataURI) } }
-      : { kind: 'ready', model: fallbackModel, call: { endpoint: 'generations' } }
+  const candidates = catalog === undefined ? [] : capabilitiesFor(catalog, 'generate_image')
+  if (candidates.length === 0) {
+    if (editing) return { kind: 'ready', model: fallbackModel, call: { endpoint: 'edits', images: input.references.map(image => image.dataURI) } }
+    const size = input.aspectRatio === undefined ? undefined : imagePixelSize(input.aspectRatio, input.resolution ?? '1K')
+    return { kind: 'ready', model: fallbackModel, call: { endpoint: 'generations', ...size === undefined ? {} : { size } } }
   }
-  const candidates = capabilitiesFor(catalog, 'generate_image')
   const capability = editing
     ? candidates.find(candidate => (candidate.limits?.maxReferenceImages ?? 0) > 0 && (candidate.taskTypes === undefined || candidate.taskTypes.includes('i2i')))
     : candidates.find(candidate => candidate.taskTypes === undefined || candidate.taskTypes.length === 0 || candidate.taskTypes.includes('t2i')) ?? candidates[0]
@@ -136,7 +136,7 @@ function acceptsReferences(capability: Capability): boolean {
  * Plan one video task.
  * @param catalog - catalog the key sees; undefined when the gateway publishes none.
  * @param input - what the caller stated.
- * @param fallbackModel - configured model used without a catalog.
+ * @param fallbackModel - configured model used when the catalog lists none for this operation.
  * @param defaultDuration - product default length in seconds, recommended over the gateway's.
  * @returns the task body, the choices to make first, or why it cannot run.
  */
@@ -150,7 +150,8 @@ export function planVideo(catalog: MediaCatalog | undefined, input: VideoInput, 
   if (frames.length === 1) media.image = frames.map(frame => frame.dataURI)[0]
   if (frames.length === 2) media.images = frames.map(frame => frame.dataURI)
 
-  if (catalog === undefined) {
+  const candidates = catalog === undefined ? [] : capabilitiesFor(catalog, 'generate_video')
+  if (candidates.length === 0) {
     return {
       kind: 'ready', model: fallbackModel, body: {
         prompt: input.prompt, ...media,
@@ -160,7 +161,6 @@ export function planVideo(catalog: MediaCatalog | undefined, input: VideoInput, 
       },
     }
   }
-  const candidates = capabilitiesFor(catalog, 'generate_video')
   const capability = referenced ? candidates.find(acceptsReferences) : candidates.find(candidate => !acceptsReferences(candidate))
   if (capability === undefined) {
     return { kind: 'reject', reason: referenced ? 'no video model available to this key accepts reference images' : 'no video model is available to this key' }

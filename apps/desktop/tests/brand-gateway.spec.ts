@@ -63,6 +63,25 @@ describe('brand gateway configuration', () => {
     expect(() => brandGateway()).toThrow(/models/u)
   })
 
+  it('rejects a malformed media block', () => {
+    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify({ ...GATEWAY, media: 'image-model' }))
+    expect(() => brandGateway()).toThrow(/media/u)
+    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify({ ...GATEWAY, media: { imageModel: '' } }))
+    expect(() => brandGateway()).toThrow(/imageModel/u)
+    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify({ ...GATEWAY, media: { imageModel: 7 } }))
+    expect(() => brandGateway()).toThrow(/imageModel/u)
+  })
+
+  it('writes the configured image model into the media tool row only when set', () => {
+    const branded = { ...GATEWAY, media: { imageModel: 'minimax-h3-image' } }
+    expect(gatewayProfilePatch(branded)).toContain(
+      '- id: tool-media\n  disabled: false\n  config:\n    baseURL: "https://gateway.example/v1"\n    apiKeyEnv: "EXAMPLE_API_KEY"\n    imageModel: "minimax-h3-image"\n',
+    )
+    expect(gatewayProfilePatch(GATEWAY)).not.toContain('imageModel')
+    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify(branded))
+    expect(brandGateway()).toEqual(branded)
+  })
+
   it('writes the profile patch that replaces the provider endpoint, catalog, and default model', () => {
     const patch = gatewayProfilePatch(GATEWAY)
     expect(patch).toContain('- id: agent-default-model')

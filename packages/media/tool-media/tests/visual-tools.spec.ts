@@ -280,15 +280,50 @@ describe('visual tools on a canvas', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('rejects image and video generation when the key has no matching capability', async () => {
-    const emptyCatalog = new CatalogSource({
+  it('uses the configured models for operations the catalog does not list', async () => {
+    const partialCatalog = new CatalogSource({
       baseURL: 'https://gateway.example/v1',
-      cacheFile: join(directory, 'empty-catalog.json'),
-      fetch: async () => json({ version: 'empty', capabilities: [] }),
+      cacheFile: join(directory, 'partial-catalog.json'),
+      fetch: async () => json({
+        version: 'v1',
+        capabilities: [{ id: 'music', operation: 'generate_music', model: 'music-model' }],
+      }),
     })
-    await setup(true, emptyCatalog)
-    expect((await call('generate_image', { prompt: 'a cat' })).text).toContain('no image model is available')
-    expect((await call('generate_video', { prompt: 'a cat walks' })).text).toContain('no video model is available')
+    await setup(false, partialCatalog)
+    fetchSpy.mockResolvedValueOnce(json({ data: [{ url: `data:image/png;base64,${PNG.toString('base64')}` }] }))
+    const image = await call('generate_image', { prompt: 'a cat', aspectRatio: '16:9' })
+    expect(image.isError).toBe(false)
+    expect(requestBody(0)).toMatchObject({ model: 'image-model', size: '1824x1024' })
+    fetchSpy
+      .mockResolvedValueOnce(json({ id: 'task-1', status: 'queued' }))
+      .mockResolvedValueOnce(json({ id: 'task-1', status: 'completed', url: 'https://cdn.example/out.mp4' }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'video/mp4' } }))
+    const video = await call('generate_video', { prompt: 'a cat walks' })
+    expect(video.isError).toBe(false)
+    expect(requestBody(1)).toMatchObject({ model: 'video-model' })
+  })
+
+  it('rejects generation the catalog lists but cannot serve', async () => {
+    const unfitCatalog = new CatalogSource({
+      baseURL: 'https://gateway.example/v1',
+      cacheFile: join(directory, 'unfit-catalog.json'),
+      fetch: async () => json({
+        version: 'v1',
+        capabilities: [
+          { id: 'image', operation: 'generate_image', model: 'image-model', taskTypes: ['t2i'] },
+          {
+            id: 'video', operation: 'generate_video', model: 'video-model', taskTypes: ['t2v'],
+            paramSchema: { properties: { image_mode: { enum: ['first-last-frame'] } } },
+          },
+        ],
+      }),
+    })
+    await setup(true, unfitCatalog)
+    expect((await call('generate_image', { prompt: 'a cat', referenceImages: [join(directory, 'a.png')] })).text)
+      .toContain('no image model available to this key accepts reference images')
+    expect((await call('generate_video', { prompt: 'a cat walks', referenceImages: [join(directory, 'a.png')] })).text)
+      .toContain('no video model available to this key accepts reference images')
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('fails before any gateway request when a referenced node cannot be an image input', async () => {

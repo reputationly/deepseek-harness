@@ -469,3 +469,34 @@ describe('generated audio canvas placement', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
+
+describe('capability catalog', () => {
+  it('reads the catalog once for generation calls inside its TTL', async () => {
+    let catalogReads = 0
+    fetchSpy.mockImplementation(async (input, init) => {
+      const url = requestUrl(input)
+      if (url.endsWith('/ov/capabilities')) {
+        catalogReads += 1
+        return response({
+          version: 'v1',
+          capabilities: [{ id: 'music', operation: 'generate_music', model: 'minimax-music3' }],
+        })
+      }
+      if (url.endsWith('/videos') && init?.method === 'POST') return response({ id: 'task-1' })
+      if (url.endsWith('/videos/task-1')) return response({ status: 'completed', url: 'https://media.example/music.mp3' })
+      if (url === 'https://media.example/music.mp3') return response('music', { 'content-type': 'audio/mpeg' })
+      throw new Error(`Unexpected media request: ${url}`)
+    })
+    await ctx.plugin(ToolMedia, {
+      baseURL: 'https://gateway.example/v1',
+      catalog: true,
+      catalogCacheFile: join(directory, 'catalog-cache.json'),
+      outputDir: directory,
+      pollIntervalMs: 1,
+      taskTimeoutMs: 2_000,
+    })
+    expect((await call('generate_music', { prompt: 'Gentle piano', lyrics: 'La la' })).isError).toBe(false)
+    expect((await call('generate_music', { prompt: 'Soft strings', lyrics: 'Do re mi' })).isError).toBe(false)
+    expect(catalogReads).toBe(1)
+  })
+})

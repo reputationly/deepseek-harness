@@ -21,6 +21,11 @@ export interface BrandGateway {
   /** Reasoning effort of the default selection; the provider default when omitted. */
   readonly defaultReasoningEffort?: string
   readonly models: readonly BrandGatewayModel[]
+  /** Media tool settings written into the tool-media row of the profile patch. */
+  readonly media?: {
+    /** Image model the media tools use when the gateway catalog lists no image operation. */
+    readonly imageModel?: string
+  }
 }
 
 /** Default model selection a user saved over the brand default. */
@@ -50,7 +55,7 @@ export function brandGateway(): BrandGateway | undefined {
   if (raw === undefined || raw === '') return undefined
   const parsed: unknown = JSON.parse(raw)
   if (!record(parsed)) throw new Error('desktop brand: gateway configuration must be an object')
-  const { baseURL, apiKeyEnv, defaultModel, defaultReasoningEffort, models } = parsed
+  const { baseURL, apiKeyEnv, defaultModel, defaultReasoningEffort, models, media } = parsed
   if (typeof baseURL !== 'string' || !URL.canParse(baseURL)) throw new Error('desktop brand: gateway baseURL must be a URL')
   if (typeof apiKeyEnv !== 'string' || apiKeyEnv === '') throw new Error('desktop brand: gateway apiKeyEnv must be a credential reference')
   if (typeof defaultModel !== 'string' || defaultModel === '') throw new Error('desktop brand: gateway defaultModel must be non-empty')
@@ -80,7 +85,21 @@ export function brandGateway(): BrandGateway | undefined {
   if (!catalog.some(model => model.id === defaultModel)) {
     throw new Error('desktop brand: gateway defaultModel must appear in the catalog')
   }
-  return { baseURL, apiKeyEnv, defaultModel, ...defaultReasoningEffort === undefined ? {} : { defaultReasoningEffort }, models: catalog }
+  let mediaConfig: BrandGateway['media']
+  if (media !== undefined) {
+    if (!record(media)) throw new Error('desktop brand: gateway media must be an object')
+    const { imageModel } = media
+    if (imageModel !== undefined && (typeof imageModel !== 'string' || imageModel === '')) {
+      throw new Error('desktop brand: gateway media imageModel must be a non-empty string')
+    }
+    mediaConfig = { ...imageModel === undefined ? {} : { imageModel } }
+  }
+  return {
+    baseURL, apiKeyEnv, defaultModel,
+    ...defaultReasoningEffort === undefined ? {} : { defaultReasoningEffort },
+    models: catalog,
+    ...mediaConfig === undefined ? {} : { media: mediaConfig },
+  }
 }
 
 /**
@@ -165,6 +184,7 @@ export function gatewayProfilePatch(
     '  config:',
     `    baseURL: ${scalar(gateway.baseURL)}`,
     `    apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
+    ...gateway.media?.imageModel === undefined ? [] : [`    imageModel: ${scalar(gateway.media.imageModel)}`],
     '',
     '# Project canvas that generated media is placed on; shipped disabled like the media tools.',
     '- id: canvas',

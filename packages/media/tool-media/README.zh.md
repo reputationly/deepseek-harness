@@ -55,7 +55,7 @@ Host 退出时会保留已知远端任务和已有文件，供重新打开后恢
 
 Windows 盘符路径、UNC 路径及 `file:` URL 均按本地媒体引用处理。本地参考语音编码为 data URI 上传；HTTP(S) 和 data 语音引用原样传递。FFmpeg 输入只接受本地文件。浏览器不能解码已记录的视频时，`media.videoPreview` 使用本地 FFmpeg 在 `.canvas/previews/` 创建 WebM/VP9/Opus 缓存，保留原始文件且不请求云端。
 
-网关发布能力目录（`GET /v1/ov/capabilities`）时，`generate_image` 和 `generate_video` 从目录取模型和可接受的参数值，而不使用 `imageModel` 和 `videoModel`。音频请求同样按目录校验模型可用性、模式和传输方式；查询失败且没有可用缓存目录时，会拒绝音频提交。目录按 key 读取，在内存中缓存 60 秒，并以 key 摘要为索引镜像到 `catalogCacheFile`（默认 `<DSH_HOME>/cache/ov-catalog.json`），因此网关中断时回退到该 key 上次看到的目录。设置 `catalog: false` 则只使用配置的模型。`videoDefaultDuration`（默认 5）是用户未指定时推荐的时长。
+网关发布能力目录（`GET /v1/ov/capabilities`）时，`generate_image` 和 `generate_video` 从目录取模型和可接受的参数值，而不使用 `imageModel` 和 `videoModel`；目录未列出的操作改用配置的 `imageModel` 或 `videoModel`。音频请求同样按目录校验模型可用性、模式和传输方式；查询失败且没有可用缓存目录时，会拒绝音频提交。目录按 key 读取，在内存中缓存 60 秒，并以 key 摘要为索引镜像到 `catalogCacheFile`（默认 `<DSH_HOME>/cache/ov-catalog.json`），因此网关中断时回退到该 key 上次看到的目录。设置 `catalog: false` 则只使用配置的模型。`videoDefaultDuration`（默认 5）是用户未指定时推荐的时长。
 
 `canvas_generate` 为指定节点规划并执行生成：一张分镜表按切段结果每段生成一张分镜图和一个视频节点，先出分镜图再批量出各段视频，各场并行。需要承接下一段画面的段用该段分镜图作尾帧。已有节点覆盖同一段时复用，已手动指定首帧的段保留手动首帧而不再生成分镜图。运行在任务登记完成后立即返回，并给出任务 id；每个任务自己发完成通知，并把节点状态保持在 `queued`、`running`、清空或 `failed` 之间同步。已有 `queued`/`running` 状态的节点会以 `already_running` 拒绝；没有可恢复记录的遗留状态会变成 `failed`，原因是 `interrupted by a restart`。`storyboard_voice` 为每句台词建一个音频节点，并按台词 id 复用。每次调用注册为 `media` 任务，可以像其他后台任务一样取消与查看。`@名字` 提及隐含的参考图会加进调用并连成 `ref` 边；项目分辨率会换算成网关目录提供的档位。未发布目录时，两个配置的视频模型按调用是否带参考图来选择。由分镜图驱动的分段只发送首帧与尾帧，不发送参考图。
 

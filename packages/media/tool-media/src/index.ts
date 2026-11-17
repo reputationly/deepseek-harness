@@ -386,21 +386,15 @@ export function apply(ctx: Context, config: Config): void {
     },
     canvas: () => ctx.get('canvas'),
   })
+  const catalogSource = resolved.catalog ? new CatalogSource({ baseURL: resolved.baseURL, cacheFile }) : undefined
   const catalogOf = async (): Promise<import('./catalog.ts').MediaCatalog | undefined> => {
-    if (!resolved.catalog) return undefined
+    if (catalogSource === undefined) return undefined
     const gateway = await request(AbortSignal.timeout(resolved.taskTimeoutMs))
-    return new CatalogSource({ baseURL: resolved.baseURL, cacheFile }).load(gateway.apiKey, gateway.signal)
+    return catalogSource.load(gateway.apiKey, gateway.signal)
   }
   const generator = createGenerator({
     request,
-    ...(resolved.catalog
-      ? {
-        catalog: async () => {
-          const gateway = await request(AbortSignal.timeout(resolved.taskTimeoutMs))
-          return new CatalogSource({ baseURL: resolved.baseURL, cacheFile }).load(gateway.apiKey, gateway.signal)
-        },
-      }
-      : {}),
+    catalog: catalogOf,
     write: (prefix, contentType, bytes, onPath) =>
       writeArtifact(resolved.outputDir, prefix, contentType, bytes, onPath),
     taskTimeoutMs: resolved.taskTimeoutMs,
@@ -431,7 +425,7 @@ export function apply(ctx: Context, config: Config): void {
   registerVisualTools(ctx, {
     request,
     runLegacy,
-    catalog: resolved.catalog ? new CatalogSource({ baseURL: resolved.baseURL, cacheFile }) : undefined,
+    catalog: catalogSource,
     imageModel: resolved.imageModel,
     videoModel: resolved.videoModel,
     videoDefaultDuration: resolved.videoDefaultDuration,
