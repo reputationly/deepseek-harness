@@ -49,7 +49,8 @@ interface DriftBaseline {
   readonly measuredAt: string
   readonly forkRef: string
   readonly upstreamRef: string
-  readonly mergeBase: string
+  /** Nearest release tag of the merge base, readable without a commit hash. */
+  readonly mergeBaseTag: string
   readonly totals: DriftTotals
   /** Ceilings `--check` enforces; a total above its ceiling fails the run. */
   readonly thresholds: Omit<DriftTotals, 'forkOnlyFiles' | 'forkOnlyAdded' | 'removedUpstreamFiles'>
@@ -354,7 +355,7 @@ function main(): void {
       measuredAt: new Date().toISOString(),
       forkRef: context.forkRef,
       upstreamRef: context.upstreamRef,
-      mergeBase: context.base,
+      mergeBaseTag: git(['describe', '--tags', '--abbrev=0', base], repoRoot),
       totals,
       thresholds: {
         upstreamOwnedFiles: totals.upstreamOwnedFiles,

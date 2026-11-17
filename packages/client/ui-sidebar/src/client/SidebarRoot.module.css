@@ -278,6 +278,7 @@
    spacing, and height so either occupant can vary in width. */
 .brandIdentity {
   display: inline-flex;
+  flex: 1;
   align-items: center;
   gap: 5px;
   height: 24px;
@@ -293,6 +294,7 @@
 
 .brandName {
   display: inline-flex;
+  flex: 1;
   align-items: center;
   gap: 6px;
   min-width: 0;

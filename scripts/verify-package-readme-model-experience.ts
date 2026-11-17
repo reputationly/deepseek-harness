@@ -38,7 +38,6 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
   'packages/util/home-paths': 'The package only resolves harness-owned host paths; model-facing consumers own any rendered use.',
   'packages/util/launch-environment': 'The package only resolves host environment values; model-facing consumers own any rendered use.',
   'packages/util/workspace-path': 'The package only formats Workspace paths for browser UI; it never constructs model input.',
-  'packages/util/timeline-compositor': 'The package evaluates caller-owned timelines into pixels and PCM; media tools own all model-visible requests and results.',
   'packages/util/values': 'The package only validates, snapshots, compares, freezes, or rejects caller-owned values; consumers own every model-facing use.',
   'packages/util/official-bundles': 'The package only lists bundle package names and their display metadata; the loaded plugin tree owns model context.',
   'packages/util/code-language': 'The package only maps a filename suffix to a syntax-highlighting language id; the read consumer owns the persisted hint.',
@@ -50,6 +49,8 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/client/ui-brand-suanli': { kind: 'none', reason: 'The browser renders the product wordmark and gateway light; nothing it shows enters a prompt, a tool schema, or a tool result.' },
+  'packages/feedback/assistant-feedback': { kind: 'none', reason: 'Feedback is relayed to the deployment site and never reaches a model request.' },
   'packages/client/ui-context-menu': { kind: 'none', reason: 'Client menu presentation and contributed callbacks add no model input.' },
   'packages/client/ui-file-actions': { kind: 'none', reason: 'Explicit user file saves and clipboard operations add no model input.' },
   'packages/api/gateway-status': { kind: 'none', reason: 'The probe authenticates to the gateway itself and adds no prompt, tool schema, or tool result.' },
@@ -72,7 +73,6 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/telemetry/otel': { kind: 'none', reason: 'The service delivers caller-selected records without changing model context.' },
   'packages/host/product-telemetry-otel': { kind: 'none', reason: 'The plugin exports explicit analytics records without contributing model context.' },
   'packages/api/terminal-controller': { kind: 'indirect', reason: 'Working-directory recovery owns directory context; user terminal screens never enter model requests.' },
-  'packages/client/ui-sidebar-canvas': { kind: 'none', reason: 'The browser shows the canvas and sends user edits to the Host; the Host canvas package owns the model tools.' },
   'packages/client/ui-sidebar-terminal': { kind: 'none', reason: 'The browser renders user terminal screens without exposing them to the model.' },
   'packages/ssh/ssh-helper-runtime': { kind: 'none', reason: 'The private executable carrier registers no model-facing content; its providers and consumers own operation results.' },
   'packages/experimental/forge': { kind: 'none', reason: 'Providers and watchers exchange code host status without contributing model context.' },

@@ -13,7 +13,12 @@ kind: "package-reference"
 
 文字标在构建期读取 `DSH_CLIENT_TITLE`，产品名因此是构建输入而不是源码文本。旁边的连接灯读取 Host 的 `gatewayStatus` 命名空间：已连接时每 30 秒查询一次，未连接时每 3 秒重试，侧栏折叠成窄条时不显示。
 
-## 占用的槽位
+## 目录
+
+- [占用的槽位](#occupied-slots)
+- [模型体验](#model-experience)
+
+## 占用的槽位 <a id="occupied-slots"></a>
 
 | 槽位 | 组件 |
 |---|---|
@@ -23,6 +28,18 @@ kind: "package-reference"
 
 空首页的 `conversation.hero.frame` 图层保持空闲，因此标志背后不绘制任何装饰。
 
-## 模型体验
+## 模型体验 <a id="model-experience"></a>
 
-本包只贡献浏览器呈现：不涉及工具、提示词、token 或缓存。它的 Host 半边是空的 `apply`，因此 Loader 行存在但没有 Host 侧行为。
+不涉及：本包只渲染浏览器呈现，不贡献提示词、工具 schema 或工具结果。
+
+#### KV Cache 影响
+
+无：本包渲染的内容不进入任何模型请求。
+
+## 已知限制与后续工作
+
+- 文字标使用 ui-theme 打包的「马善政」子集，只覆盖当前产品名五个字；改名需要重新生成子集，否则缺字会回退到系统字体。
+
+### 开发备注
+
+`ui-sidebar` 声明 `sidebar.brand.mark` 与 `sidebar.brand.name`，ui-conversation 声明 `conversation.hero.brand.mark`；本包把这四个槽位都填上，并让文字标这一行撑满，使连接灯落在与「新会话」按钮相同的右边缘。

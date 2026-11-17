@@ -9,9 +9,18 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Relays the two feedback entries the product shows — a rating on one assistant reply and the general feedback dialog — to `POST <gateway root>/api/assistant/feedback`. The browser never carries the gateway key: it calls `remote.assistantFeedback.submit`, and this service resolves the credential, builds the payload, attaches the redacted conversation snapshot, and reports one code per failure.
+Relays the product's two feedback entries — a rating on one assistant reply and the general feedback dialog — to `POST <gateway root>/api/assistant/feedback`. The browser never carries the gateway key: it calls `remote.assistantFeedback.submit`, and this service resolves the credential, builds the payload, attaches the redacted conversation snapshot, and reports one code per failure.
 
-A rating also carries `request_id`: the identifier the gateway issues for the reply's own request (`x-oneapi-request-id`), which the transport records on the reply's Session event and the loop writes beside the message. The site's administrators search their request log by it, so a report names the exact call that produced the reply being rated; a reply whose provider issued no id, or a report that names the id itself, is submitted without inventing one.
+A rating also carries `request_id`, the identifier the gateway issued for that reply's request, so administrators can search their request log for the exact call.
+
+## Table of Contents
+
+- [Request fields](#request-fields)
+- [Conversation snapshot](#conversation-snapshot)
+- [Config](#config)
+- [Failure codes](#failure-codes)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 
 ## Request fields
 
@@ -37,10 +46,19 @@ The service accepts `channel` (`rating` or `general`), the verdict, the user's c
 
 ## Model Experience
 
-This package adds no tool, prompt, or context of its own: the model never sees a feedback submission. The snapshot it uploads is derived from the Session log after redaction and is not written back to it.
+None, as feedback submissions leave through the deployment's HTTP endpoint and never reach a model request.
+
+#### KV Cache effect
+
+None: the package sends no request of its own to a model.
 
 ## Known Limitations and Deferred Work
+
 
 - **Snapshot reads the synchronous history API.** `Session.snapshotEvents()` is deprecated in favor of a projection; this package takes the same narrow exemption `message-feedback` takes, and moves when that domain's projection exists.
 - **A failed relay is silent.** The remark is already durable locally and the dialog closes on that record, so the deployment site simply lacks the submission. Surfacing it needs a warning toast the dialog does not have yet.
 - **`system_prompt` and `request_params` are absent.** The Host does not retain the assembled prompt or the sampling parameters of a finished call, and the site documents that a snapshot must not fabricate them.
+
+### Dev Note
+
+- The service reads the rated reply's own Session event for `providerRequestId` rather than tracking the latest request, because a later turn would name the wrong call. The deployment supplies the endpoint through the desktop profile patch, so the same binary can point at another site.

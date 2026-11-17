@@ -406,6 +406,31 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-workspace-files -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-assistant-feedback -->
+<a id="deepseek-aidsh-assistant-feedback"></a>
+
+## `@deepseek-ai/dsh-assistant-feedback`
+
+- `inject`: `credentials` · `sessions` · `typert`
+- `source`: [`packages/feedback/assistant-feedback/src/index.ts:44`](../packages/feedback/assistant-feedback/src/index.ts)
+
+```ts config-catalog
+/** Where submissions go and how much conversation they may carry. */
+export interface Config {
+  /** Gateway root that carries its API prefix; the feedback endpoint is derived from it. */
+  readonly baseURL: string
+  /** Credential reference holding the gateway key; resolved at every submission. */
+  readonly apiKeyEnv: string
+  /** Request budget per submission, in milliseconds. */
+  readonly timeoutMs?: number
+  /** Serialized byte ceiling for the attached snapshot. */
+  readonly maxContextBytes?: number
+  /** Newest turns kept before the byte ceiling applies. */
+  readonly maxTurns?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-assistant-feedback -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-attachment-local -->
 <a id="deepseek-aidsh-attachment-local"></a>
 
@@ -491,41 +516,6 @@ export interface Config {
 export type Config = LocalConfig
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-bash-sandbox -->
-
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-canvas -->
-<a id="deepseek-aidsh-canvas"></a>
-
-## `@deepseek-ai/dsh-canvas`
-
-- `inject`: `tools` · `workingDirectory` · `systemPrompt`
-- `source`: [`packages/media/canvas/src/config.ts:9`](../packages/media/canvas/src/config.ts)
-
-```ts config-catalog
-/** Bounds a deployment may change; protocol constants stay in the code that enforces them. */
-export interface Config {
-  /** Largest number of nodes one canvas may hold, groups included. */
-  maxNodes?: number
-  /** Largest number of edges one canvas may hold. */
-  maxEdges?: number
-  /** Longest prompt accepted on one node, in characters. */
-  maxPromptLength?: number
-  /** Largest number of operations one `canvas_edit` call may carry. */
-  maxBatchOperations?: number
-  /** Versions kept per media node; the active version is never evicted. */
-  versionLimit?: number
-  /** Versions kept per text, script, and storyboard node. */
-  textVersionLimit?: number
-  /** Largest number of shots one storyboard table may hold. */
-  maxShotsPerStoryboard?: number
-  /** Longest video segment one generation call may cover, in seconds. */
-  maxSegmentSeconds?: number
-  /** Edits kept in the undo journal of one episode. */
-  journalLimit?: number
-  /** Previous timeline revisions kept per node, in addition to its live revision. */
-  timelineHistoryLimit?: number
-}
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-canvas -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-client-connection -->
 <a id="deepseek-aidsh-client-connection"></a>
@@ -4301,104 +4291,6 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-lsp -->
 
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-media -->
-<a id="deepseek-aidsh-tool-media"></a>
-
-## `@deepseek-ai/dsh-tool-media`
-
-- `inject`: `tools` · `subprocess`
-- `source`: [`packages/media/tool-media/src/index.ts:60`](../packages/media/tool-media/src/index.ts)
-
-```ts config-catalog
-/** Config for one deployment's media gateway. */
-export interface Config {
-  /** Gateway root including its API prefix. */
-  baseURL: string
-  /** Credential reference resolved per call; never the key itself. */
-  apiKeyEnv?: string
-  /** Image model id. */
-  imageModel?: string
-  /** Speech model id. */
-  speechModel?: string
-  /** Music model id. */
-  musicModel?: string
-  /** Video model id. */
-  videoModel?: string
-  /** Directory for generated files; relative paths resolve against the process working directory. */
-  outputDir?: string
-  /** Budget for one asynchronous task, including polling. */
-  taskTimeoutMs?: number
-  /** Delay between task polls. */
-  pollIntervalMs?: number
-  /** Read models and parameter values from the gateway's capability catalog. */
-  catalog?: boolean
-  /** Disk mirror of the capability catalog; defaults under the Harness home. */
-  catalogCacheFile?: string
-  /** Video length recommended when the user names none, in seconds. */
-  videoDefaultDuration?: number
-  /** Video model used when a node has reference images but no first frame. */
-  videoRefModel?: string
-  /** Longest video segment one generation call may cover, in seconds. */
-  maxSegmentSeconds?: number
-  /** Shortest clip one storyboard-segment video call requests, in seconds. */
-  minSegmentSeconds?: number
-  /** Generation tasks one call may run at once. */
-  generateConcurrency?: number
-  /** FFmpeg executable, or an absolute path to its bundled runtime copy. */
-  ffmpegPath?: string
-  /** FFprobe executable, or an absolute path to its bundled runtime copy. */
-  ffprobePath?: string
-  /** Timeout for one local editing operation. */
-  editTimeoutMs?: number
-  /** Absolute font path injected into non-ASCII drawtext filters. */
-  fontFile?: string
-  /** Directory holding one subdirectory per bundled skill; relative paths resolve against this package. */
-  skillsRoot?: string
-  /** Video frames per reusable full-quality cache block. */
-  renderChunkFrames?: number
-  /** Maximum bytes in one streamed render upload. */
-  renderMaxChunkBytes?: number
-  /** Time without progress before a disconnected render lease is fenced and requeued. */
-  renderLeaseTimeoutMs?: number
-  /** Simultaneously decoded source clips permitted in a render. */
-  renderMaxActiveSources?: number
-  /** H.264 target bitrate per output pixel per frame. */
-  renderVideoBitsPerPixel?: number
-  /** Bitrate of the single final AAC mix. */
-  renderAudioBitrate?: number
-  /** Default browser font family for captions without an explicit font. */
-  renderFontFamily?: string
-  /** Optional font bytes loaded by every compositor under the same font family. */
-  renderFontFile?: string
-  /** Quality of immutable H.264 compatibility copies (0–51). */
-  renderCompatibilityCrf?: number
-  /** FFmpeg H.264 preset for compatibility copies. */
-  renderCompatibilityPreset?:
-    | 'ultrafast'
-    | 'superfast'
-    | 'veryfast'
-    | 'faster'
-    | 'fast'
-    | 'medium'
-    | 'slow'
-    | 'slower'
-    | 'veryslow'
-  /** AAC bitrate of compatibility copies before timeline mixing. */
-  renderCompatibilityAudioBitrate?: number
-  /** Per-input demux byte cache. */
-  renderSourceCacheBytes?: number
-  /** Maximum bytes decoded as one still image or font. */
-  renderMaxImageBytes?: number
-  /** Maximum decoded pixel count per source. */
-  renderMaxSourcePixels?: number
-  /** Samples per finite audio mixing/encoding window. */
-  renderAudioWindowSamples?: number
-  /** Progress and renderer lease heartbeat interval. */
-  renderHeartbeatMs?: number
-}
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-media -->
-
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-present -->
 <a id="deepseek-aidsh-tool-present"></a>
 
@@ -4977,20 +4869,6 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-webhook-github -->
 
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-wechat -->
-<a id="deepseek-aidsh-wechat"></a>
-
-## `@deepseek-ai/dsh-wechat`
-
-- `inject`: `agents` · `agentDefaultModel` · `workspaceRegistry` · `permissionPresets`
-- `source`: [`packages/experimental/wechat/src/index.ts:50`](../packages/experimental/wechat/src/index.ts)
-
-```ts config-catalog
-/** The production plugin has no deployment options. */
-type Config = Record<string, never>
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-wechat -->
-
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-workflow-ptc -->
 <a id="deepseek-aidsh-workflow-ptc"></a>
 
@@ -5085,6 +4963,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-approval` | — | [`packages/client/ui-approval/src/index.ts`](../packages/client/ui-approval/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-attachment` | — | [`packages/client/ui-attachment/src/index.ts`](../packages/client/ui-attachment/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-brand-official` | — | [`packages/client/ui-brand-official/src/index.ts`](../packages/client/ui-brand-official/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-brand-suanli` | — | [`packages/client/ui-brand-suanli/src/index.ts`](../packages/client/ui-brand-suanli/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-chat` | — | [`packages/client/ui-chat/src/index.ts`](../packages/client/ui-chat/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-commands` | — | [`packages/client/ui-commands/src/index.ts`](../packages/client/ui-commands/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-context-menu` | — | [`packages/client/ui-context-menu/src/index.ts`](../packages/client/ui-context-menu/src/index.ts) |
@@ -5126,7 +5005,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-shortcuts` | — | [`packages/client/ui-shortcuts/src/index.ts`](../packages/client/ui-shortcuts/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar` | — | [`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-browser` | — | [`packages/client/ui-sidebar-browser/src/index.ts`](../packages/client/ui-sidebar-browser/src/index.ts) |
-| `@deepseek-ai/dsh-client-ui-sidebar-canvas` | — | [`packages/client/ui-sidebar-canvas/src/index.ts`](../packages/client/ui-sidebar-canvas/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-files` | — | [`packages/client/ui-sidebar-files/src/index.ts`](../packages/client/ui-sidebar-files/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-right` | — | [`packages/client/ui-sidebar-right/src/index.ts`](../packages/client/ui-sidebar-right/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-terminal` | — | [`packages/client/ui-sidebar-terminal/src/index.ts`](../packages/client/ui-sidebar-terminal/src/index.ts) |
@@ -5134,7 +5012,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-subagent` | — | [`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-tool` | — | [`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-user-questions` | — | [`packages/client/ui-user-questions/src/index.ts`](../packages/client/ui-user-questions/src/index.ts) |
-| `@deepseek-ai/dsh-client-ui-wechat` | — | [`packages/experimental/client-ui-wechat/src/index.ts`](../packages/experimental/client-ui-wechat/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-workflow-run` | — | [`packages/client/ui-workflow-run/src/index.ts`](../packages/client/ui-workflow-run/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-workspace` | — | [`packages/client/ui-workspace/src/index.ts`](../packages/client/ui-workspace/src/index.ts) |
 | `@deepseek-ai/dsh-command-compact` | `commands` · `compaction` | [`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts) |
@@ -5296,9 +5173,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-util-crypto` | — | [`packages/util/crypto/src/index.ts`](../packages/util/crypto/src/index.ts) |
 | `@deepseek-ai/dsh-util-file-drag` | — | [`packages/util/file-drag/src/index.ts`](../packages/util/file-drag/src/index.ts) |
 | `@deepseek-ai/dsh-util-time` | — | [`packages/util/time/src/index.ts`](../packages/util/time/src/index.ts) |
-| `@deepseek-ai/dsh-util-timeline-compositor` | — | [`packages/util/timeline-compositor/src/index.ts`](../packages/util/timeline-compositor/src/index.ts) |
 | `@deepseek-ai/dsh-util-values` | — | [`packages/util/values/src/index.ts`](../packages/util/values/src/index.ts) |
 | `@deepseek-ai/dsh-util-workspace-path` | — | [`packages/util/workspace-path/src/index.ts`](../packages/util/workspace-path/src/index.ts) |
-| `@deepseek-ai/dsh-wechat-bundle` | — | [`packages/experimental/wechat-bundle/src/index.ts`](../packages/experimental/wechat-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-win32-process` | — | [`packages/subprocess/win32-process/src/index.ts`](../packages/subprocess/win32-process/src/index.ts) |
 <!-- END GENERATED config-catalog:library -->

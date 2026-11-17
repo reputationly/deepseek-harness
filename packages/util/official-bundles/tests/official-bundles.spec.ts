@@ -29,7 +29,6 @@ describe('Shipped profile templates', () => {
           '@deepseek-ai/dsh-web-app',
           '@deepseek-ai/dsh-experimental-plugin-market-bundle',
           '@deepseek-ai/dsh-experimental-voice-input-bundle',
-          '@deepseek-ai/dsh-wechat-bundle',
         ],
       },
       headless: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'] },

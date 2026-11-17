@@ -15,7 +15,6 @@ import type {} from '@deepseek-ai/dsh-plugin-market/types'
 import type {} from '@deepseek-ai/dsh-schedule/client'
 import type { TypertForwardableEventEntry } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-web/types'
-import type {} from '@deepseek-ai/dsh-tool-media/types'
 
 /**
  * Host events this application forwards without renaming. The explicit mode is
@@ -38,8 +37,6 @@ export const API_REMOTE_FORWARDED_EVENTS = [
   { event: 'deepseek-account/model-sign-in-required', mode: 'emit' },
   { event: 'credentials/record-updated', mode: 'emit' },
   { event: 'credentials/reference-updated', mode: 'emit' },
-  { event: 'canvas/change', mode: 'emit' },
-  { event: 'media/render-change', mode: 'emit', resources: { session: (notice): SessionId => notice.sessionId } },
   { event: 'goal/activation-changed', mode: 'emit' },
   { event: 'cordis/request-run', mode: 'emit' },
   { event: 'cordis/request-run-resolved', mode: 'emit' },

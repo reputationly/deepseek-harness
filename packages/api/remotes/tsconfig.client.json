@@ -17,6 +17,9 @@
       "path": "../../../vendor/cordis"
     },
     {
+      "path": "../../feedback/assistant-feedback"
+    },
+    {
       "path": "../gateway/tsconfig.client.json"
     },
     {
@@ -42,12 +45,6 @@
     },
     {
       "path": "../../goal/goal"
-    },
-    {
-      "path": "../../media/canvas"
-    },
-    {
-      "path": "../../media/tool-media"
     },
     {
       "path": "../../schedule/schedule"

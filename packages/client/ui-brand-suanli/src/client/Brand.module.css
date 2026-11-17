@@ -1,7 +1,10 @@
-/* Wordmark row: the product name with the gateway connection light after it. */
+/* Wordmark row: the product name on the left, the gateway light pushed to the row's end so
+   it lines up with the New Session button's right edge. */
 .row {
-  display: inline-flex;
+  display: flex;
+  flex: 1;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   min-width: 0;
 }

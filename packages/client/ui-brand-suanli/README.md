@@ -13,6 +13,11 @@ Supplies the product identity the sidebar and the blank home render: the mark, t
 
 The wordmark reads `DSH_CLIENT_TITLE` at build time, so the product name stays a build input rather than source text. The connection light beside it polls the Host `gatewayStatus` namespace: every 30 s while connected, every 3 s while disconnected, and never while the sidebar shows the collapsed rail.
 
+## Table of Contents
+
+- [Occupied slots](#occupied-slots)
+- [Model Experience](#model-experience)
+
 ## Occupied slots
 
 | Slot | Component |
@@ -25,4 +30,16 @@ The blank home's `conversation.hero.frame` layer stays free, so no decoration is
 
 ## Model Experience
 
-This package contributes browser presentation only: no tool, prompt, token, or cache effect. Its host half is an inert `apply`, so the Loader row exists with no host-side behavior.
+None, as this package renders browser presentation only and contributes no prompt, tool schema, or tool result.
+
+#### KV Cache effect
+
+None: nothing this package renders is part of a model request.
+
+## Known Limitations and Deferred Work
+
+- The wordmark uses the Ma Shan Zheng subset ui-theme ships, which covers the current five-character product name only; renaming needs a new subset, or missing glyphs fall back to the system font.
+
+### Dev Note
+
+`ui-sidebar` declares `sidebar.brand.mark` and `sidebar.brand.name`, and ui-conversation declares `conversation.hero.brand.mark`; this package fills all three, and the wordmark row stretches so the connection light lands on the same right edge as the New Session button.

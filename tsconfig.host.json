@@ -282,8 +282,6 @@
 
     { "path": "./packages/experimental/client-ui-cot-translation/tsconfig.host.json" },
     { "path": "./packages/experimental/cot-translation-bundle" },
-    { "path": "./packages/experimental/wechat" },
-    { "path": "./packages/experimental/wechat-bundle" },
     { "path": "./packages/experimental/session-search" },
     { "path": "./packages/experimental/ralph-bundle" },
     { "path": "./packages/experimental/terminal-bundle" },
@@ -515,8 +513,6 @@
     { "path": "./packages/web/web-deepseek-api" },
     { "path": "./packages/web/web-fetch-http" },
     { "path": "./packages/web/tool-web" },
-    { "path": "./packages/media/canvas" },
-    { "path": "./packages/media/tool-media" },
     { "path": "./packages/spill/spill" },
     { "path": "./packages/spill/spill-local" },
     { "path": "./packages/spill/spill-policy" },

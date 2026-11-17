@@ -11,9 +11,21 @@
 /deepseek-ai-dsh-client-ui-brand-suanli/summary:
   en: 365df41acedee2bb
   zh: afcc16fcf626e535
+/deepseek-ai-dsh-client-ui-brand-suanli/table-of-contents:
+  en: 7b967d5664b7c36f
+  zh: 5241ee12a7b9ecb9
 /deepseek-ai-dsh-client-ui-brand-suanli/occupied-slots:
   en: 369324cfb78c227a
-  zh: d27ff575870f39ea
+  zh: 5143588afb24771c
 /deepseek-ai-dsh-client-ui-brand-suanli/model-experience:
-  en: f2b52343946c482b
-  zh: 0790c2e4c18799e4
+  en: 6347e1e0846b78be
+  zh: d8bafac4a4ab238a
+/deepseek-ai-dsh-client-ui-brand-suanli/model-experience/kv-cache-effect:
+  en: 1f028434fe39a351
+  zh: 4d960cbf3f852755
+/deepseek-ai-dsh-client-ui-brand-suanli/known-limitations-and-deferred-work:
+  en: e76186044d8e6001
+  zh: 24dca054e1255410
+/deepseek-ai-dsh-client-ui-brand-suanli/known-limitations-and-deferred-work/dev-note:
+  en: 45e9a7c6af1acc97
+  zh: 9bf6c3c339dbe7ed

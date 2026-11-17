@@ -206,34 +206,7 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'goals/edit': 'owner-only', // owner edits a goal
   'goals/pause': 'owner-only', // owner pauses a goal
   'goals/resume': 'owner-only', // owner resumes a goal
-  'canvas/apply': 'owner-only', // owner edits the project canvas
-  'canvas/get': 'owner-only', // node media is read through owner-only Workspace file access
-  'canvas/editorContext': 'owner-only',
-  'canvas/bible': 'owner-only', // the shared bible names the project's cast and locations
-  'canvas/timeline': 'owner-only',
-  'canvas/editTimeline': 'owner-only',
-  'canvas/timelineHistory': 'owner-only',
-  'canvas/restoreTimeline': 'owner-only',
   // Timeline work contains local media paths and uploads; it remains in the owner's execution world.
-  'media/timelineStatus': 'owner-only',
-  'media/renderTimeline': 'owner-only',
-  'media/pendingTimelineRenders': 'owner-only',
-  'media/claimTimelineRender': 'owner-only',
-  'media/appendTimelineRender': 'owner-only',
-  'media/completeTimelineRender': 'owner-only',
-  'media/timelineRenderProgress': 'owner-only',
-  'media/failTimelineRender': 'owner-only',
-  'media/clearTimelineCache': 'owner-only',
-  'media/exportTimeline': 'owner-only',
-  'media/compatibleTimelineAsset': 'owner-only',
-  'media/videoPreview': 'owner-only',
-  'media/editMedia': 'owner-only',
-  'media/importVideo': 'owner-only',
-  'media/importAudio': 'owner-only',
-  'media/capabilities': 'owner-only', // the deployment's gateway catalog is owner configuration
-  'media/planNodes': 'owner-only', // planning reads the owner's project and spends the owner's budget
-  'media/generateNodes': 'owner-only', // generation spends the owner's gateway budget
-  'media/cancelMediaJob': 'owner-only', // only the owner cancels its own jobs
   'pluginInventory/list': 'owner-only', // owner plugin inventory
   'mcpManager/probe': 'owner-only', // owner MCP server management
   'mcpManager/restart': 'owner-only', // owner MCP server management

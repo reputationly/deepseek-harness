@@ -304,10 +304,6 @@
     - id: ui-sidebar-terminal
       name: '@deepseek-ai/dsh-client-ui-sidebar-terminal'
 
-    # The project canvas tab; it mounts only when the deployment also enables the `canvas` Host row,
-    # because it requires that Remote namespace.
-    - id: ui-sidebar-canvas
-      name: '@deepseek-ai/dsh-client-ui-sidebar-canvas'
     # The right Sidebar's workspace file tree tab type.
     - id: ui-sidebar-files
       name: '@deepseek-ai/dsh-client-ui-sidebar-files'

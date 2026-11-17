@@ -60,8 +60,11 @@ declare module '@deepseek-ai/cordis' {
 /** Dictionary namespace owned by this plugin. */
 const NS = 'feedback'
 
+/** Client-side deadline for one general submission, above the Host's own request budget. */
+const GENERAL_SUBMIT_DEADLINE_MS = 25_000
+
 /** Required services: the slot registry, the two Remote namespaces, and the copy. */
-export const inject = ['slots', 'remote', 'remote.messageFeedback', 'remote.sessionFeedback', 'locale']
+export const inject = ['slots', 'remote', 'remote.messageFeedback', 'remote.sessionFeedback', 'remote.assistantFeedback', 'locale']
 
 /**
  * Client plugin body: the per-message feedback entry, the Session's dialog
@@ -75,7 +78,18 @@ export function apply(ctx: ClientContext): void {
   // The general dialog belongs to the shell: the More menu lives in the sidebar, which a
   // deployment without an open Session still shows.
   const general = new FeedbackDialogController(async (_target, entry) => {
-    const carried = await ctx.remote.assistantFeedback.submit({ channel: 'general', ...entry })
+    // A Host that never answers must not leave the form spinning: the deadline restores the draft.
+    const deadline = new Promise<'timeout'>((resolve) => { setTimeout(() => { resolve('timeout') }, GENERAL_SUBMIT_DEADLINE_MS) })
+    // The dialog's draft names its body `text`; the site field is `content`.
+    const carried = await Promise.race([
+      ctx.remote.assistantFeedback.submit({
+        channel: 'general',
+        ...entry.category === undefined ? {} : { category: entry.category },
+        ...entry.text === undefined ? {} : { content: entry.text },
+      }),
+      deadline,
+    ])
+    if (carried === 'timeout') return { ok: false, error: { code: 'timeout', message: '反馈提交超时，请稍后重试' } }
     if (!carried.ok) return { ok: false, error: { code: carried.error.code, message: carried.error.message } }
     if (carried.value.ok) return { ok: true }
     return { ok: false, error: { code: carried.value.code, message: carried.value.message } }

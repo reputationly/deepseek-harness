@@ -36,6 +36,9 @@ import { SettingsRoot } from './SettingsRoot.tsx'
 import { DesktopUpdateBadge } from './DesktopUpdateIndicator.tsx'
 import type { DesktopUpdateBridge } from '../types.ts'
 import { DesktopChannelSource } from './desktop-channel-source.ts'
+import { DesktopPowerRow, type DesktopPowerRowInjected } from './DesktopPowerRow.tsx'
+import { DesktopPowerSource } from './desktop-power-source.ts'
+import type { DesktopPowerBridge } from '../types.ts'
 import { DesktopChannelRow, DesktopChannelToast } from './DesktopChannelRow.tsx'
 import { DesktopUpdateSource } from './desktop-update-source.ts'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
@@ -103,10 +106,26 @@ export function apply(ctx: ClientContext): void {
   }, CurrentVersionRow))
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-settings-general: dictionaries')
   const connection = ctx.get('connection') as ConnectionHandle
-  const carrier = (globalThis as typeof globalThis & { dshDesktop?: { protocolVersion: number; updates?: DesktopUpdateBridge } }).dshDesktop
+  const carrier = (globalThis as typeof globalThis & {
+    dshDesktop?: { protocolVersion: number; updates?: DesktopUpdateBridge; power?: DesktopPowerBridge }
+  }).dshDesktop
   const desktopUpdate = new DesktopUpdateSource(carrier?.protocolVersion === 1 ? carrier.updates : undefined)
   ctx.effect(() => () => { desktopUpdate.dispose() }, 'ui-settings-general: desktop update carrier')
   const channelBridge = carrier?.protocolVersion === 1 ? carrier.updates?.channels : undefined
+
+  // Keep-awake is a shell capability: the row appears only where the Desktop carrier exposes it.
+  const powerBridge = carrier?.protocolVersion === 1 ? carrier.power : undefined
+  if (powerBridge !== undefined) {
+    const desktopPower = new DesktopPowerSource(powerBridge)
+    ctx.effect(() => () => { desktopPower.dispose() }, 'ui-settings-general: desktop power carrier')
+    ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+      name: 'settings.general.item', id: 'desktop-power', order: 30, locale: NS,
+      inject: (): DesktopPowerRowInjected => ({
+        hooks: { power: desktopPower.store },
+        setPreventSleep: preventSleep => desktopPower.setPreventSleep(preventSleep),
+      }),
+    }, DesktopPowerRow))
+  }
   if (channelBridge !== undefined) {
     const channel = new DesktopChannelSource(channelBridge)
     ctx.effect(() => () => { channel.dispose() }, 'ui-settings-general: desktop channel')

@@ -24,7 +24,7 @@ const t = makeTranslate(zh, commonZh)
 /** Render the entry over a fixed state and recording verbs. */
 function mount(overrides: Partial<FeedbackDialogState> = {}) {
   const state: FeedbackDialogState = {
-    target: { kind: 'session' }, category: null, text: '', submitting: false, failure: null, toast: 0,
+    target: { kind: 'session' }, category: null, text: '', submitting: false, failure: null, failureMessage: null, toast: 0,
     ...overrides,
   }
   const verbs = {

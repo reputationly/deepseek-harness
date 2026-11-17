@@ -28,6 +28,8 @@ export interface FeedbackDialogState {
   readonly submitting: boolean
   /** Failure code of the last submission from this open; null when none. */
   readonly failure: string | null
+  /** Sentence the failing source reported, shown instead of the generic line when present. */
+  readonly failureMessage: string | null
   /** Sequence of the acknowledgement toast on screen; 0 while none. */
   readonly toast: number
 }
@@ -40,7 +42,7 @@ export interface FeedbackDialogState {
 export type FeedbackSubmit = (target: FeedbackDialogTarget, entry: FeedbackRecord) => Promise<MessageFeedbackActionResult>
 
 const CLOSED: Omit<FeedbackDialogState, 'toast'> = {
-  target: null, category: null, text: '', submitting: false, failure: null,
+  target: null, category: null, text: '', submitting: false, failure: null, failureMessage: null,
 }
 
 /** Per-session dialog controller; one instance backs the overlay entry and every message control. */
@@ -91,12 +93,14 @@ export class FeedbackDialogController {
     const s = this.state.getSnapshot()
     if (s.target === null || s.submitting) return
     const generation = this.generation
-    this.state.set({ ...s, submitting: true, failure: null })
+    this.state.set({ ...s, submitting: true, failure: null, failureMessage: null })
     const text = s.text.trim()
+    // A transport seam that throws instead of returning a failure must still settle the
+    // form: an unreported rejection would leave this draft submitting forever.
     const result = await this.submit(s.target, {
       ...(text.length === 0 ? {} : { text }),
       ...(s.category === null ? {} : { category: s.category }),
-    })
+    }).catch(() => ({ ok: false as const, error: { code: 'unavailable', message: '反馈暂时无法提交' } }))
     if (result.ok) {
       // The remark is recorded whichever draft is on screen now, so the toast
       // always shows; only the draft that produced it closes.
@@ -105,13 +109,17 @@ export class FeedbackDialogController {
       return
     }
     if (generation !== this.generation) return
-    this.state.set({ ...this.state.getSnapshot(), submitting: false, failure: result.error.code, toast: 0 })
+    this.state.set({
+      ...this.state.getSnapshot(), submitting: false, toast: 0,
+      failure: result.error.code,
+      failureMessage: result.error.message === '' ? null : result.error.message,
+    })
   }
 
   /** Clear the current failure toast without closing its draft. */
   dismissFailure(): void {
     const s = this.state.getSnapshot()
-    this.state.set({ ...s, failure: null })
+    this.state.set({ ...s, failure: null, failureMessage: null })
   }
 
   /** Show the acknowledgement toast; a toast already on screen restarts. */

@@ -22,7 +22,6 @@
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
-    "./assets/*": "./lib/assets/*",
     "./src/*": "./src/*",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
@@ -108,7 +107,6 @@
     "locale/*.json",
     "lib/index.js",
     "lib/client.js",
-    "lib/assets",
     "lib/types/**/*.d.ts"
   ]
 }

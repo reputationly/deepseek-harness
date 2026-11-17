@@ -21,25 +21,12 @@ export interface BrandGateway {
   /** Reasoning effort of the default selection; the provider default when omitted. */
   readonly defaultReasoningEffort?: string
   readonly models: readonly BrandGatewayModel[]
-  /** Media tool settings written into the tool-media row of the profile patch. */
-  readonly media?: {
-    /** Image model the media tools use when the gateway catalog lists no image operation. */
-    readonly imageModel?: string
-  }
 }
 
 /** Default model selection a user saved over the brand default. */
 export interface SavedSelection {
   readonly model: string
   readonly reasoningEffort?: string
-}
-
-/** Packaged media tools and their external skill resources. */
-export interface BrandGatewayMediaRuntime {
-  readonly ffmpegPath?: string
-  readonly ffprobePath?: string
-  readonly fontFile?: string
-  readonly skillsRoot: string
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -55,7 +42,7 @@ export function brandGateway(): BrandGateway | undefined {
   if (raw === undefined || raw === '') return undefined
   const parsed: unknown = JSON.parse(raw)
   if (!record(parsed)) throw new Error('desktop brand: gateway configuration must be an object')
-  const { baseURL, apiKeyEnv, defaultModel, defaultReasoningEffort, models, media } = parsed
+  const { baseURL, apiKeyEnv, defaultModel, defaultReasoningEffort, models } = parsed
   if (typeof baseURL !== 'string' || !URL.canParse(baseURL)) throw new Error('desktop brand: gateway baseURL must be a URL')
   if (typeof apiKeyEnv !== 'string' || apiKeyEnv === '') throw new Error('desktop brand: gateway apiKeyEnv must be a credential reference')
   if (typeof defaultModel !== 'string' || defaultModel === '') throw new Error('desktop brand: gateway defaultModel must be non-empty')
@@ -85,20 +72,10 @@ export function brandGateway(): BrandGateway | undefined {
   if (!catalog.some(model => model.id === defaultModel)) {
     throw new Error('desktop brand: gateway defaultModel must appear in the catalog')
   }
-  let mediaConfig: BrandGateway['media']
-  if (media !== undefined) {
-    if (!record(media)) throw new Error('desktop brand: gateway media must be an object')
-    const { imageModel } = media
-    if (imageModel !== undefined && (typeof imageModel !== 'string' || imageModel === '')) {
-      throw new Error('desktop brand: gateway media imageModel must be a non-empty string')
-    }
-    mediaConfig = { ...imageModel === undefined ? {} : { imageModel } }
-  }
   return {
     baseURL, apiKeyEnv, defaultModel,
     ...defaultReasoningEffort === undefined ? {} : { defaultReasoningEffort },
     models: catalog,
-    ...mediaConfig === undefined ? {} : { media: mediaConfig },
   }
 }
 
@@ -144,7 +121,7 @@ function scalar(value: string): string {
  * @returns YAML patch entries replacing the provider endpoint, catalog, and default model.
  */
 export function gatewayProfilePatch(
-  gateway: BrandGateway, productName?: string, saved?: SavedSelection, mediaRuntime?: BrandGatewayMediaRuntime,
+  gateway: BrandGateway, productName?: string, saved?: SavedSelection,
 ): string {
   const model = saved?.model ?? gateway.defaultModel
   const reasoningEffort = saved === undefined ? gateway.defaultReasoningEffort : saved.reasoningEffort
@@ -168,30 +145,9 @@ export function gatewayProfilePatch(
     '  config:',
     `    baseURL: ${scalar(gateway.baseURL)}`,
     `    apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
-    ...mediaRuntime === undefined ? [] : [
-      ...(mediaRuntime.ffmpegPath === undefined ? [] : [`    ffmpegPath: ${scalar(mediaRuntime.ffmpegPath)}`]),
-      ...(mediaRuntime.ffprobePath === undefined ? [] : [`    ffprobePath: ${scalar(mediaRuntime.ffprobePath)}`]),
-      ...(mediaRuntime.fontFile === undefined ? [] : [`    fontFile: ${scalar(mediaRuntime.fontFile)}`]),
-      `    skillsRoot: ${scalar(mediaRuntime.skillsRoot)}`,
-    ],
     ...productName === undefined || productName === '' ? [] : [`    displayName: ${scalar(productName)}`],
     '    models:',
     models,
-    '',
-    '# Media tools over the same gateway; the base bundle ships this row disabled.',
-    '- id: tool-media',
-    '  disabled: false',
-    '  config:',
-    `    baseURL: ${scalar(gateway.baseURL)}`,
-    `    apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
-    ...gateway.media?.imageModel === undefined ? [] : [`    imageModel: ${scalar(gateway.media.imageModel)}`],
-    '',
-    '# Project canvas that generated media is placed on; shipped disabled like the media tools.',
-    '- id: canvas',
-    '  disabled: false',
-    '',
-    '- id: ui-sidebar-canvas',
-    '  disabled: false',
     '',
     '# The footer connection light probes this same endpoint with the stored key. The row',
     '# exists only where a gateway is configured, so no bundle ships it disabled.',
@@ -217,13 +173,13 @@ export function gatewayProfilePatch(
  * model selection the user saved from settings.
  * @param profileDir - Desktop profile directory created before the Host starts.
  */
-export function writeGatewayProfile(profileDir: string, mediaRuntime?: BrandGatewayMediaRuntime): void {
+export function writeGatewayProfile(profileDir: string): void {
   const gateway = brandGateway()
   if (gateway === undefined) return
   const path = join(profileDir, 'cordis.patch.yml')
   let previous = ''
   try { previous = readFileSync(path, 'utf8') } catch { /* first start */ }
-  const patch = gatewayProfilePatch(gateway, process.env.DSH_DESKTOP_PRODUCT_NAME, savedSelection(gateway, previous), mediaRuntime)
+  const patch = gatewayProfilePatch(gateway, process.env.DSH_DESKTOP_PRODUCT_NAME, savedSelection(gateway, previous))
   writeFileSync(path, patch, { encoding: 'utf8', mode: 0o600 })
 }
 

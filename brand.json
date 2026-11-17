@@ -9,9 +9,6 @@
     "apiKeyEnv": "AURORA_API_KEY",
     "defaultModel": "deepseek-v4-1-flash",
     "defaultReasoningEffort": "high",
-    "media": {
-      "imageModel": "minimax-h3-image"
-    },
     "models": [
       {
         "id": "deepseek-v4-1-flash",

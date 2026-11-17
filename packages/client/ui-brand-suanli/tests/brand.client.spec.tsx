@@ -106,6 +106,6 @@ describe('product brand plugin', () => {
   it('names the failure in the light tooltip', async () => {
     const refresh = async (): Promise<GatewayStatus> => ({ state: 'disconnected', code: 'key-rejected' })
     const view = render(<ConnectionPill read={refresh} refresh={refresh} t={dictionary} />)
-    await vi.waitFor(() => { expect(view.container.querySelector('button')?.title).toBe('reason.key-rejected') })
+    await vi.waitFor(() => { expect(view.container.querySelector('[data-state]')?.getAttribute('title')).toBe('reason.key-rejected') })
   })
 })

@@ -41,7 +41,11 @@ export class FeedbackSurface {
       const result = target.kind === 'message'
         ? await this.feedback.rate(target.messageId, target.rating, entry)
         : await this.recordSession(entry)
-      if (result.ok) {
+      if (result.ok && target.kind === 'message') {
+        // The remark is durable locally; the site report must not hold the dialog open.
+        void this.report({ channel: 'rating', rating: target.rating === 'positive' ? 'like' : 'dislike', messageId: target.messageId, ...entryFields(entry) })
+          .catch(() => undefined)
+      } else if (result.ok) {
         const fields = entryFields(entry)
         await this.report(target.kind === 'message'
           // The local verdict vocabulary is positive/negative; the site names like/dislike.

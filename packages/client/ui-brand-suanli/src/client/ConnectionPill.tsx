@@ -57,11 +57,13 @@ export function ConnectionPill({ read, refresh, t }: ConnectionPillProps): React
   const reason = status.state === 'disconnected'
     ? t(reasonKey(status.code), { detail: status.detail ?? '' })
     : label
-  return <button type="button" className={css.pill} aria-label={reason} title={reason}
-    data-state={status.state} onClick={() => { void refresh().then(setStatus, () => undefined) }}>
+  // Passive state, not a control: the brand row it lives in is hidden from assistive
+  // technology, and on platforms where that row is a New Session button a nested button
+  // would be invalid markup. The polling already recovers a dropped connection.
+  return <span className={css.pill} title={reason} data-state={status.state}>
     <span className={clsx(css.dot, css[status.state])} aria-hidden="true" />
     <span className={css.label}>{label}</span>
-  </button>
+  </span>
 }
 
 /**

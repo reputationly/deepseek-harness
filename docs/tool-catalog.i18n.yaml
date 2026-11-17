@@ -9,8 +9,8 @@
   en: 6cc2cd9ced70bb09
   zh: 1c0e6cb4ba2ed637
 /tool-schema-catalog/tool-package-map:
-  en: 25699b5fb537b90a
-  zh: 45a2d6895e387d9e
+  en: 7b5b99bcc5cd46f4
+  zh: c1697f88326440ff
 /tool-schema-catalog/deepseek-ai-dsh-plugin-manager:
   en: e0143916bb634762
   zh: e0143916bb634762
@@ -330,86 +330,5 @@
   en: 8673f203aea9bdf2
   zh: 4e17783ffdf34c83
 /tool-schema-catalog/deepseek-ai-dsh-tool-web/web-search:
-  en: 01f300094796aeb1
-  zh: f6c0336ee200d5f7
-/tool-schema-catalog/deepseek-ai-dsh-canvas:
-  en: 66616109279ddb66
-  zh: 66616109279ddb66
-/tool-schema-catalog/deepseek-ai-dsh-canvas/canvas-edit:
-  en: 3d8f7c88621228a6
-  zh: 4596e313f6cb69d0
-/tool-schema-catalog/deepseek-ai-dsh-canvas/canvas-get:
-  en: 05df5d3fbc115251
-  zh: 527590c87a7297b3
-/tool-schema-catalog/deepseek-ai-dsh-canvas/studio-bible-update:
-  en: 71539a1ac7e03830
-  zh: 3897e009c93a1d8d
-/tool-schema-catalog/deepseek-ai-dsh-canvas/studio-episode-create:
-  en: a7ca5acf4a156bc5
-  zh: bf2ecc675bf04c7a
-/tool-schema-catalog/deepseek-ai-dsh-canvas/studio-episode-use:
-  en: 025c988b5912faca
-  zh: 0d71cb926fd4e469
-/tool-schema-catalog/deepseek-ai-dsh-canvas/studio-expand-script:
-  en: 80605dce50b13751
-  zh: c9cb7a45e7f52a03
-/tool-schema-catalog/deepseek-ai-dsh-canvas/studio-project-create:
-  en: 01f1a4dff0003190
-  zh: 451afbe17c1d6f92
-/tool-schema-catalog/deepseek-ai-dsh-canvas/studio-stage:
-  en: ba3261af413385f6
-  zh: 25c9e983046d9312
-/tool-schema-catalog/deepseek-ai-dsh-canvas/timeline-edit:
-  en: b70ad8f0fc2b73af
-  zh: 52e6eb0f3f535ea9
-/tool-schema-catalog/deepseek-ai-dsh-canvas/timeline-get:
-  en: 0e8e40f4d823ca7e
-  zh: e85dacc15a04b108
-/tool-schema-catalog/deepseek-ai-dsh-canvas/timeline-history:
-  en: 23976e1f5ba11d5f
-  zh: 83724b482ee81c47
-/tool-schema-catalog/deepseek-ai-dsh-canvas/timeline-restore:
-  en: b13a02265bfa7164
-  zh: fad97766127935b3
-/tool-schema-catalog/deepseek-ai-dsh-tool-media:
-  en: 0b42ffcb73ba66a9
-  zh: 0b42ffcb73ba66a9
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/canvas-generate:
-  en: 9f4166847b5766ec
-  zh: 77de315464ed2710
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/ffmpeg:
-  en: c9a3c347a82d62bf
-  zh: 8db4a55fca5cfecc
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-image:
-  en: bf9585b25890d259
-  zh: 40bc70609b1fff61
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-music:
-  en: f0ac8667df18d330
-  zh: 42f7a34602312b53
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-speech:
-  en: ada7121019815f5b
-  zh: 90a877e50fadfd6d
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/generate-video:
-  en: b55a17d6cdb1ae3a
-  zh: 312db47d277e4538
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/media-edit:
-  en: 55f11160c1ac102c
-  zh: 76d3cc99e1cc9acb
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/media-probe:
-  en: 1ba1dd06008ae0bf
-  zh: a79c180324627e31
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/merge-videos:
-  en: 98e4d2b830aeb3ff
-  zh: 2eeac902336c294f
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/storyboard-voice:
-  en: f054196c5aa9818e
-  zh: 732ab0e899d6d291
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/timeline-export:
-  en: fe2ec5a3e0de17e2
-  zh: 416627567eba984d
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/timeline-render:
-  en: dffb880a5c6f2b53
-  zh: 850a248565b97066
-/tool-schema-catalog/deepseek-ai-dsh-tool-media/timeline-render-status:
-  en: 3eca6004667f95f4
-  zh: 7900d385f004ee52
+  en: cc1ad38bf0006710
+  zh: 324eacb827a09e93

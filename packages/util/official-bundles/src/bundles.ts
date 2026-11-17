@@ -12,13 +12,11 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
   },
   web: {
-    // WeChat is the fork's default messaging integration and remains switchable from the plugin manager.
     bundles: [
       '@deepseek-ai/dsh-base',
       '@deepseek-ai/dsh-web-app',
       '@deepseek-ai/dsh-experimental-plugin-market-bundle',
       '@deepseek-ai/dsh-experimental-voice-input-bundle',
-      '@deepseek-ai/dsh-wechat-bundle',
     ],
   },
   headless: {
@@ -86,7 +84,6 @@ export const OPTIONAL_BUNDLES: readonly string[] = [
   '@deepseek-ai/dsh-experimental-plugin-market-bundle',
   '@deepseek-ai/dsh-experimental-tool-worktree',
   '@deepseek-ai/dsh-experimental-forge-bundle',
-  '@deepseek-ai/dsh-wechat-bundle',
 ]
 
 /** Public DSH release members available through the ordinary on-demand bundle installer. */

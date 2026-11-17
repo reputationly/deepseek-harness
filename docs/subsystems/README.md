@@ -34,7 +34,6 @@ One page per subsystem of the DeepSeek Harness: what it is, the data structures 
 | [user-questions.md](user-questions.md) | the UI-backed human question/answer seam: `AskUserQuestionRequest`, answer/options vocabulary, provider API, error taxonomy |
 | [approval.md](approval.md) | the one-shot user-approval seam: `ApprovalRequest`, `ApprovalOutcome`, per-session policy, audit events, and answerer contracts |
 | [office-to-pdf.md](office-to-pdf.md) | authorized Office-to-PDF conversion, native/WASM engines, and bounded shared reuse |
-| [canvas.md](canvas.md) | the project canvas document, its edit operations, change notifications, and nodes or groups as generation inputs |
 | [attachment.md](attachment.md) | durable image identity and metadata, validation inputs, verified reads, and the `AttachmentStore` seam |
 | [shell.md](shell.md) | the shell executor seam: `ShellExecRequest`/`Spec`, `ShellRunResult`, background `ShellProcess` handles |
 | [subprocess.md](subprocess.md) | the subprocess seam: fully-explicit `SubprocessSpawnSpec`, offset-based output readers, unclassified `SubprocessOutcome`, and the managed `DSH_*` environment vocabulary |
@@ -75,6 +74,5 @@ One page per subsystem of the DeepSeek Harness: what it is, the data structures 
 | [session-telemetry.md](session-telemetry.md) | the outbound session-reporting capability seam: `SessionTelemetryRecord`/`SessionTelemetrySeverity`, the `SessionTelemetrySink` contract, and the `session-telemetry/record` redact waterfall |
 | [otel.md](otel.md) | Shared ordinary-event and Session-log OTLP channels |
 | [product-telemetry.md](product-telemetry.md) | Explicit product analytics submission and OTLP/HTTP transport |
-| [wechat.md](wechat.md) | Local WeChat binding, project selection and sanitized connection status |
 
 > Type declarations and their JSDoc on these pages are source-equivalent and drift-checked by `pnpm run verify-type-equiv` (see [development.md](../development.md#documenting-types-verbatim-ts-type-equiv)). Ordinary blocks preserve complete declarations; `public-api` blocks preserve body-stripped public class declarations. Cordis services and events use each page's generated **Cordis API** section.

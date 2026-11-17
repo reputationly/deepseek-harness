@@ -1,15 +1,15 @@
 {
   "note": "Fork drift ceilings recorded after an alignment review. --write-baseline resets them to the measured totals; see .agents/skills/dsh-fork-align-upstream.",
-  "measuredAt": "2026-11-17T02:31:27.448Z",
+  "measuredAt": "2026-11-17T23:34:33.229Z",
   "forkRef": "master",
   "upstreamRef": "upstream/master",
-  "mergeBase": "fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159",
+  "mergeBaseTag": "dsh-v0.2.2-rc.1",
   "totals": {
     "upstreamOwnedFiles": 350,
     "upstreamOwnedAdded": 8817,
     "upstreamOwnedRemoved": 2669,
-    "forkOnlyFiles": 508,
-    "forkOnlyAdded": 80701,
+    "forkOnlyFiles": 512,
+    "forkOnlyAdded": 81321,
     "removedUpstreamFiles": 0
   },
   "thresholds": {

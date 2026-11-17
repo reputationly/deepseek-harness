@@ -83,6 +83,7 @@ async function bench(options: { recordResult?: unknown; recordCarrier?: unknown 
     children: {
       'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       'conversation.input.overlay': { kind: 'list', scope: 'session' },
+      'shell.overlay': { kind: 'list', scope: 'root' },
     },
   } as never, (() => null) as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
@@ -115,6 +116,15 @@ async function bench(options: { recordResult?: unknown; recordCarrier?: unknown 
         ...entry.options,
         locale: entry.locale,
         inject: entry.inject as unknown as ((sessionId: SessionId) => FeedbackDialogInjected) | undefined,
+      }
+    },
+    generalEntry: () => {
+      const entry = ctx.slots.entries('shell.overlay').find(candidate => candidate.options.id === 'feedback-general')
+      if (entry === undefined) return undefined
+      return {
+        ...entry.options,
+        locale: entry.locale,
+        inject: entry.inject as unknown as (() => FeedbackDialogInjected) | undefined,
       }
     },
   }
@@ -183,6 +193,22 @@ describe('ui-message-feedback browser plugin', () => {
     expect(b.calls).toEqual([])
     await b.fiber.dispose()
     expect(b.ctx.get('feedbackUi')).toBeUndefined()
+  })
+
+  it('maps the general draft onto the site fields the Host accepts', async () => {
+    const b = await bench()
+    await b.fiber.await()
+
+    expect(b.generalEntry()).toMatchObject({ id: 'feedback-general' })
+    const dialog = b.generalEntry()!.inject!()
+    ;(b.ctx.get('feedbackUi') as { openGeneral: () => void }).openGeneral()
+    dialog.edit({ category: 'product-interaction', text: '希望支持导出 PDF' })
+    await dialog.submit()
+
+    expect(b.calls.filter(call => call.method === 'submit').at(-1)?.request).toEqual({
+      channel: 'general', category: 'product-interaction', content: '希望支持导出 PDF',
+    })
+    expect(dialog.hooks.dialog.getSnapshot()).toMatchObject({ target: null, failure: null })
   })
 
   it('records a Session remark through the sessionFeedback Remote and a message judgment through put', async () => {

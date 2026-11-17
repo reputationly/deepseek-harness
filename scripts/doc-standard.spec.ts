@@ -55,7 +55,6 @@ const KIND_TEMPLATES: Readonly<Record<string, string>> = {
  * library; the check re-derives the entry shape so a stale entry fails loud.
  */
 const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
-  'packages/util/timeline-compositor': 'Browser-safe frame, subtitle and audio composition; plain function/type exports without a plugin entry.',
   'packages/util/file-drag': 'File naming and native transfer declarations without a plugin entry.',
   'packages/experimental/browser-use-runtime': 'Provider-owned browser resource management and MCP integration helpers; no plugin entry.',
   'packages/boot/app-boot': 'Boot library the app bins import; plain helper exports.',

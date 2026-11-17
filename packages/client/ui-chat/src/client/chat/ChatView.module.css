@@ -284,30 +284,26 @@
   overflow: hidden;
 }
 
-.runningWhaleAnimated {
-  display: none;
-  position: absolute;
-  inset: 0;
+/* The lens sweeps rather than spinning a full turn: the handle stays legible and the
+   motion still reads as "working". */
+.runningGlass {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 45% 45%;
+  animation: dsh-running-glass 1.6s ease-in-out infinite;
+  will-change: transform;
 }
 
-.runningWhaleStill {
-  display: initial;
+@keyframes dsh-running-glass {
+  0%, 100% { transform: rotate(-14deg) scale(0.94); }
+  50% { transform: rotate(14deg) scale(1.02); }
 }
 
-@supports (mask-mode: alpha) and (mask-image: url('')) {
-  @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
-    .runningWhaleAnimated {
-      display: block;
-      background: currentColor;
-      mask: url('../assets/running-whale@2x.png') center / 100% 100% no-repeat;
-      mask-mode: alpha;
-      /* Keep animated-mask repaints on an icon-sized composited layer. */
-      will-change: transform;
-    }
-
-    .runningWhaleStill {
-      display: none;
-    }
+@media (prefers-reduced-motion: reduce) {
+  .runningGlass {
+    animation: none;
+    transform: none;
   }
 }
 

@@ -236,7 +236,6 @@ export interface PreparePrimaryRuntimeOptions {
   /** Ordinary filesystem Office assets; build hosts otherwise resolve the workspace package. */
   readonly skillSource?: string
   /** Ordinary filesystem skill assets; build hosts otherwise resolve the workspace package. */
-  readonly bundledSkillSource?: string
   /** Omit Node.js and pnpm for carriers providing only Python. */
   readonly pythonOnly?: boolean
 }
@@ -300,9 +299,6 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
   const assets = options.skillSource ?? join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-skill-office/package.json')), 'assets')
   await prepareOfficeSkillAssets(assets,
     join(paths.runtime, 'office-skills'))
-  const mediaSkillAssets = options.bundledSkillSource
-    ?? join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-tool-media/package.json')), 'assets')
-  await prepareSkillAssets(mediaSkillAssets, join(paths.runtime, 'skills'))
 }
 
 /**

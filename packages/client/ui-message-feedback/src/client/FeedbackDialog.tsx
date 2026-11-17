@@ -58,7 +58,9 @@ export function FeedbackDialog({
   // on unmount, and the Session's controller must not replay it on return.
   useEffect(() => () => { dismissToast(toast) }, [dismissToast, toast])
   const failureCode = state.failure
-  const failure = failureCode === null ? null : t(FAILURE_COPY[failureCode] ?? 'error.generic')
+  const failure = failureCode === null
+    ? null
+    : state.failureMessage ?? t(FAILURE_COPY[failureCode] ?? 'error.generic')
   const onFailureDone = useCallback(() => { dismissFailure() }, [dismissFailure])
 
   return (

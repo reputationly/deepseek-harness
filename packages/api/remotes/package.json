@@ -73,6 +73,7 @@
     "@deepseek-ai/dsh-api-terminal-controller": "workspace:*",
     "@deepseek-ai/dsh-api-workspace-controller": "workspace:*",
     "@deepseek-ai/dsh-api-workspace-files": "workspace:*",
+    "@deepseek-ai/dsh-assistant-feedback": "workspace:*",
     "@deepseek-ai/dsh-client-connection": "workspace:*",
     "@deepseek-ai/dsh-client-file-upload": "workspace:*",
     "@deepseek-ai/dsh-client-product-analytics": "workspace:*",
@@ -84,7 +85,6 @@
     "@deepseek-ai/dsh-credentials": "workspace:*",
     "@deepseek-ai/dsh-deepseek-account": "workspace:*",
     "@deepseek-ai/dsh-file-reference": "workspace:*",
-    "@deepseek-ai/dsh-canvas": "workspace:*",
     "@deepseek-ai/dsh-goal": "workspace:*",
     "@deepseek-ai/dsh-host-plugin-inventory": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
@@ -104,7 +104,6 @@
     "@deepseek-ai/dsh-user-approval": "workspace:*",
     "@deepseek-ai/dsh-user-questions": "workspace:*",
     "@deepseek-ai/dsh-web": "workspace:*",
-    "zod": "4.4.3",
-    "@deepseek-ai/dsh-tool-media": "workspace:*"
+    "zod": "4.4.3"
   }
 }

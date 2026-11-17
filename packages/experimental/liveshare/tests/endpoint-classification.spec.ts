@@ -11,16 +11,6 @@ import { VIEWER_ENDPOINT_CLASSES, assertSameViewerActions } from '../src/endpoin
 const CLASSIFIED = Object.keys(VIEWER_ENDPOINT_CLASSES)
 
 describe('viewer endpoint classification', () => {
-  it('keeps timeline source paths, writer leases, and output mutation in the owner execution world', () => {
-    for (const endpoint of [
-      'canvas/timeline', 'canvas/editTimeline', 'canvas/timelineHistory', 'canvas/restoreTimeline',
-      'media/timelineStatus', 'media/renderTimeline', 'media/pendingTimelineRenders', 'media/claimTimelineRender',
-      'media/appendTimelineRender', 'media/completeTimelineRender', 'media/timelineRenderProgress',
-      'media/failTimelineRender', 'media/clearTimelineCache', 'media/exportTimeline',
-      'media/compatibleTimelineAsset', 'media/videoPreview', 'media/editMedia', 'media/importVideo',
-    ] as const) expect(VIEWER_ENDPOINT_CLASSES[endpoint]).toBe('owner-only')
-  })
-
   it('reports the endpoint a classification is missing', () => {
     const incomplete = Object.fromEntries(
       Object.entries(VIEWER_ENDPOINT_CLASSES).filter(([endpoint]) => endpoint !== 'session/prompt'),

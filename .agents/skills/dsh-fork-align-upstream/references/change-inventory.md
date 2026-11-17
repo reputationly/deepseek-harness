@@ -1,6 +1,6 @@
 # fork 改动清单：保留 / 删除
 
-量测口径：`corepack pnpm exec tsx scripts/fork-drift.ts`。分叉点 `fcc0ad4621`（2026-11-04）。
+量测口径：`corepack pnpm exec tsx scripts/fork-drift.ts`。分叉点 `dsh-v0.2.2-rc.1` 那轮合并（2026-11-04）。
 
 - fork 独有文件：508 个，+80701 行 —— **对齐零成本**
 - 改到上游自有文件：350 个，+8817 / −2669 —— **全部合并成本**

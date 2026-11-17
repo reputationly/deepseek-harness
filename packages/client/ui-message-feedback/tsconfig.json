@@ -30,6 +30,9 @@
       "path": "../locale/tsconfig.client.json"
     },
     {
+      "path": "../ui-layout"
+    },
+    {
       "path": "../ui-chat/tsconfig.client.json"
     },
     {

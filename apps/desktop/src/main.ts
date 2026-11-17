@@ -7,7 +7,6 @@ import { DesktopUpdateSettings } from './update-settings.ts'
 import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
-import { existsSync } from 'node:fs'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -51,7 +50,7 @@ import { OperationJournal } from './operation-journal.ts'
 import { runOperationReportJob, type OperationReportJobResult } from './operation-report-job.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
 import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
-import { brandGateway, gatewayTokenURL, storedGatewayKey, type BrandGatewayMediaRuntime } from './brand-gateway.ts'
+import { brandGateway, gatewayTokenURL, storedGatewayKey } from './brand-gateway.ts'
 import { probeGatewayKey } from './gateway-probe.ts'
 import { brandUrlScheme, isolateBrandHome } from './brand-identity.ts'
 import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
@@ -211,7 +210,6 @@ interface RuntimeResources {
   readonly node: string
   readonly pnpm: string
   readonly dsh: string
-  readonly mediaRuntime?: BrandGatewayMediaRuntime
 }
 
 function runtimeResources(): RuntimeResources {
@@ -224,26 +222,7 @@ function runtimeResources(): RuntimeResources {
   const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
     ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(app.getAppPath(), 'dsh'))
   if (development) return { node, nodeBin, pnpm, dsh }
-  const ffmpegDir = join(process.resourcesPath, 'runtime', 'primary-runtime', 'ffmpeg')
-  const ffmpegPath = join(ffmpegDir, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
-  const ffprobePath = join(ffmpegDir, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
-  const targetIncludesFfmpeg = process.platform === 'win32' && process.arch === 'x64'
-    || process.platform === 'darwin' && process.arch === 'arm64'
-  if (targetIncludesFfmpeg && (!existsSync(ffmpegPath) || !existsSync(ffprobePath))) {
-    throw new Error('dsh desktop: packaged ffmpeg and ffprobe assets are missing')
-  }
-  const fonts = process.platform === 'darwin'
-    ? ['/System/Library/Fonts/Hiragino Sans GB.ttc', '/System/Library/Fonts/STHeiti Medium.ttc']
-    : process.platform === 'win32' ? ['C:\\Windows\\Fonts\\msyh.ttc', 'C:\\Windows\\Fonts\\simhei.ttf'] : []
-  const fontFile = fonts.find(existsSync)
-  return {
-    node, nodeBin, pnpm, dsh,
-    mediaRuntime: {
-      ...(targetIncludesFfmpeg ? { ffmpegPath, ffprobePath } : {}),
-      ...(fontFile === undefined ? {} : { fontFile }),
-      skillsRoot: join(process.resourcesPath, 'runtime', 'skills'),
-    },
-  }
+  return { node, nodeBin, pnpm, dsh }
 }
 
 function developmentPrimaryRuntime(): string {

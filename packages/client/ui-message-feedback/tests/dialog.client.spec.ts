@@ -22,7 +22,7 @@ describe('FeedbackDialogController', () => {
     const { controller } = bench()
 
     expect(controller.state.getSnapshot()).toEqual({
-      target: null, category: null, text: '', submitting: false, failure: null, toast: 0,
+      target: null, category: null, text: '', submitting: false, failure: null, failureMessage: null, toast: 0,
     })
   })
 
@@ -190,7 +190,7 @@ describe('FeedbackDialogController', () => {
     controller.open({ kind: 'session' })
     controller.dispose()
     expect(controller.state.getSnapshot()).toEqual({
-      target: null, category: null, text: '', submitting: false, failure: null, toast: 0,
+      target: null, category: null, text: '', submitting: false, failure: null, failureMessage: null, toast: 0,
     })
   })
 })

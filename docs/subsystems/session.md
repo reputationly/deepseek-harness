@@ -93,6 +93,13 @@ interface SessionEventMap {
     /** Exact timed model stream, compacted without joining delta boundaries. */
     stream: AssistantStreamRecord[]
     usage?: TokenUsage
+    /**
+     * Opaque identifier the provider or its gateway issued for the request behind
+     * this reply, when the transport read one. Support tooling correlates a reported
+     * reply with the provider's own request log; absent for providers that issue none,
+     * and for generations written before this field existed.
+     */
+    providerRequestId?: ProviderRequestId
     interrupted?: true
   }
   /**
