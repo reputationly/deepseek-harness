@@ -1,7 +1,7 @@
 /** Translate Messages events while preserving block order and cumulative usage. */
 
 import { LlmError, ToolCallId } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, FinishReason, ProviderRequestId, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
 import { object, replayState } from './replay.ts'
 import type { ReplayBlock } from './replay.ts'
 
@@ -101,7 +101,11 @@ function stopReason(raw: unknown): FinishReason {
  * @param model - requested model id stored in durable replay state.
  * @returns blocks, one final usage value, and exactly one terminal finish.
  */
-export async function* translate(events: AsyncIterable<Record<string, unknown>>, model: string): AsyncGenerator<StreamChunk> {
+export async function* translate(
+  events: AsyncIterable<Record<string, unknown>>,
+  model: string,
+  providerRequestId?: ProviderRequestId,
+): AsyncGenerator<StreamChunk> {
   const blocks = new Map<number, Block>()
   const usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
   let started = false
@@ -158,7 +162,12 @@ export async function* translate(events: AsyncIterable<Record<string, unknown>>,
       }
       usage.totalTokens = usage.inputTokens + usage.outputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
       yield { type: 'usage', usage }
-      yield { type: 'finish', reason, replayState: replayState(model, [...blocks.values()].map(block => block.replay)) }
+      yield {
+        type: 'finish',
+        reason,
+        replayState: replayState(model, [...blocks.values()].map(block => block.replay)),
+        ...providerRequestId === undefined ? {} : { providerRequestId },
+      }
       return
     }
   }

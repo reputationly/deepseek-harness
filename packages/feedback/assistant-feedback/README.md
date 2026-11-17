@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Relays the two feedback entries the product shows — a rating on one assistant reply and the general feedback dialog — to `POST <gateway root>/api/assistant/feedback`. The browser never carries the gateway key: it calls `remote.assistantFeedback.submit`, and this service resolves the credential, builds the payload, attaches the redacted conversation snapshot, and reports one code per failure.
 
+A rating also carries `request_id`: the identifier the gateway issues for the reply's own request (`x-oneapi-request-id`), which the transport records on the reply's Session event and the loop writes beside the message. The site's administrators search their request log by it, so a report names the exact call that produced the reply being rated; a reply whose provider issued no id, or a report that names the id itself, is submitted without inventing one.
+
 ## Request fields
 
 The service accepts `channel` (`rating` or `general`), the verdict, the user's category and text, the optional contact, and the targets (`sessionId`, `messageId`, `requestId`, `model`). It maps them to the site's field names, adding `client_version` from the Host build and `platform`/`device_info` from the caller. A `rating` submission without a verdict and a `general` submission with empty text are refused before any request leaves the process.
@@ -39,7 +41,6 @@ This package adds no tool, prompt, or context of its own: the model never sees a
 
 ## Known Limitations and Deferred Work
 
-- **No `request_id`.** The model transport reads `x-oneapi-request-id` only on the error path, and carrying it on the success path would add a field to the persisted assistant message. Reports therefore identify the call by `session_id`, `message_id`, and time; capturing the header needs an `llm`/`llm-deepseek` change to the Session event format first.
 - **Snapshot reads the synchronous history API.** `Session.snapshotEvents()` is deprecated in favor of a projection; this package takes the same narrow exemption `message-feedback` takes, and moves when that domain's projection exists.
 - **A failed relay is silent.** The remark is already durable locally and the dialog closes on that record, so the deployment site simply lacks the submission. Surfacing it needs a warning toast the dialog does not have yet.
 - **`system_prompt` and `request_params` are absent.** The Host does not retain the assembled prompt or the sampling parameters of a finished call, and the site documents that a snapshot must not fabricate them.

@@ -515,6 +515,7 @@ export class ReactLoopAgent implements Agent {
                 }),
                 interrupted: true,
                 ...live.usage === undefined ? {} : { usage: live.usage },
+                ...live.providerRequestId === undefined ? {} : { providerRequestId: live.providerRequestId },
                 stream: live.stream,
               }, { surfaceOp: 'append' }).seq)
             } else {
@@ -578,6 +579,7 @@ export class ReactLoopAgent implements Agent {
             step,
             message,
             ...live.usage === undefined ? {} : { usage: live.usage },
+            ...live.providerRequestId === undefined ? {} : { providerRequestId: live.providerRequestId },
             stream: live.stream,
           }, { surfaceOp: 'append' }).seq,
         )

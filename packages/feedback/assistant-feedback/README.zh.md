@@ -11,6 +11,8 @@ kind: "package-reference"
 
 把产品里的两个反馈入口——对某条助手回复的赞/踩，以及意见反馈弹窗——转发到 `POST <网关根地址>/api/assistant/feedback`。浏览器始终不携带网关 key：它调用 `remote.assistantFeedback.submit`，由本服务解析凭据、组装请求体、附带脱敏后的对话快照，并按失败类型返回一个代码。
 
+赞/踩还会带上 `request_id`：网关为这条回复那一次请求签发的标识（`x-oneapi-request-id`），transport 把它记录在回复的 Session 事件上，由 loop 写在消息旁。站点管理员用它检索使用日志，因此反馈能精确指向产生该回复的那次调用；若该提供方没有签发 id，或调用方已直接给出 id，则按实际情况上报，绝不伪造。
+
 ## 请求字段
 
 服务接受 `channel`（`rating` 或 `general`）、取值、用户选择的分类与正文、可选联系方式，以及定位信息（`sessionId`、`messageId`、`requestId`、`model`）。它把这些映射成站点字段名，补齐 Host 构建的 `client_version`，并使用调用方给出的 `platform`/`device_info`。缺少取值的 `rating` 与正文为空的 `general` 会在任何请求发出前被拒绝。
@@ -39,7 +41,6 @@ kind: "package-reference"
 
 ## 已知限制与后续工作
 
-- **没有 `request_id`。** 模型 transport 只在错误路径读 `x-oneapi-request-id`，要在成功路径带上它，就得给已持久化的助手消息增加字段。因此反馈目前用 `session_id`、`message_id` 与时间定位这次调用；捕获该响应头需要先改 `llm`/`llm-deepseek` 的 Session 事件格式。
 - **快照读取同步历史 API。** `Session.snapshotEvents()` 已被投影方案取代；本包沿用 `message-feedback` 的同一处窄豁免，等该领域的投影落地后一起迁移。
 - **上报失败对用户不可见。** 反馈在本地已经落库、弹窗也随之关闭，失败只意味着部署方站点缺少这条记录。要让用户看到，需要弹窗目前还没有的 warning toast。
 - **不带 `system_prompt` 与 `request_params`。** Host 不保留已完成调用的最终提示词与采样参数，站点文档也要求快照不得伪造这两项。

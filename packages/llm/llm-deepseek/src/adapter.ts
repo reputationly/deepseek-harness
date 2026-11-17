@@ -1,6 +1,6 @@
 /** Direct Messages transport with one cancellable lifecycle per model request. */
 
-import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
+import { attributionHeaders, LlmAdapter, LlmError, ProviderRequestId as providerRequestIdBrand } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { DeepSeekLlmApiExtensionRequest, DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
@@ -166,7 +166,13 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
         }
         await extensions.accept()
         if (response.body === null) throw new LlmError('DeepSeek Messages returned no response body', 'EMPTY_RESPONSE')
-        yield* translate(parseSse(response.body, activity), options.model)
+        // The gateway names every reply; support tooling searches its own logs by this id.
+        const replyId = response.headers.get('x-oneapi-request-id')
+        yield* translate(
+          parseSse(response.body, activity),
+          options.model,
+          replyId === null || replyId === '' ? undefined : providerRequestIdBrand(replyId),
+        )
         return
       }
     } catch (error) {

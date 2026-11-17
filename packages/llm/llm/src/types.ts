@@ -505,6 +505,13 @@ export type StreamChunk =
     reason: FinishReason
     /** Replay metadata for a successful response; see {@link ReplayEnvelope}. */
     replayState?: ReplayEnvelope
+    /**
+     * Opaque identifier the provider or its gateway issued for this successful
+     * request, when the transport read one. Support tooling correlates a
+     * reported reply with the provider's own request log; it is never sent back
+     * to the model.
+     */
+    providerRequestId?: ProviderRequestId
   }
 
 /**

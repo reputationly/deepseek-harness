@@ -181,6 +181,28 @@ describe('direct Messages HTTP', () => {
     expect(fetchImpl.mock.calls[0]?.[0]).toBe(expected)
   })
 
+  it('carries the gateway request id from the response header into the finish record', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(sse(textEvents), {
+      headers: { 'content-type': 'text/event-stream', 'x-oneapi-request-id': '20261114234000dsh12345678' },
+    }))
+    vi.stubGlobal('fetch', fetchImpl)
+
+    const chunks_ = await chunks(adapter({ baseURL: 'https://provider.example/v1' }).stream(options()))
+
+    expect(chunks_.at(-1)).toMatchObject({ type: 'finish', providerRequestId: '20261114234000dsh12345678' })
+  })
+
+  it('leaves the request id absent when the gateway issues none', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(sse(textEvents), {
+      headers: { 'content-type': 'text/event-stream' },
+    }))
+    vi.stubGlobal('fetch', fetchImpl)
+
+    const chunks_ = await chunks(adapter({ baseURL: 'https://provider.example/v1' }).stream(options()))
+
+    expect(chunks_.at(-1)).not.toHaveProperty('providerRequestId')
+  })
+
   it.each([true, false])('maps non-2xx responses (JSON=%s)', async (json) => {
     const http = await endpoint((response) => { response.statusCode = 429; response.setHeader('retry-after', '3'); response.end(json ? JSON.stringify({ error: { type: 'rate_limit_error', message: 'slow down' } }) : '<html>busy</html>') })
     await expect(chunks(adapter({ baseURL: http.url }).stream(options()))).rejects.toMatchObject({ code: 'RATE_LIMIT', failure: { status: 429, providerRetryAfterMs: 3000 } })

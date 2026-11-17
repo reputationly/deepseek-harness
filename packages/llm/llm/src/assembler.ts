@@ -8,7 +8,7 @@
 
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
-import type { ToolCallId } from './brand.ts'
+import type { ProviderRequestId, ToolCallId } from './brand.ts'
 import { createAssistantMessage } from './message.ts'
 import type { AssistantMessage, ModelMessageSource } from './message.ts'
 import type { ContentBlock, FinishReason, ReplayEnvelope, StreamChunk, TokenUsage } from './types.ts'
@@ -41,6 +41,7 @@ export class BlockAssembler {
   private _usage: TokenUsage | undefined
   private _finish: FinishReason | undefined
   private _replayState: ReplayEnvelope | undefined
+  private _providerRequestId: ProviderRequestId | undefined
 
   /**
    * Feed one chunk into the assembly state.
@@ -89,6 +90,7 @@ export class BlockAssembler {
       case 'finish': {
         this._finish = chunk.reason
         this._replayState = chunk.replayState
+        this._providerRequestId = chunk.providerRequestId
         return
       }
       default: return assertNever(chunk, 'BlockAssembler.push')
@@ -195,6 +197,11 @@ export class BlockAssembler {
    */
   get replayState(): ReplayEnvelope | undefined {
     return this.assembled().replay
+  }
+
+  /** Provider-issued identifier for the request behind this stream, when the transport read one. */
+  get providerRequestId(): ProviderRequestId | undefined {
+    return this._providerRequestId
   }
 
   /**

@@ -7,6 +7,7 @@ import {
   type AssistantStreamRecord,
   type ContentBlock,
   type FinishReason,
+  type ProviderRequestId,
   type ReplayEnvelope,
   type StreamChunk,
   type TokenUsage,
@@ -136,5 +137,10 @@ export class AssistantStreamAttempt {
   /** Replay state carried by the terminal finish record. */
   get replayState(): ReplayEnvelope | undefined {
     return this.assembler.replayState
+  }
+
+  /** Provider-issued identifier carried by the terminal finish record, when the transport read one. */
+  get providerRequestId(): ProviderRequestId | undefined {
+    return this.assembler.providerRequestId
   }
 }

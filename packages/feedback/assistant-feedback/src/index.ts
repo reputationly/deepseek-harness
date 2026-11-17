@@ -12,13 +12,15 @@ import { Context } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-session'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { buildSnapshot, DEFAULT_MAX_TURNS } from './snapshot.ts'
+import { resolveRequestId } from './request-id.ts'
 import { postAssistantFeedback } from './submit.ts'
 import type { AssistantFeedbackSubmitRequest, AssistantFeedbackSubmitResult } from './types.ts'
 
 export { buildSnapshot, DEFAULT_MAX_TURNS } from './snapshot.ts'
+export { resolveRequestId } from './request-id.ts'
 export type { SnapshotOptions } from './snapshot.ts'
 export { isSecretKey, redactText, redactValue } from './redact.ts'
 export { feedbackEndpoint, postAssistantFeedback } from './submit.ts'
@@ -109,9 +111,15 @@ export class AssistantFeedbackService extends TypertRemoteService {
    * @returns the JSON payload, with the snapshot only where the request named a Session.
    */
   private payload(request: AssistantFeedbackSubmitRequest): Record<string, unknown> {
-    const snapshot = request.attachContext === false || request.sessionId === undefined
+    const events = request.sessionId === undefined ? undefined : this.eventsOf(request.sessionId)
+    const snapshot = events === undefined || request.attachContext === false
       ? undefined
-      : this.snapshotOf(request.sessionId, request.messageId)
+      : buildSnapshot(events, {
+        maxBytes: this.maxContextBytes,
+        maxTurns: this.maxTurns,
+        ...request.messageId === undefined ? {} : { targetMessageId: request.messageId },
+      })
+    const requestId = resolveRequestId(events ?? [], request.messageId, request.requestId)
     return {
       channel: request.channel,
       ...request.channel === 'rating' && request.rating !== undefined ? { rating: request.rating } : {},
@@ -120,7 +128,7 @@ export class AssistantFeedbackService extends TypertRemoteService {
       ...request.contact === undefined || request.contact.trim() === '' ? {} : { contact: request.contact },
       ...request.sessionId === undefined ? {} : { session_id: request.sessionId },
       ...request.messageId === undefined ? {} : { message_id: request.messageId },
-      ...request.requestId === undefined ? {} : { request_id: request.requestId },
+      ...requestId === undefined ? {} : { request_id: requestId },
       ...request.model === undefined ? {} : { model: request.model },
       ...process.env.DSH_CLIENT_VERSION === undefined ? {} : { client_version: process.env.DSH_CLIENT_VERSION },
       ...request.platform === undefined ? {} : { platform: request.platform },
@@ -130,21 +138,17 @@ export class AssistantFeedbackService extends TypertRemoteService {
   }
 
   /**
-   * @param sessionId - Session to snapshot.
-   * @param targetMessageId - rated reply inside it, when any.
-   * @returns the redacted snapshot, or undefined when the Session is not live here.
+   * Read the live Session's events, the one source for both the snapshot and the request id.
+   * @param sessionId - Session the submission names.
+   * @returns its events, or undefined when this Host does not hold the Session.
    */
-  private snapshotOf(sessionId: SessionId, targetMessageId: string | undefined): unknown {
+  private eventsOf(sessionId: SessionId): readonly SessionEvent[] | undefined {
     const live = this.ctx.sessions.get(sessionId)
     if (live === undefined) return undefined
     // A snapshot is a reply-time read of the log rather than hot-path state, and the Session
     // projection that would replace it does not exist yet; message-feedback makes the same read.
     // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    return buildSnapshot(live.snapshotEvents(), {
-      maxBytes: this.maxContextBytes,
-      maxTurns: this.maxTurns,
-      ...targetMessageId === undefined ? {} : { targetMessageId },
-    })
+    return live.snapshotEvents()
   }
 }
 
