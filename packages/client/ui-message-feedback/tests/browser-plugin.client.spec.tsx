@@ -67,9 +67,16 @@ async function bench(options: { recordResult?: unknown; recordCarrier?: unknown 
       return carried(options.recordResult ?? { ok: true as const, value: { recorded: true as const } })
     },
   }
+  const assistantFeedback = {
+    submit: (request: unknown) => {
+      calls.push({ method: 'submit', request })
+      return Promise.resolve(carried({ ok: true as const, value: { ok: true as const, id: 1, createdAt: '2026-11-17T00:00:00Z' } }))
+    },
+  }
   new RemoteService(ctx)
   ctx.provide('remote.messageFeedback', messageFeedback)
   ctx.provide('remote.sessionFeedback', sessionFeedback)
+  ctx.provide('remote.assistantFeedback', assistantFeedback)
   await ctx.plugin(SlotRegistry).await()
   ctx.slots.register({
     name: 'root',
@@ -191,6 +198,8 @@ describe('ui-message-feedback browser plugin', () => {
     await dialog.submit()
     expect(b.calls.filter(call => call.method === 'record')[0]?.request)
       .toEqual({ sessionId: 's1', text: 'timed out', category: 'service-stability' })
+    expect(b.calls.filter(call => call.method === 'submit')[0]?.request)
+      .toEqual({ channel: 'general', sessionId: 's1', content: 'timed out', category: 'service-stability' })
     expect(dialog.hooks.dialog.getSnapshot()).toMatchObject({ target: null, toast: 1 })
 
     message.openDialog(MSG, 'positive')
@@ -199,6 +208,8 @@ describe('ui-message-feedback browser plugin', () => {
     expect(b.calls.filter(call => call.method === 'put')[0]?.request).toMatchObject({
       sessionId: 's1', messageId: MSG, rating: 'positive', category: 'task-result', ifVersion: 'v1',
     })
+    expect(b.calls.filter(call => call.method === 'submit')[1]?.request)
+      .toEqual({ channel: 'rating', rating: 'like', sessionId: 's1', messageId: MSG, category: 'task-result' })
     expect(dialog.hooks.dialog.getSnapshot().toast).toBe(2)
     dialog.dismissToast(2)
     expect(dialog.hooks.dialog.getSnapshot().toast).toBe(0)

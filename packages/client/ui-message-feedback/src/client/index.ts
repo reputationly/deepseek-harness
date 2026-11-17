@@ -22,7 +22,9 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { FeedbackDialog } from './FeedbackDialog.tsx'
+import { FeedbackDialogController } from './dialog.ts'
 import { MessageFeedbackActions } from './MessageFeedbackActions.tsx'
 import type { FeedbackDialogInjected, MessageFeedbackInjected } from './slots.ts'
 import { FeedbackSurface } from './surface.ts'
@@ -38,13 +40,15 @@ export type {
 } from './slots.ts'
 export type { MessageFeedbackKey } from './locales.ts'
 
-/** Opens the existing Session feedback form without submitting feedback. */
+/** Opens the feedback form without submitting feedback. */
 export interface FeedbackUi {
   /**
    * Open the Session feedback draft without recording feedback.
    * @param sessionId - Session whose feedback draft to open.
    */
   openSession(sessionId: SessionId): void
+  /** Open the deployment feedback form, which needs no Session. */
+  openGeneral(): void
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -68,6 +72,16 @@ export const inject = ['slots', 'remote', 'remote.messageFeedback', 'remote.sess
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-message-feedback: dictionaries')
 
+  // The general dialog belongs to the shell: the More menu lives in the sidebar, which a
+  // deployment without an open Session still shows.
+  const general = new FeedbackDialogController(async (_target, entry) => {
+    const carried = await ctx.remote.assistantFeedback.submit({ channel: 'general', ...entry })
+    if (!carried.ok) return { ok: false, error: { code: carried.error.code, message: carried.error.message } }
+    if (carried.value.ok) return { ok: true }
+    return { ok: false, error: { code: carried.value.code, message: carried.value.message } }
+  })
+  ctx.effect(() => () => { general.dispose() }, 'ui-message-feedback: general dialog')
+
   const surfaces = new Map<SessionId, FeedbackSurface>()
   const surfaceFor = (sessionId: SessionId): FeedbackSurface => {
     let surface = surfaces.get(sessionId)
@@ -84,6 +98,7 @@ export function apply(ctx: ClientContext): void {
 
   const feedbackUi: FeedbackUi = {
     openSession: (sessionId) => { surfaceFor(sessionId).dialog.open({ kind: 'session' }) },
+    openGeneral: () => { general.open({ kind: 'general' }) },
   }
   ctx.provide('feedbackUi', feedbackUi)
 
@@ -128,6 +143,20 @@ export function apply(ctx: ClientContext): void {
         dismissToast: (seq) => { dialog.dismissToast(seq) },
       }
     },
+  }, FeedbackDialog))
+
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'feedback-general',
+    locale: NS,
+    inject: (): FeedbackDialogInjected => ({
+      hooks: { dialog: general.state },
+      edit: (draft) => { general.edit(draft) },
+      submit: () => general.submitDraft(),
+      dismiss: () => { general.dismiss() },
+      dismissFailure: () => { general.dismissFailure() },
+      dismissToast: (seq) => { general.dismissToast(seq) },
+    }),
   }, FeedbackDialog))
 
   // The Host keeps `/feedback <text>` for a typed remark; a bare invocation

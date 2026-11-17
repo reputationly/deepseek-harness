@@ -15,6 +15,7 @@ import type { MessageFeedbackActionResult } from './controller.ts'
 /** What one open dialog submits to. */
 export type FeedbackDialogTarget =
   | { readonly kind: 'session' }
+  | { readonly kind: 'general' }
   | { readonly kind: 'message'; readonly messageId: MessageId; readonly rating: MessageFeedbackRating }
 
 /** Dialog and toast state the overlay view renders from. */

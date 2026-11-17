@@ -222,6 +222,13 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     ...nativePlatform === undefined ? {} : { openPlatformPage: platformPageOpener(refreshAccount) },
     refreshAccount,
     contactUs() {
+      // A deployment that ships the in-app feedback form owns this entry: the dialog reports
+      // to its own site, so the hosted questionnaire would be a second, unrelated channel.
+      const feedbackUi = ctx.get('feedbackUi') as { openGeneral?: () => void } | undefined
+      if (feedbackUi?.openGeneral !== undefined) {
+        feedbackUi.openGeneral()
+        return
+      }
       // Sample the account, build and environment before awaiting native information, so
       // a profile the read outlasts cannot replace the UID this click reported.
       const profile = snapshot.details?.profile

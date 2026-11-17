@@ -4963,6 +4963,9 @@ importers:
       '@deepseek-ai/dsh-api-remotes':
         specifier: workspace:*
         version: link:../../api/remotes
+      '@deepseek-ai/dsh-assistant-feedback':
+        specifier: workspace:*
+        version: link:../../feedback/assistant-feedback
       '@deepseek-ai/dsh-client-connection':
         specifier: workspace:*
         version: link:../connection
