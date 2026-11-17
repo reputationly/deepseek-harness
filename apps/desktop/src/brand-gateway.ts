@@ -202,6 +202,13 @@ export function gatewayProfilePatch(
     `        baseURL: ${scalar(gateway.baseURL)}`,
     `        apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
     '',
+    '# Feedback and its redacted conversation snapshot, relayed by the Host so the key stays here.',
+    '    - id: assistant-feedback',
+    "      name: '@deepseek-ai/dsh-assistant-feedback'",
+    '      config:',
+    `        baseURL: ${scalar(gateway.baseURL)}`,
+    `        apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
+    '',
   ].join('\n')
 }
 

@@ -29,6 +29,8 @@
     // under its own tsconfig boundary.
     "paths": {
       "@deepseek-ai/dsh-api-gateway-status": ["./packages/api/gateway-status/src/index.ts"],
+      "@deepseek-ai/dsh-assistant-feedback": ["./packages/feedback/assistant-feedback/src/index.ts"],
+      "@deepseek-ai/dsh-assistant-feedback/types": ["./packages/feedback/assistant-feedback/src/types.ts"],
       "@deepseek-ai/dsh-client-ui-gateway-status": ["./packages/client/ui-gateway-status/src/index.ts"],
       "@deepseek-ai/dsh-client-ui-gateway-status/client": ["./packages/client/ui-gateway-status/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-file-actions": ["./packages/client/ui-file-actions/src/index.ts"],
