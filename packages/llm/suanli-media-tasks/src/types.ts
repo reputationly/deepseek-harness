@@ -47,6 +47,8 @@ export interface MediaTaskStatus {
   readonly state: MediaTaskState
   /** Artifact URL the gateway reported, when the task succeeded. */
   readonly url?: string
+  /** Completion percentage the gateway reported, when it reports one. */
+  readonly progress?: number
   /** Failure text the gateway reported, when the task failed. */
   readonly error?: string
 }

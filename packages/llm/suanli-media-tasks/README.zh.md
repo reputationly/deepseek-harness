@@ -28,6 +28,7 @@ Host Remote 命名空间：通过网关的 OpenAI 兼容任务接口提交、轮
 - 状态词归一化为 `running`、`succeeded`、`failed`；`SUCCESS`/`succeeded` 与 `FAILURE`/`failed` 是网关自己的词表。
 - 等待在调用方给的截止时间以 `timed-out` 结束，任务继续跑；只有显式 `cancel` 才会让网关停下它。
 - 调用方取消会停止等待，不产生网关调用。
+- 任务已经越过可停止的时点后，网关会用 `409` 拒绝取消；这一情况按 `rejected` 附 HTTP 状态上报，不当作传输失败。
 - `download` 读任务上报的产物地址，并严格写入调用方指定的路径。
 
 ## 模型体验 <a id="model-experience"></a>

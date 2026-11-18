@@ -87,6 +87,19 @@ describe('wait', () => {
     expect(calls).toHaveLength(3)
   })
 
+  it('reads the OpenAI video shape: progress, metadata url, completed', async () => {
+    const answers = [
+      { id: 't', status: 'queued', progress: 0, metadata: { url: '' } },
+      { id: 't', status: 'in_progress', progress: 43, metadata: { url: '' } },
+      { id: 't', status: 'completed', progress: 100, metadata: { url: 'https://cdn.example/v.mp4' } },
+    ]
+    const { subject } = client({ answer: () => json(answers.shift() ?? answers[answers.length - 1]) })
+    await expect(subject.wait('t', 'videos', { timeoutMs: 5_000, signal })).resolves.toEqual({
+      ok: true,
+      status: { taskId: 't', state: 'succeeded', progress: 100, url: 'https://cdn.example/v.mp4' },
+    })
+  })
+
   it('reports a gateway failure with its message', async () => {
     const { subject } = client({ answer: () => json({ task_id: 't', status: 'FAILURE', error: { message: 'quota exceeded' } }) })
     await expect(subject.wait('t', 'videos', { timeoutMs: 5_000, signal }))

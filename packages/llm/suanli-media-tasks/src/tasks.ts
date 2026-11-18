@@ -29,9 +29,9 @@ export interface MediaTaskClientOptions {
 }
 
 /** Gateway status words that mean a task finished successfully. */
-const SUCCEEDED = new Set(['success', 'succeeded', 'SUCCESS'])
+const SUCCEEDED = new Set(['success', 'succeeded', 'SUCCESS', 'completed', 'COMPLETED'])
 /** Gateway status words that mean a task failed. */
-const FAILED = new Set(['failure', 'failed', 'FAILURE', 'CANCELLED', 'CANCELED'])
+const FAILED = new Set(['failure', 'failed', 'FAILURE', 'CANCELLED', 'CANCELED', 'cancelled', 'canceled'])
 
 /**
  * Normalize one gateway status word.
@@ -123,9 +123,16 @@ export class MediaTaskClient {
     const payload = answer.value
     const state = normalizeState(statusOf(payload))
     const error = errorOf(payload)
+    const progress = progressOf(payload)
     return {
       ok: true,
-      status: { taskId, state, ...artworkOf(payload), ...error === undefined ? {} : { error } },
+      status: {
+        taskId,
+        state,
+        ...artworkOf(payload),
+        ...progress === undefined ? {} : { progress },
+        ...error === undefined ? {} : { error },
+      },
     }
   }
 
@@ -250,8 +257,10 @@ function statusOf(payload: unknown): unknown {
 
 /** Artifact URL of one payload, from the shapes the gateway uses. */
 function artifactOf(payload: unknown): string | undefined {
-  const value = payload as { url?: unknown; data?: unknown } | null
+  const value = payload as { url?: unknown; data?: unknown; metadata?: { url?: unknown } } | null
   if (typeof value?.url === 'string' && value.url !== '') return value.url
+  const reported = value?.metadata?.url
+  if (typeof reported === 'string' && reported !== '') return reported
   if (Array.isArray(value?.data)) {
     const first = (value.data as readonly unknown[])[0]
     const url = (first as { url?: unknown } | undefined)?.url
@@ -264,6 +273,12 @@ function artifactOf(payload: unknown): string | undefined {
 function artworkOf(payload: unknown): { url?: string } {
   const url = artifactOf(payload)
   return url === undefined ? {} : { url }
+}
+
+/** Completion percentage of one payload, when it reports a usable one. */
+function progressOf(payload: unknown): number | undefined {
+  const reported = (payload as { progress?: unknown } | null)?.progress
+  return typeof reported === 'number' && Number.isFinite(reported) && reported >= 0 && reported <= 100 ? reported : undefined
 }
 
 /** Failure text of one payload. */

@@ -28,6 +28,7 @@ The platform's capability catalog names generation operations that the chat rout
 - Status words normalize to `running`, `succeeded`, or `failed`; `SUCCESS`/`succeeded` and `FAILURE`/`failed` are the gateway's own vocabulary.
 - A wait ends at the caller's deadline with `timed-out` and leaves the task running; only an explicit `cancel` asks the gateway to stop it.
 - A caller cancellation stops the wait without a gateway call.
+- The gateway may refuse a cancellation with `409` when the task is already past the point where it can stop; that surface is reported as `rejected` with the HTTP status rather than as a transport failure.
 - `download` reads the artifact URL the task reported and writes exactly the path the caller names.
 
 ## Model Experience
