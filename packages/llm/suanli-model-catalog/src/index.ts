@@ -15,14 +15,18 @@ import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import type { ClassMembers } from './types.ts'
 import { CatalogSync } from './sync.ts'
 import type { CatalogEntry, CatalogSyncResult } from './types.ts'
 
+export { classMembers, classify, parseCapabilities } from './capabilities.ts'
 export { CatalogSync, mergeCatalog } from './sync.ts'
 export type * from './types.ts'
 
 /** Default listing path of an OpenAI-compatible gateway. */
 export const DEFAULT_CATALOG_MODELS_PATH = '/v1/models'
+/** Default path of the gateway capability catalog. */
+export const DEFAULT_CATALOG_CAPABILITIES_PATH = '/v1/ov/capabilities'
 /** Default request budget of one listing. */
 export const DEFAULT_CATALOG_TIMEOUT_MS = 10_000
 
@@ -45,6 +49,8 @@ export interface Config {
   readonly settingsNamespace?: string
   /** Provider id whose catalog-changed event the browser follows (default `deepseek-official`). */
   readonly provider?: string
+  /** Path of the gateway capability catalog (default `/v1/ov/capabilities`). */
+  readonly capabilitiesPath?: string
   /** Request budget of one listing, in milliseconds. */
   readonly timeoutMs?: number
   /**
@@ -62,6 +68,7 @@ export class SuanliModelCatalogService extends TypertRemoteService {
     baseURL: z.string().min(1),
     apiKeyEnv: z.string().role('credential-ref').min(1),
     modelsPath: z.string().pattern(/^\//u).default(DEFAULT_CATALOG_MODELS_PATH),
+    capabilitiesPath: z.string().pattern(/^\//u).default(DEFAULT_CATALOG_CAPABILITIES_PATH),
     settingsNamespace: z.string().min(1).default('llm-deepseek'),
     provider: z.string().min(1).default('deepseek-official'),
     timeoutMs: z.natural().min(1).default(DEFAULT_CATALOG_TIMEOUT_MS),
@@ -88,6 +95,7 @@ export class SuanliModelCatalogService extends TypertRemoteService {
       modelsPath: config.modelsPath ?? DEFAULT_CATALOG_MODELS_PATH,
       timeoutMs: config.timeoutMs ?? DEFAULT_CATALOG_TIMEOUT_MS,
       endpointTypes: config.endpointTypes,
+      capabilitiesPath: config.capabilitiesPath ?? DEFAULT_CATALOG_CAPABILITIES_PATH,
       send: (input, init) => fetch(input, init),
       credential: async () => {
         const stored = await this.ctx.credentials.resolve(this.ref)
@@ -117,6 +125,15 @@ export class SuanliModelCatalogService extends TypertRemoteService {
   @Remote
   read(): readonly CatalogEntry[] {
     return this.current()
+  }
+
+  /**
+   * Read the capability classes the gateway declared at the last refresh.
+   * @returns one member list per class, empty before a refresh reads the catalog.
+   */
+  @Remote
+  capabilities(): readonly ClassMembers[] {
+    return this.sync.capabilityClasses()
   }
 
   /** Entries the receiving settings entry currently holds. */

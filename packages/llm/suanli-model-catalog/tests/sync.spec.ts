@@ -1,5 +1,6 @@
 /** Catalog sync: the listing decides membership, failures keep the catalog in effect. */
 import { describe, expect, it, vi } from 'vitest'
+import { classMembers, classify } from '../src/capabilities.ts'
 import { CatalogSync, mergeCatalog } from '../src/sync.ts'
 import type { CatalogEntry } from '../src/types.ts'
 
@@ -15,6 +16,7 @@ function sync(options: {
     modelsPath: '/v1/models',
     timeoutMs: 1_000,
     endpointTypes: options.endpointTypes ?? ['openai'],
+    capabilitiesPath: '/v1/ov/capabilities',
     send: vi.fn(async () => await (options.answer ?? (async () => json({ data: [] })))()),
     credential: async () => options.key === undefined ? 'sk-test' : options.key,
     current: () => options.current ?? [],
@@ -33,7 +35,7 @@ describe('CatalogSync', () => {
       answer: async () => json({ data: [{ id: 'deepseek-v4-1-flash' }, { id: 'qwen3.8-flash-fp8' }] }),
       current: [{ id: 'qwen3.8-flash-fp8', contextWindow: 838_860, inputModalities: ['text', 'image'] }, { id: 'retired' }],
     })
-    await expect(subject.refresh()).resolves.toEqual({ ok: true, count: 2, added: 1, removed: 1, changed: true })
+    await expect(subject.refresh()).resolves.toMatchObject({ ok: true, count: 2, added: 1, removed: 1, changed: true })
     expect(written).toEqual([[
       { id: 'deepseek-v4-1-flash' },
       { id: 'qwen3.8-flash-fp8', contextWindow: 838_860, inputModalities: ['text', 'image'] },
@@ -45,7 +47,7 @@ describe('CatalogSync', () => {
       answer: async () => json({ data: [{ id: 'a' }] }),
       current: [{ id: 'a' }],
     })
-    await expect(subject.refresh()).resolves.toEqual({ ok: true, count: 1, added: 0, removed: 0, changed: false })
+    await expect(subject.refresh()).resolves.toMatchObject({ ok: true, count: 1, added: 0, removed: 0, changed: false })
     expect(written).toEqual([])
   })
 
@@ -92,5 +94,58 @@ describe('endpoint-type filtering', () => {
     })
     await expect(subject.refresh()).resolves.toMatchObject({ ok: true, count: 2 })
     expect(written).toEqual([[{ id: 'chat' }, { id: 'silent' }]])
+  })
+})
+
+describe('capability classes', () => {
+  const entry = (operation: string, model: string, taskTypes: string[] = []) => ({ operation, model, taskTypes, maxReferenceImages: 0 })
+
+  it('names the product classes from operation and task type', () => {
+    expect(classify(entry('chat', 'deepseek-v4-1-flash'))).toBe('chat')
+    expect(classify(entry('generate_image', 'minimax-h3-image', ['t2i']))).toBe('image.generate')
+    expect(classify(entry('generate_image', 'minimax-h3-image', ['i2i']))).toBe('image.edit')
+    expect(classify(entry('generate_video', 'h3', ['t2v']))).toBe('video.generate')
+    expect(classify(entry('generate_video', 'h3', ['flf2v', 'i2v']))).toBe('video.first-last-frame')
+    expect(classify(entry('generate_video', 'h3', ['r2va']))).toBe('video.reference')
+    expect(classify(entry('generate_music', 'ace-step', ['t2m']))).toBe('music.generate')
+    expect(classify(entry('generate_speech', 'tts2'))).toBe('speech.generate')
+    expect(classify(entry('upscale', 'relayvsr'))).toBe('other')
+  })
+
+  it('groups entries in class order without repeating a model', () => {
+    expect(classMembers([
+      entry('generate_video', 'h3', ['t2v']),
+      entry('chat', 'a'),
+      entry('generate_video', 'h3', ['t2v']),
+      entry('generate_music', 'ace-step', ['t2m']),
+    ])).toEqual([
+      { capability: 'chat', models: ['a'] },
+      { capability: 'video.generate', models: ['h3'] },
+      { capability: 'music.generate', models: ['ace-step'] },
+    ])
+  })
+
+  it('reads the class list during a refresh and keeps it when the catalog fails', async () => {
+    const answered: Record<string, unknown> = {
+      '/v1/models': { data: [{ id: 'deepseek-v4-1-flash', supported_endpoint_types: ['openai'] }] },
+      '/v1/ov/capabilities': { capabilities: [entry('chat', 'deepseek-v4-1-flash')] },
+    }
+    const subject = new CatalogSync({
+      origin: 'https://gateway.example',
+      modelsPath: '/v1/models',
+      capabilitiesPath: '/v1/ov/capabilities',
+      timeoutMs: 1_000,
+      endpointTypes: ['openai'],
+      send: vi.fn<typeof fetch>(async (input) => {
+        const target = input instanceof URL ? input : typeof input === 'string' ? new URL(input) : new URL(input.url)
+        return json(answered[target.pathname] ?? {})
+      }),
+      credential: async () => 'sk-test',
+      current: () => [],
+      write: async () => {},
+    })
+    await expect(subject.refresh()).resolves.toMatchObject({ ok: true, capabilities: true,
+      classes: [{ capability: 'chat', models: ['deepseek-v4-1-flash'] }] })
+    expect(subject.capabilityClasses()).toEqual([{ capability: 'chat', models: ['deepseek-v4-1-flash'] }])
   })
 })

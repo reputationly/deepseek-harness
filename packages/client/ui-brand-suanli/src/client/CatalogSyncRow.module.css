@@ -49,3 +49,40 @@
   opacity: 0.6;
   cursor: default;
 }
+
+.classes {
+  padding: 0 0 12px;
+}
+
+.classesTitle {
+  margin: 0 0 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.classList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.classItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.classCount {
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}

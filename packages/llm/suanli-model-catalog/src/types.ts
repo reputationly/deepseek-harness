@@ -1,4 +1,34 @@
-/** Shapes the model-catalog sync reports to the browser and to tests. */
+/** One capability class the settings surface groups models under. */
+export type CapabilityClass =
+  | 'chat'
+  | 'vision.image'
+  | 'vision.video'
+  | 'image.generate'
+  | 'image.edit'
+  | 'video.generate'
+  | 'video.first-last-frame'
+  | 'video.reference'
+  | 'music.generate'
+  | 'speech.generate'
+  | 'other'
+
+/** One gateway capability entry, in the fields this product reads. */
+export interface GatewayCapability {
+  /** Gateway operation: `chat`, `generate_image`, `generate_video`, `generate_music`, … */
+  readonly operation: string
+  /** Wire model id the operation drives. */
+  readonly model: string
+  /** Task types the entry declares, when its transport has any. */
+  readonly taskTypes: readonly string[]
+  /** How many reference inputs the entry accepts; zero when it takes none. */
+  readonly maxReferenceImages: number
+}
+
+/** Models one class holds, in catalog order. */
+export interface ClassMembers {
+  readonly capability: CapabilityClass
+  readonly models: readonly string[]
+}
 
 /**
  * One catalog entry the sync writes into the model route.
@@ -31,6 +61,10 @@ export type CatalogSyncResult =
     readonly removed: number
     /** Whether the merged catalog differs from the one in effect. */
     readonly changed: boolean
+    /** Capability classes the gateway declared, empty when none were read. */
+    readonly classes: readonly ClassMembers[]
+    /** Whether this refresh also read the capability catalog. */
+    readonly capabilities: boolean
   }
   | {
     readonly ok: false

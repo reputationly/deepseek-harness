@@ -25,14 +25,27 @@ function mount(outcome: CatalogSyncOutcome) {
 }
 
 it('reports how many models the sync put in effect', async () => {
-  const { refresh } = mount({ ok: true, count: 21, changed: true })
+  const { refresh } = mount({ ok: true, count: 21, changed: true, classes: [{ capability: 'chat', models: Array.from({ length: 21 }, (_, i) => `m${i}`) }] })
   fireEvent.click(screen.getByRole('button', { name: en['catalog.sync'] }))
   await screen.findByText('Synced 21 models')
   expect(refresh).toHaveBeenCalledOnce()
 })
 
+it('lists the capability classes the gateway declared', async () => {
+  mount({ ok: true, count: 2, changed: true, classes: [
+    { capability: 'chat', models: ['a'] },
+    { capability: 'music.generate', models: ['ace-step'] },
+    { capability: 'other', models: ['x', 'y'] },
+  ] })
+  fireEvent.click(screen.getByRole('button', { name: en['catalog.sync'] }))
+  await screen.findByText(en['catalog.capability-title'])
+  expect(screen.getByText(en['class.chat'])).toBeTruthy()
+  expect(screen.getByText(en['class.music-generate'])).toBeTruthy()
+  expect(screen.getByText('2')).toBeTruthy()
+})
+
 it('says the catalog was already current', async () => {
-  mount({ ok: true, count: 21, changed: false })
+  mount({ ok: true, count: 21, changed: false, classes: [] })
   fireEvent.click(screen.getByRole('button', { name: en['catalog.sync'] }))
   await screen.findByText(en['catalog.unchanged'])
 })

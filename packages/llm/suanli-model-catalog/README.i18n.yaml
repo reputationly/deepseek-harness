@@ -20,6 +20,9 @@
 /deepseek-ai-dsh-suanli-model-catalog/refresh-rules:
   en: 62d5412b9cd29b37
   zh: 856e896aa73acc53
+/deepseek-ai-dsh-suanli-model-catalog/capability-classes:
+  en: dceefbdf79d5d4a8
+  zh: 8abcf8c786c7e1a2
 /deepseek-ai-dsh-suanli-model-catalog/model-experience:
   en: fda4fbca6f10a5bb
   zh: 7679a1ca3f659881
@@ -27,8 +30,8 @@
   en: 56ac74f4ed653c86
   zh: 8ed9db310c327491
 /deepseek-ai-dsh-suanli-model-catalog/known-limitations-and-deferred-work:
-  en: 63c5cc39f4d81215
-  zh: 4fa50a713737c863
+  en: 7c725a3e0ac66c61
+  zh: b4b53c752bfd1421
 /deepseek-ai-dsh-suanli-model-catalog/known-limitations-and-deferred-work/dev-note:
   en: 4bcd384538c3eef0
   zh: eed6d1405b54665c

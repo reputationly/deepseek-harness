@@ -29,6 +29,10 @@ The route's `models` field is volatile configuration, so a write reaches the run
 - A failed, unauthorized, or empty listing never clears the catalog: the route keeps serving what it had, and `refresh()` reports `no-credential`, `unauthorized`, `unreachable`, or `empty-listing`.
 - The write is skipped when the merged ids match the catalog in effect.
 
+## Capability classes
+
+A refresh also reads `GET <capabilitiesPath>` (default `/v1/ov/capabilities`) and groups what the gateway declares into the product's classes: chat, image generation and editing (by `t2i` / `i2i`), video generation, first/last frame, reference-to-video (by `t2v` / `flf2v` / `r2va` and their siblings), music, and speech. A pair the platform names outside that vocabulary lands in `other` instead of disappearing. Classes a gateway does not declare stay absent, so the surface never claims a capability the platform cannot serve.
+
 ## Model Experience
 
 None, as the catalog decides which models a user may route to and never enters a prompt, a tool schema, or a tool result.
@@ -40,7 +44,9 @@ None: no request content changes with the catalog.
 ## Known Limitations and Deferred Work
 
 - The refreshed catalog lives in the profile patch, which the desktop brand layer rewrites from `brand.json` at every start, so a launcher-level pin returns after a restart until the row syncs again.
-- Capability classes beyond chat (recognize-video, text-to-image, first/last frame, reference-to-video, music) are not modeled yet; the platform's `GET /v1/ov/capabilities` is the intended source.
+- Classes only appear when the platform's capability catalog declares them: this deployment's catalog currently has no `generate_image` entry and exposes the video family under aggregate model names, so text-to-image, image-to-image, and first/last frame stay absent until the platform is configured.
+- Recognition of video input (a chat model that accepts video) has no declaration in the gateway contract yet, so `vision.video` never appears.
+- The class list is per refresh; it is not persisted across restarts.
 
 <a id="dev-note"></a>
 ### Dev Note

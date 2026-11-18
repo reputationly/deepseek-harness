@@ -29,6 +29,10 @@ kind: "package-reference"
 - 失败、未授权或空列表都不会清空目录：路由继续提供原有条目，`refresh()` 返回 `no-credential`、`unauthorized`、`unreachable` 或 `empty-listing`。
 - 合并后的 id 与现有目录一致时不写入。
 
+## 能力分类
+
+刷新时还会读取 `GET <capabilitiesPath>`（默认 `/v1/ov/capabilities`），把网关声明的能力归入产品的能力类：对话、文生图与图生图（按 `t2i` / `i2i`）、文生视频、首尾帧、参考生视频（按 `t2v` / `flf2v` / `r2va` 等同族 task）、文生音乐与语音合成。不在词表里的组合归入 `other` 而不是被丢掉；网关没有声明的类不会出现，界面因此不会承诺平台给不出的能力。
+
 ## 模型体验 <a id="model-experience"></a>
 
 不涉及：目录只决定用户可以选择哪些模型，不进入提示词、工具 schema 或工具结果。
@@ -40,7 +44,9 @@ kind: "package-reference"
 ## 已知限制与后续工作 <a id="known-limitations-and-deferred-work"></a>
 
 - 刷新后的目录写在 profile patch 里，而桌面品牌层每次启动都会用 `brand.json` 重写该文件，所以启动器层面的固定清单会在重启后回来，直到再次同步。
-- 除聊天之外的能力分类（视频识别、文生图、首尾帧、参考生视频、音乐）尚未建模；平台已有的 `GET /v1/ov/capabilities` 是后续数据源。
+- 分类只来自平台的能力目录：本部署当前没有 `generate_image` 条目，视频族也是聚合模型名，所以文生图、图生图、首尾帧暂时不出现，要在平台上补齐配置。
+- 「接受视频输入」的聊天模型在网关契约里还没有声明字段，因此 `vision.video` 不会出现。
+- 分类列表只在刷新时存在，不跨重启保留。
 
 <a id="dev-note"></a>
 ### 开发备注

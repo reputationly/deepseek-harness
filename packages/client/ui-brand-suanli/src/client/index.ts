@@ -76,7 +76,7 @@ async function refreshCatalog(
   if (!answer.ok) throw new Error(answer.error.message)
   const value = answer.value
   return value.ok
-    ? { ok: true, count: value.count, changed: value.changed }
+    ? { ok: true, count: value.count, changed: value.changed, classes: value.classes }
     : { ok: false, reason: value.reason }
 }
 

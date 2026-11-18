@@ -1,5 +1,6 @@
 /** Framework-free merge of one gateway listing into the model route's catalog. */
-import type { CatalogEntry, CatalogSyncFailure, CatalogSyncResult } from './types.ts'
+import { classMembers, parseCapabilities } from './capabilities.ts'
+import type { CatalogEntry, CatalogSyncFailure, CatalogSyncResult, ClassMembers } from './types.ts'
 
 /** Inputs of one catalog refresh. */
 export interface CatalogSyncInputs {
@@ -13,6 +14,8 @@ export interface CatalogSyncInputs {
   readonly send: typeof fetch
   /** Endpoint types a row may declare to join the catalog; empty admits every row. */
   readonly endpointTypes: readonly string[]
+  /** Path of the gateway capability catalog, such as `/v1/ov/capabilities`. */
+  readonly capabilitiesPath: string
   /**
    * Resolve the gateway key.
    * @returns the key, or `undefined` when this deployment stores none.
@@ -79,7 +82,38 @@ export function mergeCatalog(ids: readonly string[], current: readonly CatalogEn
  * caller reports why. An empty listing counts as a failure for the same reason.
  */
 export class CatalogSync {
+  private classes: ClassMembers[] = []
+
   constructor(private readonly inputs: CatalogSyncInputs) {}
+
+  /**
+   * Capability classes from the last successful read.
+   * @returns classes the gateway declared, empty before one succeeds.
+   */
+  capabilityClasses(): readonly ClassMembers[] {
+    return this.classes
+  }
+
+  /**
+   * Read the gateway capability catalog, keeping the previous classes when it fails.
+   * @param key - gateway key.
+   * @returns whether the catalog was read.
+   */
+  private async readCapabilities(key: string): Promise<boolean> {
+    try {
+      const response = await this.inputs.send(new URL(this.inputs.capabilitiesPath, this.inputs.origin).href, {
+        headers: { authorization: `Bearer ${key}`, 'x-api-key': key, accept: 'application/json' },
+        signal: AbortSignal.timeout(this.inputs.timeoutMs),
+      })
+      if (!response.ok) return false
+      const entries = parseCapabilities(await response.json())
+      if (entries === undefined || entries.length === 0) return false
+      this.classes = classMembers(entries)
+      return true
+    } catch {
+      return false
+    }
+  }
 
   /**
    * Refresh the catalog from the gateway.
@@ -115,12 +149,15 @@ export class CatalogSync {
     const before = previous.map(entry => entry.id).join('\n')
     const changed = before !== models.map(entry => entry.id).join('\n')
     if (changed) await this.inputs.write(models)
+    const capabilities = await this.readCapabilities(key)
     return {
       ok: true,
       count: models.length,
       added: models.filter(model => !previous.some(entry => entry.id === model.id)).length,
       removed: previous.filter(entry => !models.some(model => model.id === entry.id)).length,
       changed,
+      classes: this.classes,
+      capabilities,
     }
   }
 }

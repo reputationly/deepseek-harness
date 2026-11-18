@@ -9,6 +9,7 @@ export type GatewayStatusKey =
   | 'catalog.synced' | 'catalog.unchanged' | 'catalog.no-credential'
   | 'catalog.unauthorized' | 'catalog.unreachable' | 'catalog.empty'
   | 'catalog.failed' | 'catalog.count'
+  | 'class.chat' | 'class.vision-image' | 'class.vision-video' | 'class.image-generate' | 'class.image-edit' | 'class.video-generate' | 'class.video-first-last-frame' | 'class.video-reference' | 'class.music-generate' | 'class.speech-generate' | 'class.other' | 'catalog.capability-title' | 'catalog.capability-missing'
 
 /** English copy. */
 export const en: Record<GatewayStatusKey, string> = {
@@ -32,6 +33,19 @@ export const en: Record<GatewayStatusKey, string> = {
   'catalog.empty': 'The gateway listed no models; the current list is kept',
   'catalog.failed': 'Sync failed',
   'catalog.count': '{count} models',
+  'class.chat': 'Chat',
+  'class.vision-image': 'Vision · image',
+  'class.vision-video': 'Vision · video',
+  'class.image-generate': 'Text to image',
+  'class.image-edit': 'Image to image',
+  'class.video-generate': 'Text to video',
+  'class.video-first-last-frame': 'First/last frame',
+  'class.video-reference': 'Reference to video',
+  'class.music-generate': 'Text to music',
+  'class.speech-generate': 'Text to speech',
+  'class.other': 'Other',
+  'catalog.capability-title': 'Capabilities this gateway declares',
+  'catalog.capability-missing': 'Not configured',
 }
 
 /** Chinese copy. */
@@ -56,6 +70,19 @@ export const zh: Record<GatewayStatusKey, string> = {
   'catalog.empty': '网关没有返回任何模型，已保留现有列表',
   'catalog.failed': '同步失败',
   'catalog.count': '{count} 个模型',
+  'class.chat': '对话',
+  'class.vision-image': '视觉 · 图片',
+  'class.vision-video': '视觉 · 视频',
+  'class.image-generate': '文生图',
+  'class.image-edit': '图生图',
+  'class.video-generate': '文生视频',
+  'class.video-first-last-frame': '首尾帧',
+  'class.video-reference': '参考生视频',
+  'class.music-generate': '文生音乐',
+  'class.speech-generate': '语音合成',
+  'class.other': '其他',
+  'catalog.capability-title': '网关声明的能力',
+  'catalog.capability-missing': '未配置',
 }
 
 /** Japanese copy. */
@@ -80,6 +107,19 @@ export const ja: Record<GatewayStatusKey, string> = {
   'catalog.empty': 'モデルが返されませんでした。現在の一覧を保持します',
   'catalog.failed': '同期に失敗しました',
   'catalog.count': '{count} 件のモデル',
+  'class.chat': '対話',
+  'class.vision-image': '視覚 · 画像',
+  'class.vision-video': '視覚 · 動画',
+  'class.image-generate': 'テキストから画像',
+  'class.image-edit': '画像から画像',
+  'class.video-generate': 'テキストから動画',
+  'class.video-first-last-frame': '先頭/末尾フレーム',
+  'class.video-reference': '参照から動画',
+  'class.music-generate': 'テキストから音楽',
+  'class.speech-generate': '音声合成',
+  'class.other': 'その他',
+  'catalog.capability-title': 'このゲートウェイが宣言する能力',
+  'catalog.capability-missing': '未設定',
 }
 
 /** Spanish copy. */
@@ -104,6 +144,19 @@ export const es: Record<GatewayStatusKey, string> = {
   'catalog.empty': 'La pasarela no devolvió modelos; se mantiene la lista actual',
   'catalog.failed': 'Falló la sincronización',
   'catalog.count': '{count} modelos',
+  'class.chat': 'Chat',
+  'class.vision-image': 'Visión · imagen',
+  'class.vision-video': 'Visión · vídeo',
+  'class.image-generate': 'Texto a imagen',
+  'class.image-edit': 'Imagen a imagen',
+  'class.video-generate': 'Texto a vídeo',
+  'class.video-first-last-frame': 'Primer/último fotograma',
+  'class.video-reference': 'Referencia a vídeo',
+  'class.music-generate': 'Texto a música',
+  'class.speech-generate': 'Texto a voz',
+  'class.other': 'Otro',
+  'catalog.capability-title': 'Capacidades que declara esta pasarela',
+  'catalog.capability-missing': 'Sin configurar',
 }
 
 /** French copy. */
@@ -128,6 +181,19 @@ export const fr: Record<GatewayStatusKey, string> = {
   'catalog.empty': 'La passerelle n’a listé aucun modèle ; la liste actuelle est conservée',
   'catalog.failed': 'Échec de la synchronisation',
   'catalog.count': '{count} modèles',
+  'class.chat': 'Chat',
+  'class.vision-image': 'Vision · image',
+  'class.vision-video': 'Vision · vidéo',
+  'class.image-generate': 'Texte vers image',
+  'class.image-edit': 'Image vers image',
+  'class.video-generate': 'Texte vers vidéo',
+  'class.video-first-last-frame': 'Première/dernière image',
+  'class.video-reference': 'Référence vers vidéo',
+  'class.music-generate': 'Texte vers musique',
+  'class.speech-generate': 'Synthèse vocale',
+  'class.other': 'Autre',
+  'catalog.capability-title': 'Capacités déclarées par cette passerelle',
+  'catalog.capability-missing': 'Non configuré',
 }
 
 /** German copy. */
@@ -152,6 +218,19 @@ export const de: Record<GatewayStatusKey, string> = {
   'catalog.empty': 'Das Gateway hat keine Modelle gelistet; die aktuelle Liste bleibt',
   'catalog.failed': 'Synchronisierung fehlgeschlagen',
   'catalog.count': '{count} Modelle',
+  'class.chat': 'Chat',
+  'class.vision-image': 'Vision · Bild',
+  'class.vision-video': 'Vision · Video',
+  'class.image-generate': 'Text zu Bild',
+  'class.image-edit': 'Bild zu Bild',
+  'class.video-generate': 'Text zu Video',
+  'class.video-first-last-frame': 'Erstes/letztes Bild',
+  'class.video-reference': 'Referenz zu Video',
+  'class.music-generate': 'Text zu Musik',
+  'class.speech-generate': 'Sprachsynthese',
+  'class.other': 'Sonstiges',
+  'catalog.capability-title': 'Von diesem Gateway deklarierte Fähigkeiten',
+  'catalog.capability-missing': 'Nicht konfiguriert',
 }
 
 /** Russian copy. */
@@ -176,6 +255,19 @@ export const ru: Record<GatewayStatusKey, string> = {
   'catalog.empty': 'Шлюз не вернул моделей; текущий список сохранён',
   'catalog.failed': 'Не удалось синхронизировать',
   'catalog.count': 'Моделей: {count}',
+  'class.chat': 'Чат',
+  'class.vision-image': 'Зрение · изображение',
+  'class.vision-video': 'Зрение · видео',
+  'class.image-generate': 'Текст в изображение',
+  'class.image-edit': 'Изображение в изображение',
+  'class.video-generate': 'Текст в видео',
+  'class.video-first-last-frame': 'Первый/последний кадр',
+  'class.video-reference': 'Референс в видео',
+  'class.music-generate': 'Текст в музыку',
+  'class.speech-generate': 'Синтез речи',
+  'class.other': 'Другое',
+  'catalog.capability-title': 'Возможности, объявленные этим шлюзом',
+  'catalog.capability-missing': 'Не настроено',
 }
 
 /** Portuguese copy. */
@@ -200,4 +292,17 @@ export const pt: Record<GatewayStatusKey, string> = {
   'catalog.empty': 'O gateway não listou modelos; a lista atual é mantida',
   'catalog.failed': 'Falha na sincronização',
   'catalog.count': '{count} modelos',
+  'class.chat': 'Chat',
+  'class.vision-image': 'Visão · imagem',
+  'class.vision-video': 'Visão · vídeo',
+  'class.image-generate': 'Texto para imagem',
+  'class.image-edit': 'Imagem para imagem',
+  'class.video-generate': 'Texto para vídeo',
+  'class.video-first-last-frame': 'Primeiro/último quadro',
+  'class.video-reference': 'Referência para vídeo',
+  'class.music-generate': 'Texto para música',
+  'class.speech-generate': 'Síntese de voz',
+  'class.other': 'Outro',
+  'catalog.capability-title': 'Capacidades declaradas por este gateway',
+  'catalog.capability-missing': 'Não configurado',
 }

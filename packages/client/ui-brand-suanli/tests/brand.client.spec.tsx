@@ -44,10 +44,12 @@ async function bench(declare = true) {
   const slots = ctx.get('slots') as SlotRegistry
   const declareHoles = () => slots.register({
     name: 'root',
-    children: Object.fromEntries([
-      ...[...HOLES, HERO_HOLE].map(name => [name, { kind: 'single' as const, scope: 'root' as const }]),
-      [CATALOG_HOLE, { kind: 'list' as const, scope: 'root' as const }],
-    ]),
+    children: {
+      'sidebar.brand.mark': { kind: 'single' as const, scope: 'root' as const },
+      'sidebar.brand.name': { kind: 'single' as const, scope: 'root' as const },
+      'conversation.hero.brand.mark': { kind: 'single' as const, scope: 'root' as const },
+      'settings.models.footer': { kind: 'list' as const, scope: 'root' as const },
+    },
   } as never, () => null)
   const disposeHoles = declare ? declareHoles() : undefined
   return { ctx, slots, declareHoles, disposeHoles }
