@@ -311,6 +311,7 @@ vi.mock('electron', () => ({
   WebContentsView: harness.FakeView,
   dialog: harness.dialog,
   shell: { openExternal: harness.openExternal, showItemInFolder: harness.showItemInFolder },
+  powerSaveBlocker: harness.powerSaveBlocker,
   nativeTheme: harness.nativeTheme,
   ipcMain: {
     on: harness.ipcOn,
