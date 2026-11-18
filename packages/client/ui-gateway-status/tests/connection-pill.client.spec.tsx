@@ -13,7 +13,11 @@ afterEach(cleanup)
 const t: TranslateNS<'gatewayStatus'> = (key, params) => {
   const dictionary: Partial<Record<string, string>> = en
   const template = dictionary[key] ?? key
-  return template.replace(/\{(\w+)\}/gu, (_match, name: string) => String(params?.[name] ?? ''))
+  const render = (name: string): string => {
+    const value = params?.[name]
+    return typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+  }
+  return template.replace(/\{(\w+)\}/gu, (_match, name: string) => render(name))
 }
 
 function mount(initial: GatewayStatus, ...later: GatewayStatus[]) {

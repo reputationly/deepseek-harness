@@ -81,8 +81,9 @@ const RELAY_MISSING = { code: 'unreachable', message: '这台机器没有配置�
  * @returns the namespace handle.
  * @throws When this deployment mounts no assistant-feedback row.
  */
-function assistantFeedback(ctx: ClientContext): NonNullable<ReturnType<ClientContext['get']>> {
-  const remote = ctx.get('remote.assistantFeedback')
+function assistantFeedback(ctx: ClientContext): ClientContext['remote']['assistantFeedback'] {
+  // The namespace is absent where the deployment mounts no assistant-feedback row.
+  const remote = ctx.get('remote.assistantFeedback') as ClientContext['remote']['assistantFeedback'] | undefined
   if (remote === undefined) throw new Error(RELAY_MISSING.message)
   return remote
 }

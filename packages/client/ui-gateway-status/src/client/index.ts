@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 /** Sidebar footer light reporting whether the model gateway answers for the stored key. */
 
 import type { Context } from '@deepseek-ai/cordis'

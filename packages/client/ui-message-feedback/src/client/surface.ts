@@ -75,8 +75,8 @@ export class FeedbackSurface {
    * @param fields - the verdict or the general text, with the target it names.
    */
   private async report(fields: Omit<AssistantFeedbackSubmitRequest, 'sessionId'>): Promise<void> {
-    const remote = this.ctx.get('remote.assistantFeedback')
     // A deployment without the relay keeps the local remark and reports nothing.
+    const remote = this.ctx.get('remote.assistantFeedback') as ClientContext['remote']['assistantFeedback'] | undefined
     if (remote === undefined) return
     await remote.submit({ sessionId: this.sessionId, ...fields })
   }

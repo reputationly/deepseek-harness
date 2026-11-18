@@ -55,8 +55,9 @@ export function apply(ctx: ClientContext): void {
  * @returns the namespace handle.
  * @throws When this deployment mounts no gateway-status row.
  */
-function gatewayStatus(ctx: ClientContext): NonNullable<ReturnType<ClientContext['get']>> {
-  const remote = ctx.get('remote.gatewayStatus')
+function gatewayStatus(ctx: ClientContext): ClientContext['remote']['gatewayStatus'] {
+  // The namespace is absent where the deployment mounts no gateway-status row.
+  const remote = ctx.get('remote.gatewayStatus') as ClientContext['remote']['gatewayStatus'] | undefined
   if (remote === undefined) throw new Error('gateway status is not mounted')
   return remote
 }
