@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/llm/suanli-media-tasks/README.md
+/:
+  en: b611e9dc3698cc1e
+  zh: fa1852ae8f38eab5
+/deepseek-ai-dsh-suanli-media-tasks:
+  en: db6807d1935c8288
+  zh: 8ae2c9beb105ad98
+/deepseek-ai-dsh-suanli-media-tasks/summary:
+  en: 90d6eb3dbfd5b08b
+  zh: 4e65181b9049816e
+/deepseek-ai-dsh-suanli-media-tasks/table-of-contents:
+  en: 9942b9e591b3de19
+  zh: 46317927fa75b98e
+/deepseek-ai-dsh-suanli-media-tasks/why-this-exists:
+  en: cab352ff1621fd82
+  zh: ef1a5916dbe3e549
+/deepseek-ai-dsh-suanli-media-tasks/transport-rules:
+  en: 45a2ac48f9fd256e
+  zh: 4ee4586086ec0285
+/deepseek-ai-dsh-suanli-media-tasks/model-experience:
+  en: bb8711e844ce452a
+  zh: baaa105dba8323cc
+/deepseek-ai-dsh-suanli-media-tasks/model-experience/kv-cache-effect:
+  en: 434593418fada682
+  zh: f41347a8d30f160a
+/deepseek-ai-dsh-suanli-media-tasks/known-limitations-and-deferred-work:
+  en: aaabdbac485a02cc
+  zh: 96732266008019f2
+/deepseek-ai-dsh-suanli-media-tasks/known-limitations-and-deferred-work/dev-note:
+  en: 5a14f78c70bccb9c
+  zh: fe087a4e25f3a328

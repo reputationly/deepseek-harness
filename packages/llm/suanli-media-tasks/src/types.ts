@@ -1,0 +1,79 @@
+/** Shapes the generation-task client reports to callers and to tests. */
+
+/** Generation operations this deployment's catalog names. */
+export type MediaOperation =
+  | 'generate_image'
+  | 'generate_video'
+  | 'generate_music'
+
+/** Transport one operation uses on the gateway. */
+export type MediaTransport = 'images' | 'videos'
+
+/** Why a task call produced no result. */
+export type MediaFailureReason =
+  | 'no-credential'
+  | 'unauthorized'
+  | 'not-found'
+  | 'rejected'
+  | 'unreachable'
+  | 'timed-out'
+  | 'cancelled'
+  | 'no-artifact'
+
+/** One submission: what to generate and with which parameters. */
+export interface MediaSubmitRequest {
+  /** Catalog operation that owns the model. */
+  readonly operation: MediaOperation
+  /** Wire model id. */
+  readonly model: string
+  /** Prompt the gateway forwards to the model. */
+  readonly prompt: string
+  /** Task type the operation needs, when the catalog declares several (`t2v`, `r2va`, `t2m`). */
+  readonly taskType?: string
+  /** Reference inputs; the catalog's `maxReferenceImages` bounds how many a class accepts. */
+  readonly referenceImages?: readonly string[]
+  /** Extra gateway parameters, forwarded verbatim. */
+  readonly params?: Readonly<Record<string, string | number | boolean>>
+}
+
+/** Terminal or in-flight state of one task. */
+export type MediaTaskState = 'running' | 'succeeded' | 'failed' | 'cancelled'
+
+/** One task observation. */
+export interface MediaTaskStatus {
+  /** Gateway task id. */
+  readonly taskId: string
+  /** Normalized state. */
+  readonly state: MediaTaskState
+  /** Artifact URL the gateway reported, when the task succeeded. */
+  readonly url?: string
+  /** Failure text the gateway reported, when the task failed. */
+  readonly error?: string
+}
+
+/** Result of a submission. */
+export type MediaSubmitResult =
+  | {
+    /** A task now exists; poll it with {@link MediaTaskStatus}. */
+    readonly ok: true
+    readonly taskId: string
+    readonly transport: MediaTransport
+    readonly state: MediaTaskState
+    readonly url?: string
+  }
+  | { readonly ok: false; readonly reason: MediaFailureReason; readonly detail?: string }
+
+/** Result of one status or terminal wait. */
+export type MediaStatusResult =
+  | { readonly ok: true; readonly status: MediaTaskStatus }
+  | { readonly ok: false; readonly reason: MediaFailureReason; readonly detail?: string }
+
+/** Result of a download. */
+export type MediaDownloadResult =
+  | { readonly ok: true; readonly path: string; readonly bytes: number }
+  | { readonly ok: false; readonly reason: MediaFailureReason; readonly detail?: string }
+
+/** Result of a cancellation request. */
+export type MediaCancelResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: MediaFailureReason; readonly detail?: string }

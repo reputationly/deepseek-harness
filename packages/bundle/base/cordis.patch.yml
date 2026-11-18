@@ -553,3 +553,9 @@
     - id: suanli-model-catalog
       name: '@deepseek-ai/dsh-suanli-model-catalog'
       disabled: true
+
+    # Generation-task transport: submits, polls, cancels, and downloads image, video, and
+    # music artifacts through the gateway's OpenAI-compatible task endpoints.
+    - id: suanli-media-tasks
+      name: '@deepseek-ai/dsh-suanli-media-tasks'
+      disabled: true

@@ -23,6 +23,9 @@
       "path": "../../llm/suanli-model-catalog"
     },
     {
+      "path": "../../llm/suanli-media-tasks"
+    },
+    {
       "path": "../gateway/tsconfig.client.json"
     },
     {

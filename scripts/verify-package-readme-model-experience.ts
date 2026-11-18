@@ -50,6 +50,7 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/llm/suanli-model-catalog': { kind: 'none', reason: 'The catalog decides which models a user may route to and adds no prompt, tool schema, or tool result.' },
+  'packages/llm/suanli-media-tasks': { kind: 'none', reason: 'The service transports caller-supplied generation requests and artifacts and adds no prompt, tool schema, or tool result by itself.' },
   'packages/client/ui-brand-suanli': { kind: 'none', reason: 'The browser renders the product wordmark and gateway light; nothing it shows enters a prompt, a tool schema, or a tool result.' },
   'packages/feedback/assistant-feedback': { kind: 'none', reason: 'Feedback is relayed to the deployment site and never reaches a model request.' },
   'packages/client/ui-context-menu': { kind: 'none', reason: 'Client menu presentation and contributed callbacks add no model input.' },

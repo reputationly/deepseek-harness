@@ -1,0 +1,156 @@
+/**
+ * Host Remote namespace that drives this deployment's generation tasks.
+ *
+ * The gateway exposes OpenAI-compatible task transports: images under
+ * `/v1/images/generations` and video or music under `/v1/videos`. A submission answers either
+ * with a finished artifact or a task id to poll; this service owns the credential, the polling
+ * cadence, and the cancellation, so the browser never holds the key.
+ *
+ * @module @deepseek-ai/dsh-suanli-media-tasks
+ */
+
+import { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
+import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
+import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { MediaTaskClient, transportFor } from './tasks.ts'
+import type {
+  MediaCancelResult, MediaDownloadResult, MediaOperation, MediaStatusResult, MediaSubmitRequest, MediaSubmitResult,
+  MediaTransport,
+} from './types.ts'
+
+export { MediaTaskClient, normalizeState, transportFor } from './tasks.ts'
+export type * from './types.ts'
+
+/** Default image collection path of an OpenAI-compatible gateway. */
+export const DEFAULT_IMAGES_PATH = '/v1/images/generations'
+/** Default video collection path of an OpenAI-compatible gateway. */
+export const DEFAULT_VIDEOS_PATH = '/v1/videos'
+/** Default request budget of one HTTP call. */
+export const DEFAULT_MEDIA_TIMEOUT_MS = 30_000
+/** Default interval between two status reads. */
+export const DEFAULT_MEDIA_POLL_MS = 2_000
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Host owner of the `suanliMedia` Remote namespace. */
+    suanliMedia: SuanliMediaTasksService
+  }
+}
+
+/** Deployment facts one generation call needs. */
+export interface Config {
+  /** Gateway root that already carries its API prefix. */
+  readonly baseURL: string
+  /** Credential reference holding the gateway key. */
+  readonly apiKeyEnv: string
+  /** Image collection path (default `/v1/images/generations`). */
+  readonly imagesPath?: string
+  /** Video and music collection path (default `/v1/videos`). */
+  readonly videosPath?: string
+  /** Request budget of one HTTP call, in milliseconds. */
+  readonly timeoutMs?: number
+  /** Interval between two status reads, in milliseconds. */
+  readonly pollIntervalMs?: number
+}
+
+/** Host service backing the generated `ctx.remote.suanliMedia` namespace. */
+export class SuanliMediaTasksService extends TypertRemoteService {
+  static inject = ['credentials', 'typert']
+
+  static Config: z<Config> = z.object({
+    baseURL: z.string().min(1),
+    apiKeyEnv: z.string().role('credential-ref').min(1),
+    imagesPath: z.string().pattern(/^\//u).default(DEFAULT_IMAGES_PATH),
+    videosPath: z.string().pattern(/^\//u).default(DEFAULT_VIDEOS_PATH),
+    timeoutMs: z.natural().min(1).default(DEFAULT_MEDIA_TIMEOUT_MS),
+    pollIntervalMs: z.natural().min(1).default(DEFAULT_MEDIA_POLL_MS),
+  })
+
+  private readonly ref: CredentialRef
+  private readonly client: MediaTaskClient
+
+  /**
+   * @param ctx - Host context carrying the credential provider and the Typert registry.
+   * @param config - gateway endpoint, credential reference, and call budgets.
+   */
+  constructor(ctx: Context, config: Config) {
+    super(ctx, 'suanliMedia', { namespace: 'suanliMedia' })
+    this.ref = credentialRef(config.apiKeyEnv)
+    this.client = new MediaTaskClient({
+      baseURL: config.baseURL,
+      paths: {
+        images: { collection: config.imagesPath ?? DEFAULT_IMAGES_PATH },
+        videos: { collection: config.videosPath ?? DEFAULT_VIDEOS_PATH },
+      },
+      timeoutMs: config.timeoutMs ?? DEFAULT_MEDIA_TIMEOUT_MS,
+      pollIntervalMs: config.pollIntervalMs ?? DEFAULT_MEDIA_POLL_MS,
+      send: (input, init) => fetch(input, init),
+      credential: async () => {
+        const stored = await this.ctx.credentials.resolve(this.ref)
+        return stored?.value
+      },
+    })
+  }
+
+  /**
+   * Submit one generation.
+   * @param request - operation, model, prompt, and parameters.
+   * @returns the task handle, or why no task exists.
+   */
+  @Remote
+  async submit(request: MediaSubmitRequest): Promise<MediaSubmitResult> {
+    return await this.client.submit(request, new AbortController().signal)
+  }
+
+  /**
+   * Read one task's state.
+   * @param taskId - gateway task id.
+   * @param operation - operation that submitted it; the transport follows from it.
+   * @returns the observation, or why it could not be read.
+   */
+  @Remote
+  async status(taskId: string, operation: MediaOperation): Promise<MediaStatusResult> {
+    return await this.client.status(taskId, transportFor(operation), new AbortController().signal)
+  }
+
+  /**
+   * Poll one task until it finishes.
+   * @param taskId - gateway task id.
+   * @param operation - operation that submitted it.
+   * @param timeoutMs - how long the caller will wait.
+   * @returns the terminal observation, or why the wait ended early.
+   */
+  @Remote
+  async wait(taskId: string, operation: MediaOperation, timeoutMs: number): Promise<MediaStatusResult> {
+    return await this.client.wait(taskId, transportFor(operation), { timeoutMs, signal: new AbortController().signal })
+  }
+
+  /**
+   * Ask the gateway to cancel one task.
+   * @param taskId - gateway task id.
+   * @param operation - operation that submitted it.
+   * @returns whether the gateway accepted the request.
+   */
+  @Remote
+  async cancel(taskId: string, operation: MediaOperation): Promise<MediaCancelResult> {
+    return await this.client.cancel(taskId, transportFor(operation), new AbortController().signal)
+  }
+
+  /**
+   * Download a finished artifact to a path the caller owns.
+   * @param taskId - gateway task id.
+   * @param operation - operation that submitted it.
+   * @param targetPath - absolute path inside the caller's workspace.
+   * @returns the written path and size, or why nothing was written.
+   */
+  @Remote
+  async download(taskId: string, operation: MediaOperation, targetPath: string): Promise<MediaDownloadResult> {
+    return await this.client.download(taskId, transportFor(operation), targetPath, new AbortController().signal)
+  }
+}
+
+export default SuanliMediaTasksService
+
+/** Transport of one operation, re-exported for the composition's row documentation. */
+export type { MediaTransport }

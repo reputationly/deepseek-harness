@@ -13,6 +13,7 @@ import settingsControllerRemote from '@deepseek-ai/dsh-api-settings-controller/r
 import gatewayStatusRemote from '@deepseek-ai/dsh-api-gateway-status/remote'
 import assistantFeedbackRemote from '@deepseek-ai/dsh-assistant-feedback/remote'
 import suanliModelsRemote from '@deepseek-ai/dsh-suanli-model-catalog/remote'
+import suanliMediaRemote from '@deepseek-ai/dsh-suanli-media-tasks/remote'
 import officeToPdfRemote from '@deepseek-ai/dsh-office-to-pdf/remote'
 import goalsRemote from '@deepseek-ai/dsh-goal/remote'
 import scheduleRemote from '@deepseek-ai/dsh-schedule/remote'
@@ -208,7 +209,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       fileUploadsRemote, sessionReferencesRemote,
       permissionPresetsRemote, subagentsRemote, sessionRemote, jobRemote, workspaceRemote, workspaceFilesRemote, terminalRemote,
       officeToPdfRemote, userQuestionsRemote, webRemote, gatewayStatusRemote, assistantFeedbackRemote,
-      suanliModelsRemote,
+      suanliModelsRemote, suanliMediaRemote,
     ]) {
       disposers.push(await ctx.remote.$mount(contribution))
     }
