@@ -75,7 +75,10 @@ export class FeedbackSurface {
    * @param fields - the verdict or the general text, with the target it names.
    */
   private async report(fields: Omit<AssistantFeedbackSubmitRequest, 'sessionId'>): Promise<void> {
-    await this.ctx.remote.assistantFeedback.submit({ sessionId: this.sessionId, ...fields })
+    const remote = this.ctx.get('remote.assistantFeedback')
+    // A deployment without the relay keeps the local remark and reports nothing.
+    if (remote === undefined) return
+    await remote.submit({ sessionId: this.sessionId, ...fields })
   }
 
   /** Drop both controllers when the owning fiber unloads. */

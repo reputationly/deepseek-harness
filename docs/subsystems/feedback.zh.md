@@ -314,6 +314,14 @@ fork 种子可以包含父 Session 的反馈事件，但 payload 保留父级 `s
 - 弹窗不预先校验 `maxNoteBytes`；针对消息的超长描述在提交时以 `note-too-large` 失败，而不是在输入过程中。Session 级备注没有大小上限，`/feedback` 命令从来也没有。
 - `sessionFeedback.record` 只服务 live Session，否则回答 `session-not-found`；弹窗打开期间 Session 退役时，弹窗会报告该失败。
 
+## 网关反馈转发
+
+`ctx.assistantFeedback` 把产品里的两个反馈入口——对某条助手回复的赞/踩，以及意见反馈弹窗——转发到 `POST <网关根地址>/api/assistant/feedback`。浏览器始终不持有网关 key：它通过 Remote 命名空间调用 `assistantFeedback.submit`，由服务按 `apiKeyEnv` 解析凭据、组装请求体、附带脱敏后的对话快照，并按次返回一个结果。
+
+赞/踩会带上 `request_id`，即网关为那一次请求签发的标识。deepseek 适配器从响应的 `x-oneapi-request-id` 读取它，transport 把它记在该回复的 `assistant/message` 上，loop 写在消息旁，因此反馈能精确指向产生该回复的那次调用。提供方未签发、或调用方已自行给出时，该字段保持缺失，绝不伪造。
+
+快照上限 60 KB 与 20 轮，脱敏先于体积测量执行，所以密钥不会撑大请求体。失败映射为 `invalid`、`unauthorized`、`too-large`、`rate-limited`、`unreachable`，由客户端本地化呈现。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -321,6 +329,23 @@ fork 种子可以包含父 Session 的反馈事件，但 payload 保留父级 `s
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxassistantfeedback--assistantfeedbackservice"></a>
+
+### `ctx.assistantFeedback` — `AssistantFeedbackService`
+
+Host service backing the generated `ctx.remote.assistantFeedback` namespace.
+
+```ts cordis-catalog
+/**
+ * Relay one submission, attaching the redacted snapshot of its Session.
+ * @param request - channel, verdict, user text, and the targets it names.
+ * @returns the accepted record or an explicit failure the surface reports unchanged.
+ */
+@Remote('submit') async submit(request: AssistantFeedbackSubmitRequest): Promise<AssistantFeedbackSubmitResult>
+```
+
+Source: [`packages/feedback/assistant-feedback/src/index.ts`](../../packages/feedback/assistant-feedback/src/index.ts)
 
 <a id="ctxmessagefeedback--messagefeedbackservice"></a>
 

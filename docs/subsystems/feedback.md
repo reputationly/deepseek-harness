@@ -314,6 +314,14 @@ Either unrecorded rating opens the Session's feedback dialog, the `feedback-dial
 - The dialog does not pre-check `maxNoteBytes`; an oversized description for a message fails on submit with `note-too-large` rather than while typing. A Session remark has no size bound, as the `/feedback` command never had one.
 - `sessionFeedback.record` serves live Sessions only and answers `session-not-found` otherwise; the dialog reports that failure when its Session retires while it is open.
 
+## Gateway feedback relay
+
+`ctx.assistantFeedback` forwards the product's two feedback entries — a rating on one assistant reply and the general feedback dialog — to `POST <gateway root>/api/assistant/feedback`. The browser never holds the gateway key: it calls `assistantFeedback.submit` through the Remote namespace, and the service resolves the credential from `apiKeyEnv`, builds the payload, attaches the redacted conversation snapshot, and answers one result per call.
+
+A rating carries `request_id`, the identifier the gateway issued for that reply's own request. The deepseek adapter reads `x-oneapi-request-id` from the response, the transport records it on the reply's `assistant/message`, and the loop carries it beside the message, so a report names the exact call that produced the reply being rated. A provider that issues no id, or a caller that already names one, leaves the field absent rather than inventing a value.
+
+The snapshot is capped at 60 KB and 20 turns; redaction runs before the size measurement, so a secret never lengthens the payload. Failures map to `invalid`, `unauthorized`, `too-large`, `rate-limited`, and `unreachable`, which the client localizes.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -321,6 +329,23 @@ Either unrecorded rating opens the Session's feedback dialog, the `feedback-dial
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxassistantfeedback--assistantfeedbackservice"></a>
+
+### `ctx.assistantFeedback` — `AssistantFeedbackService`
+
+Host service backing the generated `ctx.remote.assistantFeedback` namespace.
+
+```ts cordis-catalog
+/**
+ * Relay one submission, attaching the redacted snapshot of its Session.
+ * @param request - channel, verdict, user text, and the targets it names.
+ * @returns the accepted record or an explicit failure the surface reports unchanged.
+ */
+@Remote('submit') async submit(request: AssistantFeedbackSubmitRequest): Promise<AssistantFeedbackSubmitResult>
+```
+
+Source: [`packages/feedback/assistant-feedback/src/index.ts`](../../packages/feedback/assistant-feedback/src/index.ts)
 
 <a id="ctxmessagefeedback--messagefeedbackservice"></a>
 

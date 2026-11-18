@@ -43,6 +43,7 @@ describe('installer preparation preserves application dependencies', () => {
     for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value)
     try {
       const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
+      const { PRODUCT_NAME } = await import('../scripts/desktop-brand.mjs')
       const config = createElectronBuilderConfig(env, platform, 'x64')
       const metadataPackager = new Packager({ projectDir: tmpdir() })
       const metadata: unknown = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
@@ -52,9 +53,9 @@ describe('installer preparation preserves application dependencies', () => {
       })
       const appInfo = new AppInfo(metadataPackager, undefined)
       expect(appInfo.companyName).toBe('Hangzhou DeepSeek Artificial Intelligence Co., Ltd.')
-      expect(appInfo.copyright).toBe(`Copyright © ${new Date().getFullYear()} DeepSeek Harness`)
+      expect(appInfo.copyright).toBe(`Copyright © ${new Date().getFullYear()} ${PRODUCT_NAME}`)
       if (platform === 'win32') {
-        expect(expandMacro(config.nsis.uninstallDisplayName, null, appInfo, {}, false)).toBe('DeepSeek Harness')
+        expect(expandMacro(config.nsis.uninstallDisplayName, null, appInfo, {}, false)).toBe(PRODUCT_NAME)
         expect(config.nsis.installerLanguages).toEqual(readInstallerLocales().map(locale => locale.id))
       }
       const aboutIcon = config.extraResources.find(resource => resource.to === 'icon.png')

@@ -421,6 +421,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'assistantFeedback',
+    summary: 'Host service backing the generated `ctx.remote.assistantFeedback` namespace.',
+    description: 'Host service backing the generated `ctx.remote.assistantFeedback` namespace.',
+    methods: [
+      {
+        signature: '@Remote(\'submit\') async submit(request: AssistantFeedbackSubmitRequest): Promise<AssistantFeedbackSubmitResult>',
+        description: 'Relay one submission, attaching the redacted snapshot of its Session.',
+        parameters: [{ name: 'request', description: 'channel, verdict, user text, and the targets it names.' }],
+        returns: 'the accepted record or an explicit failure the surface reports unchanged.',
+      },
+    ],
+  },
+  {
     key: 'attachments',
     summary: 'Immutable binary attachment service.',
     description: 'Immutable binary attachment service. Implementations validate bytes before publishing a reference.',
@@ -563,164 +576,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Reserve the sole provider slot until the contribution is disposed. A second registration fails even when it repeats the current name. Providers must stop their tools and await owned work before releasing this registration.',
         parameters: [{ name: 'name', description: 'provider-owned name used in registration diagnostics.' }],
         returns: 'the effect disposer for this exact registration.',
-      },
-    ],
-  },
-  {
-    key: 'canvas',
-    summary: 'Owns every project\'s canvas documents.',
-    description: 'Owns every project\'s canvas documents.',
-    methods: [
-      {
-        signature: '@Remote(\'editorContext\') editorContext(session: Session, context?: CanvasEditorContext): void',
-        description: 'Publish or clear one Session\'s editor hint for the next logged runtime-context snapshot.',
-        parameters: [{ name: 'session', description: 'Session owning this UI selection.' }, { name: 'context', description: 'captured selection without draft values; omitted when the editor closes.' }],
-        throws: ['RemoteError when the reported project no longer belongs to this Session; its old hint is cleared.'],
-      },
-      {
-        signature: 'directoryOf(session: Session): string',
-        description: 'Project directory whose canvas a Session edits.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }],
-        returns: 'the Session\'s original directory, or its current one when the header records none.',
-      },
-      {
-        signature: 'async targetOf(session: Session, episode?: EpisodeId, expectedDirectory?: string): Promise<CanvasTarget>',
-        description: 'Project, episode, and files one Session edits.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'episode', description: 'episode the caller asked for; the Session\'s binding applies when omitted.' }, { name: 'expectedDirectory', description: 'Captured project directory used to reject a project switch.' }],
-        returns: 'the resolved target; a directory without `project.json` reports the single canvas.',
-        throws: ['Error when the requested episode does not exist.'],
-      },
-      {
-        signature: 'async read(session: Session, episode?: EpisodeId, expectedDirectory?: string): Promise<CanvasDocument>',
-        description: 'Read the canvas of a Session\'s project.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'episode', description: 'episode to read; the Session\'s binding applies when omitted.' }, { name: 'expectedDirectory', description: 'Captured project directory used to reject a project switch.' }],
-        returns: 'the validated document; an empty canvas when the project has none.',
-        throws: ['`CanvasCorruptError` when the canvas file is not a valid document.'],
-      },
-      {
-        signature: 'async edit( session: Session, operations: readonly CanvasOperation[], options: { readonly baseRevision?: number readonly episode?: EpisodeId readonly origin?: \'agent\' | \'user\' readonly expectedDirectory?: string readonly atomic?: boolean readonly timelineRevisions?: readonly { readonly node: CanvasNodeId; readonly revision: number }[] } = {}, ): Promise<CanvasEditResult>',
-        description: 'Apply operations to the canvas of a Session\'s project in one write.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'operations', description: 'ordered operations; relative media paths resolve against the project directory.' }, { name: 'options', description: 'base revision, captured target, origin, and atomic mode to reject the whole batch when any operation is skipped.' }],
-        returns: 'assigned ids, the revision after the write, and the skipped operations with their reasons.',
-        throws: ['`CanvasCorruptError` when the canvas file is not a valid document.', '`CanvasConflictError` when the document moved past the caller\'s base revision.'],
-      },
-      {
-        signature: 'async resolveImages(session: Session, ids: readonly string[]): Promise<string[]>',
-        description: 'Picture nodes and groups stand for as generation inputs.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'ids', description: 'image node ids or group ids; a group stands for its image members in reading order.' }],
-        returns: 'absolute image paths in input order, without duplicates.',
-        throws: ['{@link CanvasInputError} when an id is unknown, is not an image or group, or is a group without images.'],
-      },
-      {
-        signature: 'async resolveMedia(session: Session, ids: readonly string[]): Promise<string[]>',
-        description: 'Resolve image, video, and audio nodes to their local media files.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'ids', description: 'media node ids in the order the caller will consume them.' }],
-        returns: 'absolute media paths in input order.',
-        throws: ['{@link CanvasInputError} when an id is unknown, is not a media node, or has no path.'],
-      },
-      {
-        signature: 'async projectOf(session: Session): Promise<{ readonly project: StudioProject | undefined readonly revision: number readonly current: CanvasEpisode readonly episodes: readonly CanvasEpisode[] }>',
-        description: 'Read the project metadata and every episode.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }],
-        returns: 'the project, its revision, the current episode, and the episodes of the project.',
-      },
-      {
-        signature: 'async bibleOf( session: Session, expectedDirectory?: string, ): Promise<{ readonly bible: Bible; readonly revision: number }>',
-        description: 'Read the bible of a Session\'s project.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'expectedDirectory', description: 'captured project owner, when called from a running media job.' }],
-        returns: 'the bible, or an empty one when the project has none, with the revision the file holds.',
-      },
-      {
-        signature: 'async bibleReferences(session: Session): Promise<ReadonlyMap<BibleEntryId, readonly string[]>>',
-        description: 'Bible entries the storyboards of every episode of a project reference.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }],
-        returns: 'the referencing storyboard nodes per entry id.',
-      },
-      {
-        signature: 'async productionOf(session: Session): Promise<{ readonly production: Production; readonly revision: number }>',
-        description: 'Read the production record of a Session\'s project.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }],
-        returns: 'the production record, an empty one when the project has none, and its revision.',
-      },
-      {
-        signature: 'async setStage( session: Session, to: StageId, override?: { readonly gate: GateId; readonly reason: string }, baseRevision?: number, ): Promise<{ readonly production: Production; readonly revision: number; readonly previous: StageId }>',
-        description: 'Record the stage one episode has reached.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'to', description: 'stage to record.' }, { name: 'override', description: 'gate to record as overridden, with the reason a user gave.' }, { name: 'baseRevision', description: 'production revision the caller read, or undefined to skip the check.' }],
-        returns: 'the production record after the write, its revision, and the previous stage.',
-        throws: ['`CanvasConflictError` when the production moved past the caller\'s base revision.'],
-      },
-      {
-        signature: 'async createProject( session: Session, request: { readonly format: ProductionFormat; readonly title: string; readonly spec: ProjectSpec }, ): Promise<{ readonly project: StudioProject; readonly revision: number }>',
-        description: 'Create the project metadata, making the existing single canvas its first episode.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'request', description: 'production format, title, and output specification.' }],
-        returns: 'the project after the write and its revision.',
-        throws: ['Error when the project already has metadata.'],
-      },
-      {
-        signature: 'async createEpisode( session: Session, title: string, ): Promise<{ readonly episode: CanvasEpisode; readonly revision: number }>',
-        description: 'Add an episode to the project.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'title', description: 'title of the new episode.' }],
-        returns: 'the new episode and the project revision.',
-        throws: ['Error when the project has no metadata.'],
-      },
-      {
-        signature: 'async useEpisode(session: Session, episode: EpisodeId): Promise<{ readonly revision: number }>',
-        description: 'Bind a Session to an episode.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'episode', description: 'episode the Session edits.' }],
-        returns: 'the project revision after the binding.',
-        throws: ['Error when the episode does not exist.'],
-      },
-      {
-        signature: 'async updateBible( session: Session, change: { readonly logline?: string | undefined readonly style?: Partial<Bible[\'style\']> | undefined readonly upsert?: readonly BibleEntry[] | undefined readonly remove?: readonly BibleEntryId[] | undefined }, baseRevision?: number, ): Promise<{ readonly bible: Bible; readonly revision: number }>',
-        description: 'Update the bible of a Session\'s project.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'change', description: 'fields to replace, entries to upsert, and entries to remove.' }, { name: 'baseRevision', description: 'bible revision the caller read, or undefined to skip the check.' }],
-        returns: 'the bible after the write and its revision.',
-        throws: ['`CanvasConflictError` when the bible moved past the caller\'s base revision.', 'Error when a removed entry is still referenced by a storyboard.'],
-      },
-      {
-        signature: '@Remote(\'get\') async get(session: Session, episode?: EpisodeId): Promise<CanvasView>',
-        description: 'Read the canvas and the revisions a Client needs to render it.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'episode', description: 'episode to read; the Session\'s binding applies when omitted.' }],
-        returns: 'the directory, episode, revisions, and document.',
-        throws: ['RemoteError `canvas/corrupt` when the canvas file is not a valid document.'],
-      },
-      {
-        signature: '@Remote(\'apply\') apply( session: Session, operations: CanvasOperation[], baseRevision: number, episode?: EpisodeId, expectedDirectory?: string, ): Promise<CanvasEditResult>',
-        description: 'Apply a user\'s edits to the canvas of an episode.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }, { name: 'operations', description: 'ordered operations.' }, { name: 'baseRevision', description: 'revision the Client read.' }, { name: 'episode', description: 'episode to edit; the Session\'s binding applies when omitted.' }, { name: 'expectedDirectory', description: 'captured project directory; a project switch refuses the write.' }],
-        returns: 'assigned ids, the new revision, and the skipped operations.',
-        throws: ['RemoteError `canvas/corrupt` when the canvas file is not a valid document.'],
-      },
-      {
-        signature: '@Remote(\'bible\') bible(session: Session): Promise<{ readonly bible: Bible; readonly revision: number }>',
-        description: 'Read the shared bible the Client panels show.',
-        parameters: [{ name: 'session', description: 'Session opened on the project.' }],
-        returns: 'the bible and its revision.',
-        throws: ['RemoteError `canvas/corrupt` when the bible file is not a valid bible.'],
-      },
-      {
-        signature: '@Remote(\'timeline\') async timeline( session: Session, node: CanvasNodeId, episode?: EpisodeId, expectedDirectory?: string, ): Promise<Timeline | undefined>',
-        description: 'Read the independent document of a timeline node.',
-        parameters: [{ name: 'session', description: 'Session that owns the canvas.' }, { name: 'node', description: 'timeline node to open.' }, { name: 'episode', description: 'episode to read; the Session binding applies when omitted.' }, { name: 'expectedDirectory', description: 'Captured project directory used to reject a project switch.' }],
-        returns: 'validated timeline, or undefined before its first edit.',
-      },
-      {
-        signature: '@Remote(\'editTimeline\') async editTimeline( session: Session, node: CanvasNodeId, operations: TimelineOperation[], baseRevision: number, spec: Timeline[\'spec\'] | undefined, episode?: EpisodeId, expectedDirectory?: string, ): Promise<TimelineEditResult>',
-        description: 'Commit editor or Agent commands against the revision they read.',
-        parameters: [{ name: 'session', description: 'Session that owns the canvas.' }, { name: 'node', description: 'timeline node to edit.' }, { name: 'operations', description: 'atomic command batch.' }, { name: 'baseRevision', description: 'timeline revision the caller read, 0 before the first edit.' }, { name: 'spec', description: 'required output specification for the first edit; later edits use set_spec.' }, { name: 'episode', description: 'episode to edit; the Session binding applies when omitted.' }, { name: 'expectedDirectory', description: 'Captured project directory used to reject a project switch.' }],
-        returns: 'committed document and intervals requiring a new preview.',
-      },
-      {
-        signature: '@Remote(\'timelineHistory\') async timelineHistory( session: Session, node: CanvasNodeId, episode?: EpisodeId, expectedDirectory?: string, ): Promise<readonly TimelineRevision[]>',
-        description: 'List saved revisions under the project writer; no media paths or clip bodies cross this read.',
-        parameters: [{ name: 'session', description: 'project Session.' }, { name: 'node', description: 'timeline node.' }, { name: 'episode', description: 'explicit episode; omitted uses the Session binding.' }, { name: 'expectedDirectory', description: 'captured project directory; omitted skips the directory fence.' }],
-        returns: 'live revision first followed by available predecessors; empty before initialization.',
-      },
-      {
-        signature: '@Remote(\'restoreTimeline\') async restoreTimeline( session: Session, node: CanvasNodeId, revision: number, baseRevision: number, mode: TimelineRestoreMode, episode?: EpisodeId, expectedDirectory?: string, ): Promise<TimelineEditResult>',
-        description: 'Restore by applying shared commands to the caller\'s revision. Existing generations remain unchanged.',
-        parameters: [{ name: 'session', description: 'project Session.' }, { name: 'node', description: 'timeline node.' }, { name: 'revision', description: 'saved revision to restore.' }, { name: 'baseRevision', description: 'live revision the user or Agent reviewed.' }, { name: 'mode', description: 'explicit restoration or a checked undo/redo cursor step.' }, { name: 'episode', description: 'explicit episode; omitted uses the Session binding.' }, { name: 'expectedDirectory', description: 'captured project directory; omitted skips the directory fence.' }],
-        returns: 'newly committed revision and invalidated intervals; unchanged for the live revision itself.',
       },
     ],
   },
@@ -4623,61 +4478,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
-    key: 'wechat',
-    summary: 'Owns QR login, the durable iLink cursor, and the WeChat-to-Agent bridge.',
-    description: 'Owns QR login, the durable iLink cursor, and the WeChat-to-Agent bridge.',
-    methods: [
-      {
-        signature: '@Remote async getStatus(): Promise<WechatSnapshot>',
-        description: 'Read the sanitized current state for the local settings page.',
-        parameters: [],
-        returns: 'Sanitized current status and workspace snapshot.',
-      },
-      {
-        signature: '@Remote async startLogin(): Promise<WechatSnapshot>',
-        description: 'Open a new local QR login and begin polling its status.',
-        parameters: [],
-        returns: 'Sanitized current status and workspace snapshot.',
-      },
-      {
-        signature: '@Remote async cancelLogin(): Promise<WechatSnapshot>',
-        description: 'Cancel the pending QR login without removing saved credentials.',
-        parameters: [],
-        returns: 'Sanitized current status and workspace snapshot.',
-      },
-      {
-        signature: '@Remote async reconnect(): Promise<WechatSnapshot>',
-        description: 'Reconnect using the saved iLink credentials.',
-        parameters: [],
-        returns: 'Sanitized current status and workspace snapshot.',
-      },
-      {
-        signature: '@Remote async disconnect(): Promise<WechatSnapshot>',
-        description: 'Stop polling while retaining credentials for a later reconnect.',
-        parameters: [],
-        returns: 'Sanitized current status and workspace snapshot.',
-      },
-      {
-        signature: '@Remote async logout(): Promise<WechatSnapshot>',
-        description: 'Delete the saved iLink token and cursor and stop the local connection.',
-        parameters: [],
-        returns: 'Sanitized current status and workspace snapshot.',
-      },
-      {
-        signature: '@Remote async setDefaultProject(projectPath: string): Promise<WechatSnapshot>',
-        description: 'Select an existing registered project as the default WeChat workspace.',
-        parameters: [{ name: 'projectPath', description: 'Path of an existing registered workspace.' }],
-        returns: 'Sanitized current status and workspace snapshot.',
-      },
-      {
-        signature: '@Remote({ mode: \'stream\' }) async *watchStatus(signal: AbortSignal): AsyncIterable<WechatStatus>',
-        description: 'Stream sanitized status changes to the settings page.',
-        parameters: [{ name: 'signal', description: 'Cancels this request or subscription.' }],
-        returns: 'Sanitized status updates until the subscription is cancelled.',
-      },
-    ],
-  },
-  {
     key: 'workflowEngine',
     summary: 'Workflow Service Definition contract.',
     description: 'Workflow Service Definition contract. Invalid requests throw before publication; a live run is holder-owned, its result never rejects, and disposal waits for script and child cleanup. Lifecycle listener failures are contained, and `workflow/end` fires exactly once as the result settles.',
@@ -5118,22 +4918,6 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'key', description: 'the credential record the finished attempt was authorizing.' }, { name: 'settlement', description: 'how it ended, including the `failed` case its caller sees as a thrown error.' }],
   },
   {
-    name: 'canvas/change',
-    mode: 'emit',
-    signature: '\'canvas/change\'(change: CanvasChange): void',
-    summary: 'A project\'s canvas files were rewritten.',
-    description: 'A project\'s canvas files were rewritten.',
-    parameters: [{ name: 'change', description: 'the project directory, episode, and file revisions that changed.' }],
-  },
-  {
-    name: 'canvas/open',
-    mode: 'parallel',
-    signature: '\'canvas/open\'(session: Session, episode: EpisodeId): Promise<void>',
-    summary: 'A Client opens an episode; providers reconcile durable work before its first view.',
-    description: 'A Client opens an episode; providers reconcile durable work before its first view.',
-    parameters: [{ name: 'session', description: 'Session that opened the project.' }, { name: 'episode', description: 'episode to reconcile.' }],
-  },
-  {
     name: 'commands/change',
     mode: 'emit',
     signature: '\'commands/change\'(): void',
@@ -5372,14 +5156,6 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'One managed server\'s status transitioned.',
     description: 'One managed server\'s status transitioned. Emitted for every published change while the manager is live and either the entry is configured or registered, or a runtime record remains. Removed entries may emit cleanup failures; `watch` and `list()` report removals. Lifecycle operations do not wait for listeners. Synchronous throws and returned promise rejections are logged without skipping other listeners.',
     parameters: [{ name: 'name', description: 'the configured `servers` key or registered name.' }, { name: 'status', description: 'the status now current for that server.' }],
-  },
-  {
-    name: 'media/render-change',
-    mode: 'emit',
-    signature: '\'media/render-change\'(notice: import(\'./timeline-render-types.ts\').TimelineRenderNotice): void',
-    summary: 'A local render changed state; connected renderers can claim queued work.',
-    description: 'A local render changed state; connected renderers can claim queued work.',
-    parameters: [{ name: 'notice', description: 'owner, project, timeline and job state.' }],
   },
   {
     name: 'permission-presets/catalog-changed',
@@ -5628,14 +5404,6 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'Collect the structured index injection table for the page `peer` speaks for.',
     description: 'Collect the structured index injection table for the page `peer` speaks for. Emitted on every index render and every worker boot-payload request; listeners push their current rows, so a row\'s data is read fresh at emit time.',
     parameters: [{ name: 'table', description: 'Mutable row table; listeners append in activation order.' }, { name: 'peer', description: 'The Peer the rendered page speaks for.' }],
-  },
-  {
-    name: 'wechat/status',
-    mode: 'emit',
-    signature: '\'wechat/status\'(status: WechatStatus, error?: string): void',
-    summary: 'The local iLink binding changed its public connection state.',
-    description: 'The local iLink binding changed its public connection state.',
-    parameters: [{ name: 'status', description: 'the sanitized WeChat connection state.' }, { name: 'error', description: 'an optional localized public error.' }],
   },
   {
     name: 'workflow/agent-end',
@@ -5942,6 +5710,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AssembledSection {\n    name: string;\n    text: string;\n    interpolate?: boolean;\n}',
   },
   {
+    name: 'AssistantFeedbackFailure',
+    declaration: 'export interface AssistantFeedbackFailure {\n    readonly ok: false;\n    readonly code: AssistantFeedbackFailureCode;\n    readonly message: string;\n}',
+  },
+  {
+    name: 'AssistantFeedbackFailureCode',
+    declaration: 'export type AssistantFeedbackFailureCode = \'not-configured\' | \'no-key\' | \'unauthorized\' | \'forbidden\' | \'rate-limited\' | \'too-large\' | \'rejected\' | \'unreachable\';',
+  },
+  {
+    name: 'AssistantFeedbackSubmitRequest',
+    declaration: 'export interface AssistantFeedbackSubmitRequest {\n    readonly channel: FeedbackChannel;\n    readonly rating?: FeedbackRating | undefined;\n    readonly category?: string | undefined;\n    readonly content?: string | undefined;\n    readonly contact?: string | undefined;\n    readonly sessionId?: SessionId | undefined;\n    readonly messageId?: string | undefined;\n    readonly requestId?: string | undefined;\n    readonly model?: string | undefined;\n    readonly platform?: FeedbackPlatform | undefined;\n    readonly deviceInfo?: string | undefined;\n    readonly attachContext?: boolean | undefined;\n}',
+  },
+  {
+    name: 'AssistantFeedbackSubmitResult',
+    declaration: 'export type AssistantFeedbackSubmitResult = AssistantFeedbackSuccess | AssistantFeedbackFailure;',
+  },
+  {
+    name: 'AssistantFeedbackSuccess',
+    declaration: 'export interface AssistantFeedbackSuccess {\n    readonly ok: true;\n    readonly id: number;\n    readonly createdAt: string;\n}',
+  },
+  {
     name: 'AssistantMessage',
     declaration: 'export interface AssistantMessage extends MessageBase {\n    readonly role: \'assistant\';\n    readonly source: ModelMessageSource;\n}',
   },
@@ -6046,26 +5834,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BashEnvVariableInfo extends BashEnvVariable {\n    contributor: string;\n    key: DshEnvironmentKey;\n}',
   },
   {
-    name: 'BeatGrid',
-    declaration: 'export interface BeatGrid {\n    readonly bpm: number;\n    readonly beatsMs: readonly number[];\n    readonly sections: readonly {\n        readonly fromMs: number;\n        readonly toMs: number;\n    }[];\n}',
-  },
-  {
-    name: 'Bible',
-    declaration: 'export interface Bible {\n    readonly version: 1;\n    readonly revision: number;\n    readonly logline: string;\n    readonly style: BibleStyle;\n    readonly entries: readonly BibleEntry[];\n    readonly narrator?: VoiceSpec;\n}',
-  },
-  {
-    name: 'BibleEntry',
-    declaration: 'export interface BibleEntry {\n    readonly id: BibleEntryId;\n    readonly kind: \'character\' | \'location\' | \'prop\';\n    readonly name: string;\n    readonly aliases: readonly string[];\n    readonly description: string;\n    readonly imageNodes: readonly CanvasNodeId[];\n    readonly voice?: VoiceSpec;\n}',
-  },
-  {
-    name: 'BibleEntryId',
-    declaration: 'export type BibleEntryId = Branded<\'BibleEntryId\'>;',
-  },
-  {
-    name: 'BibleStyle',
-    declaration: 'export interface BibleStyle {\n    readonly visual: string;\n    readonly palette?: string;\n    readonly aspect: \'16:9\' | \'9:16\' | \'1:1\' | \'4:3\' | \'3:4\';\n    readonly director?: string;\n    readonly genre?: string;\n    readonly tone?: string;\n}',
-  },
-  {
     name: 'BindingOrigin',
     declaration: 'export type BindingOrigin = \'created\' | \'referenced\' | \'discovered\' | \'tracked\';',
   },
@@ -6100,78 +5868,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ButtonProps',
     declaration: 'export interface ButtonProps {\n    readonly label: string;\n    readonly hotkey?: string | undefined;\n    readonly disabled?: boolean | undefined;\n    readonly onPress?: (() => unknown) | undefined;\n}',
-  },
-  {
-    name: 'CanvasChange',
-    declaration: 'export interface CanvasChange {\n    readonly directory: string;\n    readonly episode?: EpisodeId;\n    readonly revisions: CanvasRevisions;\n}',
-  },
-  {
-    name: 'CanvasContentType',
-    declaration: 'export type CanvasContentType = Exclude<CanvasNodeType, \'group\'>;',
-  },
-  {
-    name: 'CanvasDocument',
-    declaration: 'export interface CanvasDocument {\n    readonly version: 3;\n    readonly revision: number;\n    readonly nextId: number;\n    readonly nodes: readonly CanvasNode[];\n    readonly edges: readonly CanvasEdge[];\n}',
-  },
-  {
-    name: 'CanvasEdge',
-    declaration: 'export interface CanvasEdge {\n    readonly id: string;\n    readonly source: CanvasNodeId;\n    readonly target: CanvasNodeId;\n    readonly kind: CanvasEdgeKind;\n    readonly role?: CanvasEdgeRole;\n    readonly order?: number;\n}',
-  },
-  {
-    name: 'CanvasEdgeKind',
-    declaration: 'export type CanvasEdgeKind = \'derivation\' | \'reference\';',
-  },
-  {
-    name: 'CanvasEdgeRole',
-    declaration: 'export type CanvasEdgeRole = \'prompt\' | \'ref\' | \'first_frame\' | \'last_frame\' | \'audio\' | \'source\';',
-  },
-  {
-    name: 'CanvasEditorContext',
-    declaration: 'export interface CanvasEditorContext {\n    readonly scope: CanvasScope;\n    readonly application: \'canvas\' | \'timeline\' | \'music\' | \'speech\';\n    readonly revision: number;\n    readonly available: boolean;\n    readonly dirty?: boolean;\n    readonly node?: CanvasNodeId;\n    readonly version?: VersionId;\n    readonly timelineRevision?: number;\n    readonly clips?: readonly TimelineClipId[];\n    readonly playheadMs?: number;\n}',
-  },
-  {
-    name: 'CanvasEditResult',
-    declaration: 'export interface CanvasEditResult {\n    readonly revision: number;\n    readonly refs: Readonly<Record<string, CanvasNodeId>>;\n    readonly created: readonly CanvasNodeId[];\n    readonly skipped: readonly CanvasSkippedOperation[];\n}',
-  },
-  {
-    name: 'CanvasEpisode',
-    declaration: 'export interface CanvasEpisode {\n    readonly id: EpisodeId;\n    readonly title: string;\n}',
-  },
-  {
-    name: 'CanvasNode',
-    declaration: 'export interface CanvasNode {\n    readonly id: CanvasNodeId;\n    readonly type: CanvasNodeType;\n    readonly title: string;\n    readonly x: number;\n    readonly y: number;\n    readonly width: number;\n    readonly height: number;\n    readonly group?: CanvasNodeId;\n    readonly placed?: boolean;\n    readonly versions?: readonly NodeVersion[];\n    readonly activeVersion?: VersionId;\n    readonly gen?: GenerationSpec;\n    readonly status?: NodeStatus;\n    readonly bible?: BibleEntryId;\n    readonly timeline?: TimelineRef;\n    readonly tailOf?: {\n        readonly node: CanvasNodeId;\n        readonly version: VersionId;\n        readonly sourceVersion?: VersionId;\n    };\n    readonly stale?: boolean;\n    readonly inputChanged?: boolean;\n    readonly sceneOrigin?: SceneOrigin;\n}',
-  },
-  {
-    name: 'CanvasNodeId',
-    declaration: 'export type CanvasNodeId = Branded<\'CanvasNodeId\'>;',
-  },
-  {
-    name: 'CanvasNodeType',
-    declaration: 'export type CanvasNodeType = \'image\' | \'video\' | \'audio\' | \'text\' | \'script\' | \'storyboard\' | \'timeline\' | \'group\';',
-  },
-  {
-    name: 'CanvasOperation',
-    declaration: 'export type CanvasOperation = {\n    readonly op: \'add\';\n    readonly ref?: string;\n    readonly type: CanvasContentType;\n    readonly title?: string;\n    readonly text?: string;\n    readonly path?: string;\n    readonly candidate?: true;\n    readonly inputs?: readonly NodeInput[];\n    readonly initialVersion?: Pick<NodeVersion, \'id\' | \'params\' | \'durationMs\' | \'width\' | \'height\'>;\n    readonly gen?: GenerationSpec;\n    readonly shots?: readonly Shot[];\n    readonly bible?: BibleEntryId;\n    readonly group?: string;\n} | {\n    readonly op: \'update\';\n    readonly node: string;\n    readonly title?: string;\n    readonly text?: string;\n    readonly path?: string;\n} | {\n    readonly op: \'remove\';\n    readonly node: string;\n} | {\n    readonly op: \'set_gen\';\n    readonly node: string;\n    readonly gen: Partial<Omit<GenerationSpec, \'params\' | \'model\'>> & {\n        readonly model?: string | null;\n        readonly params?: Readonly<Record<string, string | number | boolean | null>>;\n    };\n} | {\n    readonly op: \'set_text\';\n    readonly node: string;\n    readonly text: string;\n} | {\n    readonly op: \'set_shots\';\n    readonly node: string;\n    readonly shots: readonly Shot[];\n} | {\n    readonly op: \'update_shot\';\n    readonly node: string;\n    readonly shot: string;\n    readonly patch: Partial<Omit<Shot, \'id\'>>;\n} | {\n    readonly op: \'insert_shot\';\n    readonly node: string;\n    readonly after?: string;\n    readonly shot: Omit<Shot, \'id\'>;\n} | {\n    readonly op: \'remove_shot\';\n    readonly /* …truncated — full shape in source */',
-  },
-  {
-    name: 'CanvasRevisions',
-    declaration: 'export interface CanvasRevisions {\n    readonly canvas?: number;\n    readonly project?: number;\n    readonly bible?: number;\n    readonly production?: number;\n    readonly timelines?: readonly {\n        readonly node: CanvasNodeId;\n        readonly revision: number;\n    }[];\n}',
-  },
-  {
-    name: 'CanvasScope',
-    declaration: 'export interface CanvasScope {\n    readonly directory: string;\n    readonly episode: EpisodeId;\n}',
-  },
-  {
-    name: 'CanvasSkippedOperation',
-    declaration: 'export interface CanvasSkippedOperation {\n    readonly index: number;\n    readonly op: CanvasOperation[\'op\'];\n    readonly reason: string;\n}',
-  },
-  {
-    name: 'CanvasTarget',
-    declaration: 'export interface CanvasTarget {\n    readonly directory: string;\n    readonly project: StudioProject | undefined;\n    readonly episode: CanvasEpisode;\n    readonly file: string;\n}',
-  },
-  {
-    name: 'CanvasView',
-    declaration: 'export interface CanvasView {\n    readonly directory: string;\n    readonly episode: CanvasEpisode;\n    readonly revisions: CanvasRevisions;\n    readonly document: CanvasDocument;\n    readonly segments: Readonly<Record<string, readonly StoryboardSegment[]>>;\n}',
   },
   {
     name: 'ChangeRequestCheck',
@@ -6602,16 +6298,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface DeveloperMessage extends MessageBase {\n    readonly role: \'developer\';\n}',
   },
   {
-    name: 'DialogueId',
-    declaration: 'export type DialogueId = Branded<\'DialogueId\'>;',
-  },
-  {
-    name: 'DialogueLine',
-    declaration: 'export interface DialogueLine {\n    readonly id: DialogueId;\n    readonly speaker: {\n        readonly kind: \'character\';\n        readonly entry: BibleEntryId;\n    } | {\n        readonly kind: \'narrator\';\n    };\n    readonly line: string;\n}',
-  },
-  {
     name: 'DiffCallView',
     declaration: 'export interface DiffCallView {\n    card: \'diff\';\n    title: string;\n    diffs: FileDiff[];\n    locations?: FileLocation[];\n}',
+  },
+  {
+    name: 'DiffResultView',
+    declaration: 'export interface DiffResultView {\n    card: \'diff\';\n    title?: string;\n    diffs: FileDiff[];\n}',
   },
   {
     name: 'DirectoryEntry',
@@ -6726,18 +6418,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EncodedImageAttachment {\n    mediaType: ImageMediaType;\n    data: string;\n    name?: string;\n}',
   },
   {
-    name: 'Episode',
-    declaration: 'export interface Episode {\n    readonly id: EpisodeId;\n    readonly title: string;\n    readonly file: string;\n}',
-  },
-  {
-    name: 'EpisodeId',
-    declaration: 'export type EpisodeId = Branded<\'EpisodeId\'>;',
-  },
-  {
-    name: 'EpisodeProduction',
-    declaration: 'export interface EpisodeProduction {\n    readonly stage: StageId;\n    readonly overrides: readonly {\n        readonly gate: GateId;\n        readonly at: string;\n        readonly reason: string;\n    }[];\n}',
-  },
-  {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    tools?: ToolSchema[];\n    system?: never;\n}',
   },
@@ -6754,12 +6434,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EveryScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'every\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly everySeconds: number;\n    readonly scheduledAt: string;\n}',
   },
   {
-    name: 'ExportRecord',
-    declaration: 'export interface ExportRecord {\n    readonly node: CanvasNodeId;\n    readonly preset: string;\n    readonly timelineRevision: number;\n    readonly at: string;\n}',
-  },
-  {
     name: 'FeedbackCategory',
     declaration: 'export type FeedbackCategory = \'task-result\' | \'instruction-following\' | \'product-interaction\' | \'service-stability\' | \'resource-cost\' | \'security-privacy-permission\' | \'other\';',
+  },
+  {
+    name: 'FeedbackChannel',
+    declaration: 'export type FeedbackChannel = \'rating\' | \'general\';',
+  },
+  {
+    name: 'FeedbackPlatform',
+    declaration: 'export type FeedbackPlatform = \'web\' | \'desktop\' | \'ios\' | \'android\';',
+  },
+  {
+    name: 'FeedbackRating',
+    declaration: 'export type FeedbackRating = \'like\' | \'dislike\';',
   },
   {
     name: 'FiberState',
@@ -7002,10 +6690,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
   },
   {
-    name: 'GateId',
-    declaration: 'export type GateId = \'G1_bible_first\' | \'G2_storyboard_quality\' | \'G3_one_video_per_shots\' | \'G4_stage_order\' | \'G5_destructive\' | \'tail_chain\';',
-  },
-  {
     name: 'GatewayConnectionState',
     declaration: 'export type GatewayConnectionState = \'checking\' | \'connected\' | \'disconnected\';',
   },
@@ -7022,16 +6706,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GenerateOptions<Purpose extends string = LlmRequestPurpose> {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: RequestMessage[];\n    system?: string;\n    tools?: ToolSchema[];\n    toolHistory?: ToolHistory;\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: Purpose;\n}',
   },
   {
-    name: 'GenerationKind',
-    declaration: 'export type GenerationKind = \'image\' | \'video\' | \'speech\' | \'music\';',
-  },
-  {
-    name: 'GenerationSpec',
-    declaration: 'export interface GenerationSpec {\n    readonly kind: GenerationKind;\n    readonly prompt: string;\n    readonly model?: string;\n    readonly params: Readonly<Record<string, string | number | boolean>>;\n    readonly shot?: {\n        readonly storyboard: CanvasNodeId;\n        readonly shots: readonly ShotId[];\n    };\n    readonly dialogue?: {\n        readonly storyboard: CanvasNodeId;\n        readonly shot: ShotId;\n        readonly line: DialogueId;\n    };\n    readonly tailChain?: boolean;\n}',
-  },
-  {
     name: 'GenericCallView',
     declaration: 'export interface GenericCallView {\n    card: \'generic\';\n    title: string;\n    kind?: ToolCallKind;\n    rawInput?: unknown;\n    content?: ContentBlock[];\n    locations?: FileLocation[];\n}',
+  },
+  {
+    name: 'GenericResultView',
+    declaration: 'export interface GenericResultView {\n    card: \'generic\';\n    title?: string;\n    content?: ContentBlock[];\n}',
   },
   {
     name: 'GoalActivation',
@@ -7294,8 +6974,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface JobSpec {\n    kind: JobKind;\n    label: string;\n    owner?: SessionId;\n    completionNotice?: \'none\';\n    toolCall?: JobToolCall;\n    outputLimitBytes?: number;\n    output?: readonly JobOutputSource[];\n    run(job: JobHandle): JobHooks;\n}',
   },
   {
+    name: 'JobStatus',
+    declaration: 'export type JobStatus = \'running\' | \'stopping\' | \'completed\' | \'killed\' | \'failed\';',
+  },
+  {
     name: 'JobToolCall',
     declaration: 'export interface JobToolCall {\n    readonly callId: SessionEventMap[\'tool/call\'][\'callId\'];\n    readonly rootCallId: SessionEventMap[\'tool/call\'][\'callId\'];\n}',
+  },
+  {
+    name: 'JobView',
+    declaration: 'export interface JobView {\n    readonly id: JobId;\n    readonly kind: string;\n    readonly label: string;\n    readonly owner?: SessionId;\n    readonly completionNotice?: \'none\';\n    readonly outputLimitBytes?: number;\n    readonly status: JobStatus;\n    readonly progress?: string;\n    readonly detail?: string;\n    readonly startedAt: number;\n    readonly finishedAt?: number;\n    readonly output: {\n        readonly total: number;\n        readonly earliest: number;\n        readonly spillPaths?: readonly string[];\n    };\n}',
   },
   {
     name: 'JsonSchemaNode',
@@ -7790,18 +7478,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface NativeFileApplication {\n    readonly id: string;\n    readonly name: string;\n    readonly default: boolean;\n    readonly icon: string | null;\n}',
   },
   {
-    name: 'NodeInput',
-    declaration: 'export interface NodeInput {\n    readonly node: CanvasNodeId;\n    readonly version: VersionId;\n    readonly role?: CanvasEdgeRole;\n    readonly path: string;\n}',
-  },
-  {
-    name: 'NodeStatus',
-    declaration: 'export type NodeStatus = {\n    readonly state: \'queued\';\n    readonly jobId: JobId;\n    readonly at: string;\n} | {\n    readonly state: \'running\';\n    readonly jobId: JobId;\n    readonly at: string;\n    readonly progress?: number;\n} | {\n    readonly state: \'failed\';\n    readonly jobId?: JobId;\n    readonly at: string;\n    readonly error: string;\n    readonly retryable: boolean;\n    readonly recoveryRequired?: boolean;\n};',
-  },
-  {
-    name: 'NodeVersion',
-    declaration: 'export interface NodeVersion {\n    readonly id: VersionId;\n    readonly path?: string;\n    readonly text?: string;\n    readonly shots?: readonly Shot[];\n    readonly prompt?: string;\n    readonly model?: string;\n    readonly params?: Readonly<Record<string, string | number | boolean>>;\n    readonly inputs?: readonly NodeInput[];\n    readonly durationMs?: number;\n    readonly width?: number;\n    readonly height?: number;\n    readonly beats?: BeatGrid;\n    readonly createdAt: string;\n    readonly origin: \'agent\' | \'user\' | \'import\';\n}',
-  },
-  {
     name: 'NpmFileSource',
     declaration: 'export type NpmFileSource = \'jsdelivr\' | \'unpkg\' | \'npmmirror\';',
   },
@@ -8106,14 +7782,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ProductEventMap {\n    desktop_app_launch: Record<string, never>;\n    auth_page_view: Record<string, never>;\n    auth_page_click: {\n        button_name: \'sign_in\' | \'api-key\';\n    };\n    api_key_save_click: Record<string, never>;\n    onboarding_page_view: {\n        page_name: OnboardingPage;\n    };\n    onboarding_page_click: {\n        page_name: OnboardingPage;\n        button_name: \'next\' | \'back\' | \'skip\' | \'charge\' | \'later\' | \'continue\';\n        selected_content?: \'office\' | \'code\' | \'code_office\' | \'focus_result\' | \'key_detail\' | \'full_process\';\n    };\n    onboarding_popup_view: {\n        popup_name: \'skip_charge\' | \'skip_setting\';\n    };\n    onboarding_popup_click: {\n        popup_name: \'skip_charge\' | \'skip_setting\';\n        button_name: \'charge\' | \'know\' | \'enter\' | \'setting\' | \'close\';\n    };\n    desktop_upgrade_click: Record<string, never>;\n    desktop_upgrade_download_result: {\n        is_success: boolean;\n        error_reason?: string;\n    };\n    desktop_upgrade_install_restart_click: Record<string, never>;\n    send_button_click: {\n        session_id?: SessionId;\n        model_name?: string;\n        thinking_effort?: string;\n        run_mode: \'plan\' | \'goal\' | \'default\';\n        msg_type: \'default\' | \'steer\' | \'queue\';\n        is_new_session: boolean;\n        agent_preset?: AnalyticsPreset | \'other\';\n    };\n    model_switch: {\n        session_id?: SessionId;\n        switch_from: string;\n        switch_to: string;\n    };\n    thinking_level_switch: {\n /* …truncated — full shape in source */',
   },
   {
-    name: 'Production',
-    declaration: 'export interface Production {\n    readonly version: 1;\n    readonly revision: number;\n    readonly episodes: Readonly<Record<string, EpisodeProduction>>;\n}',
-  },
-  {
-    name: 'ProductionFormat',
-    declaration: 'export type ProductionFormat = \'drama\' | \'comic\' | \'mv\' | \'free\';',
-  },
-  {
     name: 'ProductTelemetryRecord',
     declaration: 'export type ProductTelemetryRecord = OTelEventRecord;',
   },
@@ -8156,10 +7824,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ProjectionSnapshot',
     declaration: 'export interface ProjectionSnapshot {\n    asOfSeq: SessionSeqCursor;\n    values: Partial<SessionProjectionMap>;\n}',
-  },
-  {
-    name: 'ProjectSpec',
-    declaration: 'export interface ProjectSpec {\n    readonly aspect: \'16:9\' | \'9:16\' | \'1:1\' | \'4:3\' | \'3:4\';\n    readonly resolution: string;\n    readonly fps: 24 | 25 | 30;\n}',
   },
   {
     name: 'PromptAssembly',
@@ -8262,8 +7926,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type QueueAction = {\n    readonly kind: \'edit\';\n    readonly content: readonly TextBlock[];\n} | {\n    readonly kind: \'remove\';\n} | {\n    readonly kind: \'steer\';\n};',
   },
   {
+    name: 'ReadFileLine',
+    declaration: 'export interface ReadFileLine {\n    number: number;\n    text: string;\n}',
+  },
+  {
     name: 'ReadOnlyReason',
     declaration: 'export type ReadOnlyReason = \'management-required\' | \'unaddressable\';',
+  },
+  {
+    name: 'ReadResultView',
+    declaration: 'export interface ReadResultView {\n    card: \'read\';\n    title?: string;\n    path: string;\n    offset: number;\n    lines: ReadFileLine[];\n    totalLines: number;\n    lang?: string;\n    content?: ContentBlock[];\n}',
   },
   {
     name: 'ReasoningBlock',
@@ -8526,10 +8198,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SaveTextSpill {\n    owner: SpillOwner;\n    source: SpillSource;\n    suggestedName: string;\n    content: string;\n}',
   },
   {
-    name: 'SceneOrigin',
-    declaration: 'export interface SceneOrigin {\n    readonly script: CanvasNodeId;\n    readonly scene: number;\n}',
-  },
-  {
     name: 'ScheduleCatalogEntry',
     declaration: 'export type ScheduleCatalogEntry = ScheduleRecord & {\n    readonly target: ScheduleTarget;\n    readonly involvedSessionIds: SessionId[];\n    readonly status: \'active\' | \'paused\' | \'ended\';\n    readonly createdAt?: string;\n    readonly updatedAt?: string;\n    readonly executionActive?: true;\n    readonly deliveryFloorEndsAt?: string;\n    readonly lastDelivery?: ScheduleDeliveryReceipt;\n};',
   },
@@ -8648,6 +8316,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ScopeKey',
     declaration: 'export type ScopeKey = object;',
+  },
+  {
+    name: 'SearchFileMatches',
+    declaration: 'export interface SearchFileMatches {\n    path: string;\n    matches: SearchLineMatch[];\n}',
+  },
+  {
+    name: 'SearchLineMatch',
+    declaration: 'export interface SearchLineMatch {\n    lineNumber: number;\n    line: string;\n}',
+  },
+  {
+    name: 'SearchMatchesResultView',
+    declaration: 'export interface SearchMatchesResultView {\n    card: \'search\';\n    shape: \'matches\';\n    title?: string;\n    files: SearchFileMatches[];\n    truncated: boolean;\n    total: number;\n}',
+  },
+  {
+    name: 'SearchPathsResultView',
+    declaration: 'export interface SearchPathsResultView {\n    card: \'search\';\n    shape: \'paths\';\n    title?: string;\n    paths: string[];\n    truncated: boolean;\n    total: number;\n}',
+  },
+  {
+    name: 'SearchResultView',
+    declaration: 'export type SearchResultView = SearchMatchesResultView | SearchPathsResultView;',
   },
   {
     name: 'SerializedElement',
@@ -8771,7 +8459,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionEventMap',
-    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'developer/message\': {\n        turn: number;\n        step: number;\n        message: DeveloperMessage;\n        headerSeq?: SessionSeq;\n    };\n    \'system/message\': {\n        turn: number;\n        step: number;\n        message: SystemMessage;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        stream: AssistantStreamRecord[];\n        usage?: TokenUsage;\n        interrupted?: true;\n    };\n    \'assistant/attempt\': {\n        turn: number;\n        step: number;\n        stream: AssistantStreamRecord[];\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: ToolCallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n            reason?: string;\n        };\n        meta?: JsonValue;\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n        startsSeries?: true;\n    };\n    \'request/context\': RequestContext;\n    \'session/end-seed\': {\n   /* …truncated — full shape in source */',
+    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'developer/message\': {\n        turn: number;\n        step: number;\n        message: DeveloperMessage;\n        headerSeq?: SessionSeq;\n    };\n    \'system/message\': {\n        turn: number;\n        step: number;\n        message: SystemMessage;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        stream: AssistantStreamRecord[];\n        usage?: TokenUsage;\n        providerRequestId?: ProviderRequestId;\n        interrupted?: true;\n    };\n    \'assistant/attempt\': {\n        turn: number;\n        step: number;\n        stream: AssistantStreamRecord[];\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: ToolCallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n            reason?: string;\n        };\n        meta?: JsonValue;\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n        startsSeries?: true;\n    };\n    \'request/context /* …truncated — full shape in source */',
   },
   {
     name: 'SessionEventMetadataFilter',
@@ -9418,18 +9106,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ShellSandboxInfo {\n    mode: SandboxMode;\n    denied: boolean;\n    enforcement?: SandboxEnforcement;\n    runnerFailed?: boolean;\n}',
   },
   {
-    name: 'Shot',
-    declaration: 'export interface Shot {\n    readonly id: ShotId;\n    readonly title: string;\n    readonly shotSize: ShotSize;\n    readonly visual: string;\n    readonly motion: string;\n    readonly camera: string;\n    readonly durationSec: number;\n    readonly characters: readonly BibleEntryId[];\n    readonly scene?: BibleEntryId;\n    readonly props: readonly BibleEntryId[];\n    readonly dialogue: readonly DialogueLine[];\n    readonly sfx: string;\n    readonly negative: string;\n    readonly still?: StillMotion;\n    readonly beat?: {\n        readonly fromMs: number;\n        readonly toMs: number;\n    };\n}',
-  },
-  {
-    name: 'ShotId',
-    declaration: 'export type ShotId = Branded<\'ShotId\'>;',
-  },
-  {
-    name: 'ShotSize',
-    declaration: 'export type ShotSize = \'extreme_wide\' | \'wide\' | \'full\' | \'medium\' | \'medium_close\' | \'close\' | \'extreme_close\' | \'insert\';',
-  },
-  {
     name: 'SignInAttemptId',
     declaration: 'export type SignInAttemptId = Branded<\'SignInAttemptId\'>;',
   },
@@ -9492,6 +9168,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkillResourceBase',
     declaration: 'export type SkillResourceBase = {\n    readonly kind: \'directory\';\n    readonly path: string;\n} | {\n    readonly kind: \'url\';\n    readonly url: string;\n} | {\n    readonly kind: \'opaque\';\n    readonly description: string;\n};',
+  },
+  {
+    name: 'SkillSource',
+    declaration: 'export type SkillSource = \'project-dsh\' | \'project-agents\' | \'runtime\' | \'user-dsh\' | \'user-agents\' | \'custom\' | \'bundled\' | (string & {});',
   },
   {
     name: 'SkillSummary',
@@ -9598,14 +9278,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type StagedAttachment = {\n    readonly type: \'file\';\n    readonly attachment: FileAttachmentRef;\n} | {\n    readonly type: \'image\';\n    readonly attachment: ImageAttachmentRef;\n    readonly encodedBytes: number;\n};',
   },
   {
-    name: 'StageId',
-    declaration: 'export type StageId = \'brief\' | \'bible\' | \'assets\' | \'script\' | \'storyboard\' | \'generating\' | \'post\' | \'delivered\';',
-  },
-  {
-    name: 'StillMotion',
-    declaration: 'export interface StillMotion {\n    readonly type: \'zoom_in\' | \'zoom_out\' | \'pan_left\' | \'pan_right\' | \'pan_up\' | \'pan_down\' | \'static\';\n    readonly strength: number;\n}',
-  },
-  {
     name: 'StopShareRequest',
     declaration: 'export interface StopShareRequest {\n    readonly shareId: string;\n}',
   },
@@ -9626,16 +9298,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface StoredImageAttachment {\n    ref: ImageAttachmentRef;\n    data: Uint8Array;\n}',
   },
   {
-    name: 'StoryboardSegment',
-    declaration: 'export interface StoryboardSegment {\n    readonly index: number;\n    readonly shots: readonly ShotId[];\n    readonly durationSec: number;\n    readonly kind: \'opening\' | \'continuation\' | \'scene_change\' | \'new_character\' | \'closeup\';\n    readonly join: \'strict\' | \'loose\' | \'cut\';\n    readonly needsTailChain: boolean;\n}',
-  },
-  {
     name: 'StreamChunk',
-    declaration: 'export type StreamChunk = {\n    type: \'block-start\';\n    index: number;\n    blockType: ContentBlockType;\n} | {\n    type: \'text-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'reasoning-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'tool-call-delta\';\n    index: number;\n    id: ToolCallId;\n    name?: string;\n    argumentsDelta: string;\n} | {\n    type: \'block-end\';\n    index: number;\n    block: ContentBlock;\n} | {\n    type: \'usage\';\n    usage: TokenUsage;\n} | {\n    type: \'finish\';\n    reason: FinishReason;\n    replayState?: ReplayEnvelope;\n};',
-  },
-  {
-    name: 'StudioProject',
-    declaration: 'export interface StudioProject {\n    readonly version: 1;\n    readonly revision: number;\n    readonly format: ProductionFormat;\n    readonly title: string;\n    readonly spec: ProjectSpec;\n    readonly episodes: readonly Episode[];\n    readonly bindings: Readonly<Record<string, EpisodeId>>;\n}',
+    declaration: 'export type StreamChunk = {\n    type: \'block-start\';\n    index: number;\n    blockType: ContentBlockType;\n} | {\n    type: \'text-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'reasoning-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'tool-call-delta\';\n    index: number;\n    id: ToolCallId;\n    name?: string;\n    argumentsDelta: string;\n} | {\n    type: \'block-end\';\n    index: number;\n    block: ContentBlock;\n} | {\n    type: \'usage\';\n    usage: TokenUsage;\n} | {\n    type: \'finish\';\n    reason: FinishReason;\n    replayState?: ReplayEnvelope;\n    providerRequestId?: ProviderRequestId;\n};',
   },
   {
     name: 'SubagentActivation',
@@ -9898,6 +9562,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TerminalReadResult {\n    text: string;\n    totalLines: number;\n    lineBegin: number;\n    lineEnd: number;\n    truncated: boolean;\n}',
   },
   {
+    name: 'TerminalResultView',
+    declaration: 'export interface TerminalResultView {\n    card: \'terminal\';\n    title?: string;\n    output?: string;\n    exitCode?: number;\n    signal?: string;\n}',
+  },
+  {
     name: 'TerminalRetentionFrame',
     declaration: 'export interface TerminalRetentionFrame {\n    readonly type: \'retained\';\n}',
   },
@@ -9968,54 +9636,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TimedUserQuestionResult',
     declaration: 'export type TimedUserQuestionResult = AskUserQuestionAnswer | {\n    pending: true;\n    callId: ToolCallId;\n};',
-  },
-  {
-    name: 'Timeline',
-    declaration: 'export interface Timeline {\n    readonly version: 1;\n    readonly revision: number;\n    readonly spec: {\n        readonly width: number;\n        readonly height: number;\n        readonly fps: 24 | 25 | 30;\n    };\n    readonly tracks: readonly TimelineTrack[];\n    readonly history?: {\n        readonly undo?: number;\n        readonly redo?: number;\n    };\n}',
-  },
-  {
-    name: 'TimelineClip',
-    declaration: 'export interface TimelineClip {\n    readonly id: TimelineClipId;\n    readonly startMs: number;\n    readonly durationMs: number;\n    readonly source?: TimelineSource;\n    readonly text?: {\n        readonly content: string;\n        readonly position: \'top\' | \'center\' | \'bottom\';\n        readonly size: number;\n        readonly color?: string;\n        readonly strokeColor?: string;\n        readonly strokeWidth?: number;\n        readonly fontFamily?: string;\n        readonly lineHeight?: number;\n    };\n    readonly still?: StillMotion;\n    readonly volume?: number;\n    readonly fadeInMs?: number;\n    readonly fadeOutMs?: number;\n    readonly opacity?: number;\n    readonly fit?: \'contain\' | \'cover\';\n    readonly transform?: {\n        readonly x: number;\n        readonly y: number;\n        readonly width: number;\n        readonly height: number;\n        readonly rotation: number;\n    };\n    readonly transitionIn?: {\n        readonly type: \'cut\' | \'dissolve\' | \'fade_black\';\n        readonly durationMs: number;\n    };\n}',
-  },
-  {
-    name: 'TimelineClipId',
-    declaration: 'export type TimelineClipId = Branded<\'TimelineClipId\'>;',
-  },
-  {
-    name: 'TimelineEditResult',
-    declaration: 'export interface TimelineEditResult {\n    readonly document: Timeline;\n    readonly invalidated: readonly {\n        readonly fromMs: number;\n        readonly toMs: number;\n    }[];\n}',
-  },
-  {
-    name: 'TimelineOperation',
-    declaration: 'export type TimelineOperation = {\n    readonly op: \'add_track\';\n    readonly track: TimelineTrack;\n} | {\n    readonly op: \'remove_track\';\n    readonly track: TimelineTrackId;\n} | {\n    readonly op: \'set_track\';\n    readonly track: TimelineTrackId;\n    readonly muted?: boolean;\n    readonly volume?: number;\n} | {\n    readonly op: \'add_clip\';\n    readonly track: TimelineTrackId;\n    readonly clip: TimelineClip;\n} | {\n    readonly op: \'move_clip\';\n    readonly clip: TimelineClipId;\n    readonly track: TimelineTrackId;\n    readonly startMs: number;\n} | {\n    readonly op: \'trim_clip\';\n    readonly clip: TimelineClipId;\n    readonly inMs: number;\n    readonly durationMs: number;\n} | {\n    readonly op: \'split_clip\';\n    readonly clip: TimelineClipId;\n    readonly atMs: number;\n    readonly rightId: TimelineClipId;\n} | {\n    readonly op: \'remove_clip\';\n    readonly clip: TimelineClipId;\n} | {\n    readonly op: \'ripple_delete\';\n    readonly clip: TimelineClipId;\n} | {\n    readonly op: \'set_clip\';\n    readonly clip: TimelineClipId;\n    readonly patch: Partial<Omit<TimelineClip, \'id\'>>;\n} | {\n    readonly op: \'set_spec\';\n    readonly spec: Timeline[\'spec\'];\n};',
-  },
-  {
-    name: 'TimelineRef',
-    declaration: 'export interface TimelineRef {\n    readonly file: string;\n    readonly durationMs: number;\n    readonly exports: readonly ExportRecord[];\n}',
-  },
-  {
-    name: 'TimelineRenderNotice',
-    declaration: 'export interface TimelineRenderNotice {\n    readonly sessionId: SessionId;\n    readonly directory: string;\n    readonly node: CanvasNodeId;\n    readonly episode: EpisodeId;\n    readonly jobId: JobId;\n    readonly state: TimelineRenderState;\n    readonly revision: number;\n}',
-  },
-  {
-    name: 'TimelineRenderState',
-    declaration: 'export type TimelineRenderState = \'stale\' | \'queued\' | \'rendering\' | \'assembling\' | \'ready\' | \'cancelled\' | \'interrupted\' | \'failed\';',
-  },
-  {
-    name: 'TimelineRestoreMode',
-    declaration: 'export type TimelineRestoreMode = \'restore\' | \'undo\' | \'redo\';',
-  },
-  {
-    name: 'TimelineRevision',
-    declaration: 'export interface TimelineRevision {\n    readonly revision: number;\n    readonly spec: Timeline[\'spec\'];\n    readonly tracks: number;\n    readonly clips: number;\n    readonly durationMs: number;\n    readonly undo?: number;\n    readonly redo?: number;\n}',
-  },
-  {
-    name: 'TimelineTrack',
-    declaration: 'export interface TimelineTrack {\n    readonly id: TimelineTrackId;\n    readonly kind: \'video\' | \'audio\' | \'text\';\n    readonly muted: boolean;\n    readonly volume: number;\n    readonly clips: readonly TimelineClip[];\n}',
-  },
-  {
-    name: 'TimelineTrackId',
-    declaration: 'export type TimelineTrackId = Branded<\'TimelineTrackId\'>;',
   },
   {
     name: 'ToastOptions',
@@ -10168,6 +9788,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ToolResultMessage',
     declaration: 'export interface ToolResultMessage extends MessageBase {\n    readonly role: \'tool\';\n    readonly source: ToolMessageSource;\n    readonly toolCallId: ToolCallId;\n    readonly isError?: boolean;\n}',
+  },
+  {
+    name: 'ToolResultView',
+    declaration: 'export type ToolResultView = GenericResultView | TerminalResultView | DiffResultView | SearchResultView | ReadResultView | WebResultView;',
   },
   {
     name: 'ToolRunContext',
@@ -10422,20 +10046,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface VerifiedWebhookDelivery<K extends string = string> {\n    readonly kind: K;\n    readonly source: WebhookSourceId;\n    readonly deliveryId: WebhookDeliveryId;\n    readonly event: WebhookEventOf<K>;\n    readonly receivedAt: number;\n}',
   },
   {
-    name: 'VersionId',
-    declaration: 'export type VersionId = Branded<\'VersionId\'>;',
-  },
-  {
     name: 'ViewerPluginAccess',
     declaration: 'export type ViewerPluginAccess = \'all\' | \'none\' | \'custom\';',
   },
   {
     name: 'ViewerPluginPolicy',
     declaration: 'export interface ViewerPluginPolicy {\n    readonly plugin: string;\n    readonly mode: \'all\' | \'none\' | \'selected\';\n    readonly endpoints?: readonly string[];\n}',
-  },
-  {
-    name: 'VoiceSpec',
-    declaration: 'export interface VoiceSpec {\n    readonly model?: string;\n    readonly voice?: string;\n    readonly sampleNode?: CanvasNodeId;\n}',
   },
   {
     name: 'WebBootBatch',
@@ -10472,6 +10088,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WebFetchResult',
     declaration: 'export interface WebFetchResult {\n    readonly url: string;\n    readonly statusCode: number;\n    readonly body: WebFetchBody;\n    readonly truncated: boolean;\n}',
+  },
+  {
+    name: 'WebFetchResultView',
+    declaration: 'export interface WebFetchResultView {\n    card: \'web\';\n    kind: \'fetch\';\n    title?: string;\n    url: string;\n    statusCode: number;\n    truncated: boolean;\n}',
   },
   {
     name: 'WebhookDeliveryId',
@@ -10522,6 +10142,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WebResourceRoute {\n    kind: WebRouteKind;\n    path: string;\n    resource: WebResource;\n}',
   },
   {
+    name: 'WebResultView',
+    declaration: 'export type WebResultView = WebSearchResultView | WebFetchResultView;',
+  },
+  {
     name: 'WebRoute',
     declaration: 'export interface WebRoute {\n    kind: WebRouteKind;\n    path: string;\n    handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;\n}',
   },
@@ -10542,8 +10166,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WebSearchResult {\n    readonly content?: string;\n    readonly sources: readonly WebSearchSource[];\n    readonly truncated: boolean;\n}',
   },
   {
+    name: 'WebSearchResultView',
+    declaration: 'export interface WebSearchResultView {\n    card: \'web\';\n    kind: \'search\';\n    title?: string;\n    sources: WebSource[];\n    answer?: string;\n    truncated: boolean;\n}',
+  },
+  {
     name: 'WebSearchSource',
     declaration: 'export interface WebSearchSource {\n    readonly url: string;\n    readonly title?: string;\n    readonly snippet?: string;\n    readonly summary?: string;\n    readonly publishedAt?: string;\n}',
+  },
+  {
+    name: 'WebSource',
+    declaration: 'export interface WebSource {\n    url: string;\n    title?: string;\n    snippet?: string;\n    publishedAt?: string;\n}',
   },
   {
     name: 'WebTerminalId',
@@ -10556,18 +10188,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WebUpgradeRoute',
     declaration: 'export interface WebUpgradeRoute {\n    path: string;\n    handler: (req: IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>;\n}',
-  },
-  {
-    name: 'WechatProject',
-    declaration: 'export interface WechatProject {\n    readonly id: string;\n    readonly title: string;\n    readonly path: string;\n}',
-  },
-  {
-    name: 'WechatSnapshot',
-    declaration: 'export interface WechatSnapshot {\n    readonly status: WechatStatus;\n    readonly hasCredentials: boolean;\n    readonly defaultProjectPath?: string;\n    readonly projects: readonly WechatProject[];\n    readonly error?: string;\n}',
-  },
-  {
-    name: 'WechatStatus',
-    declaration: 'export type WechatStatus = {\n    readonly state: \'idle\';\n} | {\n    readonly state: \'qr-pending\';\n    readonly qrDataUrl: string;\n    readonly expiresAt: number;\n} | {\n    readonly state: \'scanned\';\n} | {\n    readonly state: \'connecting\';\n} | {\n    readonly state: \'connected\';\n    readonly botId: string;\n} | {\n    readonly state: \'reconnecting\';\n    readonly lastError: string;\n} | {\n    readonly state: \'logged-out\';\n};',
   },
   {
     name: 'WeeklyInput',

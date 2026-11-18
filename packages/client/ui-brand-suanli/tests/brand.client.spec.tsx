@@ -53,7 +53,8 @@ describe('product brand plugin', () => {
   })
 
   it('declares the services it uses', () => {
-    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.gatewayStatus'])
+    // The gateway namespace stays optional: a deployment without the row renders the light as not connected.
+    expect(inject).toEqual(['slots', 'locale', 'remote'])
   })
 
   it('fills every brand hole', async () => {

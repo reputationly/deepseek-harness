@@ -592,6 +592,17 @@
 - id: tool-web
   disabled: true
 
+# A deployment whose models sit behind a gateway turns these rows on by id and supplies the
+# endpoint. The rows exist here so every Web composition knows the namespaces they serve.
+- insert:
+    - id: gateway-status
+      name: '@deepseek-ai/dsh-api-gateway-status'
+      disabled: true
+
+    - id: assistant-feedback
+      name: '@deepseek-ai/dsh-assistant-feedback'
+      disabled: true
+
 # The preset selection registry. The shipped preset declarations follow as
 # separate patch files under `presets/`, listed after this file in
 # `package.json` `dsh.bundle.patch`.

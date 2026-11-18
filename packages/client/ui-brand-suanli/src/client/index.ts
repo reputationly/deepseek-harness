@@ -22,8 +22,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Dictionary namespace owned by this plugin. */
 const NS = 'gatewayStatus'
 
-/** Services this plugin uses: the slots, their dictionary, and the Host gateway namespace. */
-export const inject = ['slots', 'locale', 'remote', 'remote.gatewayStatus']
+/** Services this plugin uses: the slots and their dictionary. The Host gateway namespace is optional. */
+export const inject = ['slots', 'locale', 'remote']
 
 /**
  * Fill the sidebar and blank-home brand slots with this product's artwork.
@@ -40,12 +40,25 @@ export function apply(ctx: ClientContext): void {
         name: 'sidebar.brand.name',
         locale: NS,
         inject: (): GatewayStatusFace => ({
-          // A refused call leaves the light where it was; the next poll asks again.
-          read: async () => unwrap(await ctx.remote.gatewayStatus.read()),
-          refresh: async () => unwrap(await ctx.remote.gatewayStatus.refresh()),
+          // A refused call leaves the light where it was; the next poll asks again. A deployment
+          // without the gateway-status row renders the light as not connected.
+          read: async () => unwrap(await gatewayStatus(ctx).read()),
+          refresh: async () => unwrap(await gatewayStatus(ctx).refresh()),
         }),
       }, BrandName)
     }))
+}
+
+/**
+ * Reach the Host gateway namespace, which only a deployment with a gateway mounts.
+ * @param ctx - Client root context.
+ * @returns the namespace handle.
+ * @throws When this deployment mounts no gateway-status row.
+ */
+function gatewayStatus(ctx: ClientContext): NonNullable<ReturnType<ClientContext['get']>> {
+  const remote = ctx.get('remote.gatewayStatus')
+  if (remote === undefined) throw new Error('gateway status is not mounted')
+  return remote
 }
 
 /**

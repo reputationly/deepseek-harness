@@ -64,7 +64,7 @@ const NS = 'feedback'
 const GENERAL_SUBMIT_DEADLINE_MS = 25_000
 
 /** Required services: the slot registry, the two Remote namespaces, and the copy. */
-export const inject = ['slots', 'remote', 'remote.messageFeedback', 'remote.sessionFeedback', 'remote.assistantFeedback', 'locale']
+export const inject = ['slots', 'remote', 'remote.messageFeedback', 'remote.sessionFeedback', 'locale']
 
 /**
  * Client plugin body: the per-message feedback entry, the Session's dialog
@@ -72,6 +72,21 @@ export const inject = ['slots', 'remote', 'remote.messageFeedback', 'remote.sess
  * per-session surfaces.
  * @param ctx - client root context.
  */
+/** Why a feedback submission cannot run: no deployment gateway row is mounted. */
+const RELAY_MISSING = { code: 'unreachable', message: '这台机器没有配置反馈服务' } as const
+
+/**
+ * Reach the Host feedback namespace, which only a deployment with a gateway mounts.
+ * @param ctx - Client root context.
+ * @returns the namespace handle.
+ * @throws When this deployment mounts no assistant-feedback row.
+ */
+function assistantFeedback(ctx: ClientContext): NonNullable<ReturnType<ClientContext['get']>> {
+  const remote = ctx.get('remote.assistantFeedback')
+  if (remote === undefined) throw new Error(RELAY_MISSING.message)
+  return remote
+}
+
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-message-feedback: dictionaries')
 
@@ -81,8 +96,9 @@ export function apply(ctx: ClientContext): void {
     // A Host that never answers must not leave the form spinning: the deadline restores the draft.
     const deadline = new Promise<'timeout'>((resolve) => { setTimeout(() => { resolve('timeout') }, GENERAL_SUBMIT_DEADLINE_MS) })
     // The dialog's draft names its body `text`; the site field is `content`.
+    const relay = assistantFeedback(ctx)
     const carried = await Promise.race([
-      ctx.remote.assistantFeedback.submit({
+      relay.submit({
         channel: 'general',
         ...entry.category === undefined ? {} : { category: entry.category },
         ...entry.text === undefined ? {} : { content: entry.text },

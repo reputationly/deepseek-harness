@@ -20,7 +20,8 @@ const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 describe('profile roster', () => {
   it('lists the template bundles, every optional bundle, and the packages their patch rows name', () => {
     const { bundles, roster } = profileRoster(repoRoot, 'web')
-    expect(bundles).toEqual([...PROFILE_TEMPLATES.web!.bundles, ...OPTIONAL_BUNDLES])
+    // A template bundle that is also optional appears once: the roster is a set.
+    expect(bundles).toEqual([...new Set([...PROFILE_TEMPLATES.web!.bundles, ...OPTIONAL_BUNDLES])])
     expect(roster).toEqual(expect.arrayContaining([
       ...bundles,
       // Rows inserted by the base and Web bundles.
