@@ -97,11 +97,10 @@ describe('brand gateway configuration', () => {
 
   it('inserts the feedback service beside the connection light so the Host relays reports', () => {
     const patch = gatewayProfilePatch(GATEWAY)
-    expect(patch).toContain('- id: gateway-status\n  disabled: false\n  config:\n    baseURL: "https://gateway.example/v1"')
-    expect(patch).toContain('- id: assistant-feedback\n  disabled: false\n  config:\n    baseURL: "https://gateway.example/v1"')
     // Both rows carry the gateway endpoint and credential reference the service resolves at call time.
-    expect(patch.match(/      config:\n        baseURL: "https:\/\/gateway\.example\/v1"\n        apiKeyEnv: "EXAMPLE_API_KEY"/gu))
-      .toHaveLength(2)
+    for (const id of ['gateway-status', 'assistant-feedback']) {
+      expect(patch).toContain(`- id: ${id}\n  disabled: false\n  config:\n    baseURL: "https://gateway.example/v1"\n    apiKeyEnv: "EXAMPLE_API_KEY"`)
+    }
   })
 
   it('refuses a patch outside this product home and a patch another product wrote', () => {
