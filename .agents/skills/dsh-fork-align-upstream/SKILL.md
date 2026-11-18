@@ -119,7 +119,11 @@ fork 的桌面壳会改写 `profiles/desktop/cordis.patch.yml` 并在 `<home>/.c
 
 **规则**
 
-1. 开发/验证启动一律带显式隔离 home，且必须在临时目录下：
+1. 开发/验证启动一律带显式隔离 home，且必须在临时目录下。日常看界面用固定 home（已存网关 key，启动直达工作区）：
+   ```sh
+   ./scripts/suanli-dev.sh          # DSH_HOME=/tmp/suanli-dev-home
+   ```
+   一次性的隔离实验用临时 home：
    ```sh
    DSH_HOME=$(mktemp -d /tmp/suanli-XXXXXX) corepack pnpm run dev:desktop
    ```
@@ -135,6 +139,8 @@ fork 的桌面壳会改写 `profiles/desktop/cordis.patch.yml` 并在 `<home>/.c
 4. 杀进程只按 PID 树，先打印再杀，并确认目标不含 `/Applications/DeepSeek Harness.app`；**禁止** `pkill -f <模式>`——它会连带杀掉用户正在用的 DSH。
 
 5. 调试桌面壳时，`console.error` 可能已经被测试或壳自己 mock 掉；需要看启动轨迹就写到文件（临时诊断），不要指望控制台。
+
+**home 的两种用途**：`/tmp/suanli-dev-home` 是长期复用的开发 home（含网关 key 与会话）；`mktemp -d` 出来的是一次性 home（用来验证首次启动、填 key 页等全新状态）。不要把两者混用，也不要把 `/tmp/suanli-dev-home` 指向用户自己的 `~/.suanli-assistant`。
 
 **自检**
 
