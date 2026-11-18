@@ -112,3 +112,35 @@ git commit && git push                    # 版本提交进主干
 - 上游 tag 不 fetch 就看不到，`release:verify` 会因为 tag 与版本不符而失败。
 - 上游 `apps/desktop` 的发布脚本经常改；fork 的差异应当留在自己的脚本与 workflow 参数里，不要改上游脚本本体。
 - 对齐后老用户数据要迁移：注意 `SESSION_FORMAT_VERSION`、`docs/session-format-status.md`、`corepack pnpm run migrate:sessions-to-v4`。
+
+## 开发期隔离：绝不碰别人的 home 与 profile
+
+fork 的桌面壳会改写 `profiles/desktop/cordis.patch.yml` 并在 `<home>/.credentials.yaml` 里存网关 key。一旦进程解析到别人的 home（尤其是用户自己的 `~/.dsh`），后果是：读到别人的会话、改写别人的插件行与模型网关、把产品 key 写进别人的凭据库。这类事故不可自愈，必须靠启动期硬闸拦住。
+
+**规则**
+
+1. 开发/验证启动一律带显式隔离 home，且必须在临时目录下：
+   ```sh
+   DSH_HOME=$(mktemp -d /tmp/suanli-XXXXXX) corepack pnpm run dev:desktop
+   ```
+   `apps/desktop/scripts/dev.ts` 已在没有 `DSH_HOME`、或它不在 `$TMPDIR`/`/tmp` 下时直接退出（`isIsolatedDevelopmentHome`）。不要绕过这条闸。
+
+2. 不要用 `DSH_BRAND_HOME_DIR` 之类的**运行期环境变量**去改产品 home 名——它是构建期写死的，运行期设了不生效，只会让人误以为已经隔离。
+
+3. 写入 profile patch 前，`writeGatewayProfile` 会拒绝两类目标（`profilePatchRefusal`）：
+   - 目标不在本产品 home 内（`outside-home`）；
+   - 已存在且首行不是 `# Written by the desktop shell`、又含真实插件行的 patch（`foreign-patch`）。
+   允许覆盖时先写 `cordis.patch.yml.bak-<ISO 时间戳>`。不要为了“让它跑起来”而去掉这些检查。
+
+4. 杀进程只按 PID 树，先打印再杀，并确认目标不含 `/Applications/DeepSeek Harness.app`；**禁止** `pkill -f <模式>`——它会连带杀掉用户正在用的 DSH。
+
+5. 调试桌面壳时，`console.error` 可能已经被测试或壳自己 mock 掉；需要看启动轨迹就写到文件（临时诊断），不要指望控制台。
+
+**自检**
+
+```sh
+# 启动前确认将要用的 home
+echo "DSH_HOME=$DSH_HOME"            # 必须是 /tmp 或 $TMPDIR 下
+# 运行中确认 Host 真的在这个 home 里
+ps eww -p $(pgrep -f dsh-desktop-host | head -1) | tr ' ' '\n' | grep ^DSH_HOME=
+```
