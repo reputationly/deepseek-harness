@@ -20,6 +20,9 @@ const HOLES = ['sidebar.brand.mark', 'sidebar.brand.name'] as const
 
 const HERO_HOLE = 'conversation.hero.brand.mark'
 
+/** The Models-settings seat this plugin fills with the catalog-refresh row. */
+const CATALOG_HOLE = 'settings.models.footer'
+
 const dictionary = (key: string): string => key
 
 const CONNECTED = async (): Promise<GatewayStatus> => ({ state: 'connected', code: 'connected' })
@@ -41,7 +44,10 @@ async function bench(declare = true) {
   const slots = ctx.get('slots') as SlotRegistry
   const declareHoles = () => slots.register({
     name: 'root',
-    children: Object.fromEntries([...HOLES, HERO_HOLE].map(name => [name, { kind: 'single' as const, scope: 'root' as const }])),
+    children: Object.fromEntries([
+      ...[...HOLES, HERO_HOLE].map(name => [name, { kind: 'single' as const, scope: 'root' as const }]),
+      [CATALOG_HOLE, { kind: 'list' as const, scope: 'root' as const }],
+    ]),
   } as never, () => null)
   const disposeHoles = declare ? declareHoles() : undefined
   return { ctx, slots, declareHoles, disposeHoles }
@@ -62,6 +68,7 @@ describe('product brand plugin', () => {
     await subject.ctx.plugin({ inject: [...inject], apply }).await()
     for (const hole of HOLES) expect(subject.slots.entries(hole)).toHaveLength(1)
     expect(subject.slots.entries(HERO_HOLE)).toHaveLength(1)
+    expect(subject.slots.entries(CATALOG_HOLE)).toHaveLength(1)
     // The blank home keeps its frame slot free for other occupants.
     expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(0)
   })

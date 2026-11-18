@@ -12,6 +12,8 @@
     { "path": "../ui-conversation/tsconfig.client.json" },
     { "path": "../ui-renderer" },
     { "path": "../ui-sidebar" },
-    { "path": "../ui-slots" }
+    { "path": "../ui-slots" },
+    { "path": "../ui-settings-models" },
+    { "path": "../../llm/suanli-model-catalog" }
   ]
 }

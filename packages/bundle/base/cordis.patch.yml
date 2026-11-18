@@ -546,3 +546,10 @@
 
     - id: llm-deepseek-account
       name: '@deepseek-ai/dsh-llm-deepseek-account'
+
+    # Product catalog refresh: writes the gateway's own listing into the route's `models`.
+    # Disabled where the deployment pins a catalog; the desktop brand layer turns it on
+    # with the endpoint and credential reference it refreshes from.
+    - id: suanli-model-catalog
+      name: '@deepseek-ai/dsh-suanli-model-catalog'
+      disabled: true

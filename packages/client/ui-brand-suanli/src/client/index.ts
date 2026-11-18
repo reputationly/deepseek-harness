@@ -1,15 +1,20 @@
 /** The product wordmark row, the sidebar brand slots, and the blank-home mark. */
 
+import { createElement } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import type { ModelsFooterOwnerProps } from '@deepseek-ai/dsh-client-ui-settings-models/client'
+import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-api-gateway-status/remote'
+import type {} from '@deepseek-ai/dsh-suanli-model-catalog/remote'
 import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import { BrandMark, BrandName } from './Brand.tsx'
 import type { GatewayStatusFace } from './ConnectionPill.tsx'
+import { CatalogSyncRow, type CatalogSyncOutcome } from './CatalogSyncRow.tsx'
 import { de, en, es, fr, ja, pt, ru, zh, type GatewayStatusKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -33,6 +38,15 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { en, zh, ja, es, fr, de, ru, pt }), 'brand: connection dictionaries')
   ctx.slots.inject('conversation.hero.brand.mark', () =>
     ctx.slots.register({ name: 'conversation.hero.brand.mark' }, BrandMark))
+  // The model catalog the picker offers comes from this deployment's gateway; a deployment
+  // that mounts no catalog row keeps the pinned list, and the button reports instead.
+  ctx.slots.inject('settings.models.footer', () => ctx.slots.register({
+    name: 'settings.models.footer', id: 'model-catalog-sync', order: 50, locale: NS,
+    inject: () => ({
+      refresh: async (): Promise<CatalogSyncOutcome> => await refreshCatalog(catalogService(ctx)),
+    }),
+  }, (props: ModelsFooterOwnerProps & { refresh: () => Promise<CatalogSyncOutcome>; t: TranslateNS<'gatewayStatus'> }) =>
+    createElement(CatalogSyncRow, { refresh: props.refresh, t: props.t })))
   ctx.slots.inject('sidebar.brand.mark', () =>
     ctx.slots.inject('sidebar.brand.name', function* () {
       yield ctx.slots.register({ name: 'sidebar.brand.mark' }, BrandMark)
@@ -47,6 +61,35 @@ export function apply(ctx: ClientContext): void {
         }),
       }, BrandName)
     }))
+}
+
+/**
+ * Refresh the catalog and flatten the transport envelope for the row.
+ * @param remote - Host catalog namespace.
+ * @returns the outcome the row renders.
+ * @throws When the Host reported a transport failure.
+ */
+async function refreshCatalog(
+  remote: ClientContext['remote']['suanliModels'],
+): Promise<CatalogSyncOutcome> {
+  const answer = await remote.refresh()
+  if (!answer.ok) throw new Error(answer.error.message)
+  const value = answer.value
+  return value.ok
+    ? { ok: true, count: value.count, changed: value.changed }
+    : { ok: false, reason: value.reason }
+}
+
+/**
+ * Reach the Host catalog namespace, which only a deployment with a gateway mounts.
+ * @param ctx - Client root context.
+ * @returns the namespace handle.
+ * @throws When this deployment mounts no catalog row.
+ */
+function catalogService(ctx: ClientContext): ClientContext['remote']['suanliModels'] {
+  const remote = ctx.get('remote.suanliModels') as ClientContext['remote']['suanliModels'] | undefined
+  if (remote === undefined) throw new Error('the model catalog service is not mounted')
+  return remote
 }
 
 /**

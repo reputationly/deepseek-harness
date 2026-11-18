@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/llm/suanli-model-catalog/README.md
+/:
+  en: 6ea0f9abd3c981ea
+  zh: a89106fc361e3365
+/deepseek-ai-dsh-suanli-model-catalog:
+  en: e89fb0a5038c4ccf
+  zh: 82f25fc6ac333d2e
+/deepseek-ai-dsh-suanli-model-catalog/summary:
+  en: 06acc45373b17200
+  zh: 000e0fadfc9e1e75
+/deepseek-ai-dsh-suanli-model-catalog/table-of-contents:
+  en: dcbaaa2c1ab96f3b
+  zh: 1f2dfa794e4d4a8e
+/deepseek-ai-dsh-suanli-model-catalog/why-this-exists:
+  en: 83948751475509a4
+  zh: 6bc44665042a10a0
+/deepseek-ai-dsh-suanli-model-catalog/refresh-rules:
+  en: 62d5412b9cd29b37
+  zh: 856e896aa73acc53
+/deepseek-ai-dsh-suanli-model-catalog/model-experience:
+  en: fda4fbca6f10a5bb
+  zh: 7679a1ca3f659881
+/deepseek-ai-dsh-suanli-model-catalog/model-experience/kv-cache-effect:
+  en: 56ac74f4ed653c86
+  zh: 8ed9db310c327491
+/deepseek-ai-dsh-suanli-model-catalog/known-limitations-and-deferred-work:
+  en: 63c5cc39f4d81215
+  zh: 4fa50a713737c863
+/deepseek-ai-dsh-suanli-model-catalog/known-limitations-and-deferred-work/dev-note:
+  en: 4bcd384538c3eef0
+  zh: eed6d1405b54665c

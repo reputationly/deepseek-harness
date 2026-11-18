@@ -25,6 +25,7 @@ The wordmark reads `DSH_CLIENT_TITLE` at build time, so the product name stays a
 | `sidebar.brand.mark` | the product mark at the size the sidebar requests |
 | `sidebar.brand.name` | the wordmark, followed by the gateway connection light |
 | `conversation.hero.brand.mark` | the mark on the blank home |
+| `settings.models.footer` | the catalog-refresh row: syncs the picker's models from this deployment's gateway |
 
 The blank home's `conversation.hero.frame` layer stays free, so no decoration is drawn behind the mark.
 

@@ -20,6 +20,9 @@
       "path": "../../feedback/assistant-feedback"
     },
     {
+      "path": "../../llm/suanli-model-catalog"
+    },
+    {
       "path": "../gateway/tsconfig.client.json"
     },
     {

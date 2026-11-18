@@ -25,6 +25,7 @@ kind: "package-reference"
 | `sidebar.brand.mark` | 按侧栏请求的尺寸渲染的标志 |
 | `sidebar.brand.name` | 文字标，以及其后的网关连接灯 |
 | `conversation.hero.brand.mark` | 空首页上的标志 |
+| `settings.models.footer` | 目录刷新行：从本部署的网关同步选择器里的模型 |
 
 空首页的 `conversation.hero.frame` 图层保持空闲，因此标志背后不绘制任何装饰。
 
