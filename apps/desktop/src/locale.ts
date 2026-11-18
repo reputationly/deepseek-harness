@@ -115,7 +115,7 @@ export const en = {
   welcomeKeyTitle: 'Add an API key to get started',
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Configure official DeepSeek models to start using Harness'
-    : `Enter your official ${PRODUCT_NAME} API key. Get one at ${KEY_PORTAL}:`,
+    : `Follow these steps to get an API key at ${KEY_PORTAL}:`,
   welcomeKeySteps: keySteps(['Open Token management.', 'Create a token.']),
   welcomeKeyOpenPortal: 'Open Token page',
   welcomeKeyPlaceholder: 'Enter API key',
@@ -313,7 +313,7 @@ export const zh = {
   welcomeKeyTitle: '添加一个 API Key 开始使用',
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? '配置 DeepSeek 官方模型，即可开始使用'
-    : `请填写${PRODUCT_NAME}官方 API Key，可按以下步骤在 ${KEY_PORTAL} 获取：`,
+    : `请按以下步骤前往 ${KEY_PORTAL} 获取 API Key：`,
   welcomeKeySteps: keySteps(['打开令牌管理', '创建令牌']),
   welcomeKeyOpenPortal: '打开令牌页',
   welcomeKeyPlaceholder: '输入 API 密钥',
@@ -509,7 +509,7 @@ export const ja = {
   welcomeKeyTitle: 'APIキーを追加して開始',
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? '公式のDeepSeekモデルを設定してHarnessを使い始めましょう'
-    : `${PRODUCT_NAME}の公式 API キーを入力してください。${KEY_PORTAL} で取得できます`,
+    : `次の手順で ${KEY_PORTAL} から API キーを取得してください：`,
   welcomeKeySteps: keySteps(['トークン管理を開く', 'トークンを作成']),
   welcomeKeyOpenPortal: 'トークンページを開く',
   welcomeKeyPlaceholder: 'APIキーを入力',
@@ -705,7 +705,7 @@ export const es = {
   welcomeKeyTitle: 'Agregue una clave API para comenzar',
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Configura los modelos oficiales DeepSeek para empezar a utilizar Harness'
-    : `Introduce tu clave de API oficial de ${PRODUCT_NAME}. Obtenla en ${KEY_PORTAL}`,
+    : `Sigue estos pasos para obtener una clave de API en ${KEY_PORTAL}:`,
   welcomeKeySteps: keySteps(['Abre la gestión de tokens.', 'Crea un token.']),
   welcomeKeyOpenPortal: 'Abrir página de tokens',
   welcomeKeyPlaceholder: 'Ingrese la clave API',
@@ -901,7 +901,7 @@ export const fr = {
   welcomeKeyTitle: 'Ajoutez une clé API pour commencer',
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Configurez les modèles DeepSeek officiels pour commencer à utiliser Harness'
-    : `Saisissez votre clé API officielle ${PRODUCT_NAME}. Obtenez-la sur ${KEY_PORTAL}`,
+    : `Suivez ces étapes pour obtenir une clé API sur ${KEY_PORTAL} :`,
   welcomeKeySteps: keySteps(['Ouvrez la gestion des jetons.', 'Créez un jeton.']),
   welcomeKeyOpenPortal: 'Ouvrir la page des jetons',
   welcomeKeyPlaceholder: 'Entrez la clé API',
@@ -1097,7 +1097,7 @@ export const de = {
   welcomeKeyTitle: 'Fügen Sie einen API-Schlüssel hinzu, um loszulegen',
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Konfigurieren Sie offizielle DeepSeek-Modelle für die Verwendung von Harness'
-    : `Geben Sie Ihren offiziellen ${PRODUCT_NAME}-API-Schlüssel ein. Erhältlich unter ${KEY_PORTAL}`,
+    : `Folgen Sie diesen Schritten, um einen API-Schlüssel unter ${KEY_PORTAL} zu erhalten:`,
   welcomeKeySteps: keySteps(['Öffnen Sie die Token-Verwaltung.', 'Erstellen Sie einen Token.']),
   welcomeKeyOpenPortal: 'Token-Seite öffnen',
   welcomeKeyPlaceholder: 'API-Schlüssel eingeben',
@@ -1293,7 +1293,7 @@ export const ru = {
   welcomeKeyTitle: 'Добавьте ключ API, чтобы начать работу.',
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Настройте официальные модели DeepSeek, чтобы начать использовать Harness.'
-    : `Введите официальный API-ключ ${PRODUCT_NAME}. Получить его можно на ${KEY_PORTAL}`,
+    : `Выполните эти шаги, чтобы получить API-ключ на ${KEY_PORTAL}:`,
   welcomeKeySteps: keySteps(['Откройте управление токенами.', 'Создайте токен.']),
   welcomeKeyOpenPortal: 'Открыть страницу токенов',
   welcomeKeyPlaceholder: 'Введите ключ API',
@@ -1489,7 +1489,7 @@ export const pt = {
   welcomeKeyTitle: 'Adicione uma chave API para começar',
   welcomeKeyDescription: KEY_PORTAL === undefined
     ? 'Configure modelos DeepSeek oficiais para começar a usar o Harness'
-    : `Insira sua chave de API oficial do ${PRODUCT_NAME}. Obtenha-a em ${KEY_PORTAL}`,
+    : `Siga estes passos para obter uma chave de API em ${KEY_PORTAL}:`,
   welcomeKeySteps: keySteps(['Abra o gerenciamento de tokens.', 'Crie um token.']),
   welcomeKeyOpenPortal: 'Abrir página de tokens',
   welcomeKeyPlaceholder: 'Insira a chave de API',

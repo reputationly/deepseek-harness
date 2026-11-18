@@ -53,6 +53,7 @@ import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
 import { brandGateway, gatewayTokenURL, storedGatewayKey } from './brand-gateway.ts'
 import { probeGatewayKey } from './gateway-probe.ts'
 import { brandUrlScheme, isolateBrandHome } from './brand-identity.ts'
+import { installEditContextMenu } from './edit-context-menu.ts'
 import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
 import { DesktopUpdateJournal } from './update-journal.ts'
 import { DesktopUpdatePreparationError } from './update-error.ts'
@@ -338,33 +339,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     window.on('restore', applyBackdrop)
     window.on('show', applyBackdrop)
   }
-  window.webContents.on('context-menu', (_event, { isEditable, selectionText, editFlags }) => {
-    const items: MenuItemConstructorOptions[] = []
-    if (isEditable) {
-      items.push(
-        { role: 'undo', enabled: editFlags.canUndo },
-        { role: 'redo', enabled: editFlags.canRedo },
-        { type: 'separator' },
-        { role: 'cut', enabled: editFlags.canCut },
-        { role: 'copy', enabled: editFlags.canCopy },
-        { role: 'paste', enabled: editFlags.canPaste },
-        { type: 'separator' },
-        { role: 'selectAll', enabled: editFlags.canSelectAll },
-      )
-    } else if (selectionText.length > 0) {
-      items.push({ role: 'copy', enabled: editFlags.canCopy })
-    }
-    // Empty accelerators suppress Electron's default shortcut labels for native roles.
-    if (items.length > 0) {
-      const messages = currentDesktopLocale().messages
-      Menu.buildFromTemplate(items.map(item => ({
-        ...item,
-        ...(process.platform === 'win32' && item.role !== undefined && item.role in messages
-          ? { label: messages[item.role as keyof typeof messages] } : {}),
-        accelerator: '',
-      }))).popup({ window })
-    }
-  })
+  installEditContextMenu(window, () => currentDesktopLocale().messages)
   window.webContents.on('will-navigate', (event, url) => {
     const destination = new URL(url)
     const current = new URL(window.webContents.getURL())

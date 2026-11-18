@@ -10,7 +10,7 @@ describe('desktop locale dictionaries', () => {
     vi.resetModules()
     try {
       const branded = await import('../src/locale.ts')
-      expect(branded.zh.welcomeKeyDescription).toBe('请填写蒜狸小助手官方 API Key，可按以下步骤在 maas.ovaijisuan.com 获取：')
+      expect(branded.zh.welcomeKeyDescription).toBe('请按以下步骤前往 maas.ovaijisuan.com 获取 API Key：')
       expect(branded.zh.welcomeKeySteps.split(String.fromCharCode(10))).toHaveLength(2)
       expect(branded.zh.welcomeKeySteps).toContain('打开令牌管理')
       expect(zh.welcomeKeySteps).toBe('')

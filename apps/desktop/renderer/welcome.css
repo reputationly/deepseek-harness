@@ -294,6 +294,13 @@ body {
 }
 
 .key-guide .link {
+  /* Separated from the step screenshots above so the jump reads as its own action. */
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  /* Centered under the guide art: the only outbound action in the block. */
+  align-self: center;
+  margin-top: 10px;
   padding: 0;
   border: 0;
   background: none;
@@ -303,8 +310,22 @@ body {
   cursor: pointer;
 }
 
+/* 45° outbound arrow: this control leaves the window for the token console. */
+.key-guide .link::after {
+  content: '\2197';
+  font-size: 13px;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
 .key-guide .link:hover {
   text-decoration: underline;
+}
+
+.key-guide .link:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
 }
 
 .key-field {

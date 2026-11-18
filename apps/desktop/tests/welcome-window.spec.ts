@@ -89,7 +89,8 @@ describe('desktop welcome window', () => {
     expect(window.loadFile).toHaveBeenCalledWith(join(electron.root, 'renderer', 'welcome.html'))
     expect(window.webContents.setWindowOpenHandler.mock.calls[0]![0]()).toEqual({ action: 'deny' })
     const event = { preventDefault: vi.fn() }
-    window.webContents.on.mock.calls[0]![1](event)
+    const navigate = window.webContents.on.mock.calls.find(([name]) => name === 'will-navigate')![1]
+    navigate(event, 'https://example.com/')
     expect(event.preventDefault).toHaveBeenCalledOnce()
     loaded.resolve(undefined)
     expect(await opening).toBe(window)
