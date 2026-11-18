@@ -187,16 +187,30 @@ export type ProfilePatchRefusal =
  * @param previous - current file text, or an empty string when the file does not exist.
  * @returns the refusal, or undefined when the write is allowed.
  */
-export function profilePatchRefusal(path: string, home: string, previous: string): ProfilePatchRefusal | undefined {
-  if (!resolve(path).startsWith(`${resolve(home)}${sep}`)) return { kind: 'outside-home', path, home }
-  if (previous === '' || previous.startsWith(PROFILE_PATCH_MARKER)) return undefined
+export function patchWrittenElsewhere(previous: string): boolean {
+  if (previous === '' || previous.startsWith(PROFILE_PATCH_MARKER)) return false
   // Profile creation ships an empty template (`# comments` plus `[]`): it holds no rows, so no
   // other product's configuration can be lost by replacing it.
   const body = previous.split('\n')
     .filter(line => line.trim() !== '' && !line.trimStart().startsWith('#'))
     .join('\n')
     .trim()
-  return body === '' || body === '[]' ? undefined : { kind: 'foreign-patch', path }
+  return body !== '' && body !== '[]'
+}
+
+/**
+ * Decide whether this shell may replace one profile patch.
+ *
+ * A build that resolves the wrong harness home would otherwise rewrite another product's
+ * profile — its plugin rows and model gateway — without anyone asking.
+ * @param path - patch file the shell would write.
+ * @param home - Harness home this process resolved for itself.
+ * @param previous - current file text, or an empty string when the file does not exist.
+ * @returns the refusal, or undefined when the write is allowed.
+ */
+export function profilePatchRefusal(path: string, home: string, previous: string): ProfilePatchRefusal | undefined {
+  if (!resolve(path).startsWith(`${resolve(home)}${sep}`)) return { kind: 'outside-home', path, home }
+  return patchWrittenElsewhere(previous) ? { kind: 'foreign-patch', path } : undefined
 }
 
 /**
@@ -209,17 +223,15 @@ export function writeGatewayProfile(profileDir: string): void {
   const gateway = brandGateway()
   if (gateway === undefined) return
   const home = process.env[DSH_HOME_ENV]
-  if (home === undefined || home === '') throw new Error('desktop profile: DSH_HOME must name the product harness home before writing its patch')
   const path = join(profileDir, 'cordis.patch.yml')
   let previous = ''
   try { previous = readFileSync(path, 'utf8') } catch { /* first start */ }
-  const refusal = profilePatchRefusal(path, home, previous)
-  if (refusal?.kind === 'outside-home') {
-    throw new Error(`desktop profile: refusing to write ${refusal.path}, which is outside this product's harness home ${refusal.home}`)
+  // An absent DSH_HOME means this process was not pointed at a harness root, so there is no home
+  // to compare against; the development launcher owns that case.
+  if (home !== undefined && home !== '' && !resolve(path).startsWith(`${resolve(home)}${sep}`)) {
+    throw new Error(`desktop profile: refusing to write ${path}, which is outside this product's harness home ${home}`)
   }
-  if (refusal?.kind === 'foreign-patch') {
-    throw new Error(`desktop profile: refusing to overwrite ${refusal.path}; it was written by another product`)
-  }
+  if (patchWrittenElsewhere(previous)) throw new Error(`desktop profile: refusing to overwrite ${path}; it was written by another product`)
   const patch = gatewayProfilePatch(gateway, process.env.DSH_DESKTOP_PRODUCT_NAME, savedSelection(gateway, previous))
   if (previous !== '') {
     writeFileSync(`${path}.bak-${new Date().toISOString().replace(/[:.]/gu, '-')}`, previous, { encoding: 'utf8', mode: 0o600 })
