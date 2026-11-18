@@ -22,6 +22,14 @@ it.each([
   expect(resolveAdapterOptions(options)).not.toHaveProperty('listing')
 })
 
+it('follows a gateway listing when the deployment asks for it, at its own path', () => {
+  expect(resolveAdapterOptions({ models: [{ id: 'gateway-model' }], baseURL: 'https://maas.example.com/v1', followListing: true, modelsPath: '/v1/models' }).listing)
+    .toEqual({ url: 'https://maas.example.com/v1/models', timeoutMs: 5_000, maxAgeMs: 600_000 })
+  // The path alone changes nothing: the official route keeps its own listing URL shape.
+  expect(resolveAdapterOptions({ modelsTimeoutMs: 7, modelsPath: '/v1/models' }).listing)
+    .toEqual({ url: 'https://api.deepseek.com/v1/models', timeoutMs: 7, maxAgeMs: 600_000 })
+})
+
 it.each([
   [{ modelsTimeoutMs: 0 }, /^llm-deepseek-api-key: modelsTimeoutMs must be a positive finite number/],
   [{ modelsMaxAgeMs: 1.5 }, /^llm-deepseek-api-key: modelsMaxAgeMs must be a non-negative safe integer/],

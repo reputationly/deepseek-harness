@@ -4,8 +4,8 @@ import z from '@deepseek-ai/schemastery'
 import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import type { LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import {
-  deepSeekConfigFields, isBuiltInCatalog, modelListingConfigFields, modelListingURL, plainOptions as protocolOptions, PUBLIC_BASE_URL,
-  resolveAdapterOptions as resolveProtocolOptions, resolveListingTiming,
+  DEFAULT_MODELS_PATH, deepSeekConfigFields, isBuiltInCatalog, modelListingConfigFields, modelListingURL,
+  plainOptions as protocolOptions, PUBLIC_BASE_URL, resolveAdapterOptions as resolveProtocolOptions, resolveListingTiming,
 } from '@deepseek-ai/dsh-llm-deepseek'
 import type {
   Config as ProtocolConfig, DeepSeekConnectionOptions, ListingSettings, ModelListingConfig, ModelListingOptions, Options as ProtocolOptions,
@@ -20,15 +20,31 @@ export interface Config extends ProtocolConfig, ModelListingConfig {
   apiKeyEnv: Volatile<string>
   /** Provider name shown in model menus and settings; defaults to DeepSeek. */
   displayName: string
+  /**
+   * Path of the model listing on this endpoint (default `/models`). A gateway that serves an
+   * OpenAI-compatible API under a prefix answers at `/v1/models`.
+   */
+  modelsPath: string
+  /**
+   * Follow the endpoint's listing even off the official origin. Off by default because a
+   * third-party endpoint's catalog is only authoritative for its own models.
+   */
+  followListing: boolean
 }
 export const Config = z.object({
   ...deepSeekConfigFields,
   ...modelListingConfigFields,
   apiKeyEnv: z.string().role('credential-ref').default('DEEPSEEK_API_KEY').volatile(),
   displayName: z.string().min(1).default('DeepSeek'),
+  modelsPath: z.string().pattern(/^\//u).default(DEFAULT_MODELS_PATH),
+  followListing: z.boolean().default(false),
 })
 /** Plain deployment inputs for the API-key provider. */
-export type Options = ProtocolOptions & ModelListingOptions & { apiKeyEnv?: string }
+export type Options = ProtocolOptions & ModelListingOptions & {
+  apiKeyEnv?: string
+  modelsPath?: string
+  followListing?: boolean
+}
 /** Endpoint and credential reference captured from the same configuration generation. */
 export interface ResolvedDeepSeekOptions extends DeepSeekConnectionOptions {
   /** Credential reference used only for this connection snapshot. */
@@ -44,7 +60,12 @@ export interface ResolvedDeepSeekOptions extends DeepSeekConnectionOptions {
  * @returns detached resolver inputs.
  */
 export function plainOptions(config: Config): Options {
-  return { ...protocolOptions(config), apiKeyEnv: config.apiKeyEnv.get() }
+  return {
+    ...protocolOptions(config),
+    apiKeyEnv: config.apiKeyEnv.get(),
+    modelsPath: config.modelsPath,
+    followListing: config.followListing,
+  }
 }
 /** Resolve API-key, listing, and protocol settings together.
  * @param config - raw deployment settings.
@@ -52,13 +73,16 @@ export function plainOptions(config: Config): Options {
  * @returns validated endpoint facts, the matching credential reference, and the listing the catalog follows.
  */
 export function resolveAdapterOptions(config: Options, environment?: LaunchEnvironmentSnapshot): ResolvedDeepSeekOptions {
-  const { modelsTimeoutMs: _timeout, modelsMaxAgeMs: _maxAge, apiKeyEnv, ...messages } = config
+  const { modelsTimeoutMs: _timeout, modelsMaxAgeMs: _maxAge, apiKeyEnv, modelsPath, followListing, ...messages } = config
   const timing = resolveListingTiming(config, 'llm-deepseek-api-key')
   const connection = resolveProtocolOptions(messages, environment)
-  const listed = new URL(connection.baseURL).origin === OFFICIAL_ORIGIN && isBuiltInCatalog(connection.models)
+  const official = new URL(connection.baseURL).origin === OFFICIAL_ORIGIN && isBuiltInCatalog(connection.models)
+  const listed = followListing === true || official
   return {
     ...connection,
     apiKeyEnv: credentialRef(apiKeyEnv ?? 'DEEPSEEK_API_KEY'),
-    ...listed ? { listing: { url: modelListingURL(connection.baseURL), ...timing } } : {},
+    ...listed
+      ? { listing: { url: modelListingURL(connection.baseURL, modelsPath), ...timing } }
+      : {},
   }
 }

@@ -16,13 +16,18 @@ export const MAX_BADGE_TEXT_LENGTH = 12
 /** Code of a listing deadline's timeout reason; {@link requestModelListing} reports it as `TIMEOUT`. */
 export const LISTING_TIMEOUT = 'MODEL_LISTING_TIMEOUT'
 
+/** Path of the model listing on an OpenAI-compatible gateway. */
+export const DEFAULT_MODELS_PATH = '/models'
+
 /**
  * The listing endpoint of a Messages root.
  * @param baseURL - Messages `baseURL`.
- * @returns `/models` at the origin of `baseURL`, the only origin that receives the route's credential.
+ * @param modelsPath - listing path at the origin of `baseURL`; gateways behind an API
+ *   prefix serve it at `/v1/models`.
+ * @returns the listing URL on the origin of `baseURL`, the only origin that receives the route's credential.
  */
-export function modelListingURL(baseURL: string): string {
-  return new URL('/models', new URL(baseURL).origin).href
+export function modelListingURL(baseURL: string, modelsPath: string = DEFAULT_MODELS_PATH): string {
+  return new URL(modelsPath, new URL(baseURL).origin).href
 }
 
 /** The requirement one listing entry declares under this client's product token. */

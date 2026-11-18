@@ -42,6 +42,8 @@
           "image"
         ]
       }
-    ]
+    ],
+    "modelsPath": "/v1/models",
+    "followListing": false
   }
 }

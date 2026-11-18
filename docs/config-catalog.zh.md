@@ -1991,6 +1991,16 @@ export interface Config extends ProtocolConfig, ModelListingConfig {
   apiKeyEnv: Volatile<string>
   /** Provider name shown in model menus and settings; defaults to DeepSeek. */
   displayName: string
+  /**
+   * Path of the model listing on this endpoint (default `/models`). A gateway that serves an
+   * OpenAI-compatible API under a prefix answers at `/v1/models`.
+   */
+  modelsPath: string
+  /**
+   * Follow the endpoint's listing even off the official origin. Off by default because a
+   * third-party endpoint's catalog is only authoritative for its own models.
+   */
+  followListing: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-llm-deepseek-api-key -->

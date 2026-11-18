@@ -20,6 +20,10 @@ export interface BrandGateway {
   readonly defaultModel: string
   /** Reasoning effort of the default selection; the provider default when omitted. */
   readonly defaultReasoningEffort?: string
+  /** Listing path on this gateway; an OpenAI-compatible prefix gateway answers at `/v1/models`. */
+  readonly modelsPath?: string
+  /** Whether the adapter follows this gateway's own model listing instead of the pinned catalog. */
+  readonly followListing?: boolean
   readonly models: readonly BrandGatewayModel[]
 }
 
@@ -42,12 +46,18 @@ export function brandGateway(): BrandGateway | undefined {
   if (raw === undefined || raw === '') return undefined
   const parsed: unknown = JSON.parse(raw)
   if (!record(parsed)) throw new Error('desktop brand: gateway configuration must be an object')
-  const { baseURL, apiKeyEnv, defaultModel, defaultReasoningEffort, models } = parsed
+  const { baseURL, apiKeyEnv, defaultModel, defaultReasoningEffort, modelsPath, followListing, models } = parsed
   if (typeof baseURL !== 'string' || !URL.canParse(baseURL)) throw new Error('desktop brand: gateway baseURL must be a URL')
   if (typeof apiKeyEnv !== 'string' || apiKeyEnv === '') throw new Error('desktop brand: gateway apiKeyEnv must be a credential reference')
   if (typeof defaultModel !== 'string' || defaultModel === '') throw new Error('desktop brand: gateway defaultModel must be non-empty')
   if (defaultReasoningEffort !== undefined && (typeof defaultReasoningEffort !== 'string' || defaultReasoningEffort === '')) {
     throw new Error('desktop brand: gateway defaultReasoningEffort must be a non-empty string')
+  }
+  if (modelsPath !== undefined && (typeof modelsPath !== 'string' || !modelsPath.startsWith('/'))) {
+    throw new Error('desktop brand: gateway modelsPath must be an absolute path')
+  }
+  if (followListing !== undefined && typeof followListing !== 'boolean') {
+    throw new Error('desktop brand: gateway followListing must be a boolean')
   }
   if (!Array.isArray(models) || models.length === 0) throw new Error('desktop brand: gateway models must be a non-empty array')
   const catalog = models.map((model: unknown) => {
@@ -75,6 +85,8 @@ export function brandGateway(): BrandGateway | undefined {
   return {
     baseURL, apiKeyEnv, defaultModel,
     ...defaultReasoningEffort === undefined ? {} : { defaultReasoningEffort },
+    ...modelsPath === undefined ? {} : { modelsPath },
+    ...followListing === undefined ? {} : { followListing },
     models: catalog,
   }
 }
@@ -146,6 +158,8 @@ export function gatewayProfilePatch(
     `    baseURL: ${scalar(gateway.baseURL)}`,
     `    apiKeyEnv: ${scalar(gateway.apiKeyEnv)}`,
     ...productName === undefined || productName === '' ? [] : [`    displayName: ${scalar(productName)}`],
+    ...gateway.modelsPath === undefined ? [] : [`    modelsPath: ${scalar(gateway.modelsPath)}`],
+    ...gateway.followListing === undefined ? [] : [`    followListing: ${String(gateway.followListing)}`],
     '    models:',
     models,
     '',

@@ -1,10 +1,17 @@
+describe('modelListingURL', () => {
+  it('defaults to /models at the origin and honours an explicit gateway path', () => {
+    expect(modelListingURL('https://api.deepseek.com/v1')).toBe('https://api.deepseek.com/models')
+    expect(modelListingURL('https://maas.example.com/v1', '/v1/models')).toBe('https://maas.example.com/v1/models')
+  })
+})
+
 /** `/models` decoding and the listing request lifecycle. */
 import { createServer } from 'node:http'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
 import { APP_IDENTITY } from '@deepseek-ai/dsh-llm'
 import { deadline } from '@deepseek-ai/dsh-timeout'
-import { LISTING_TIMEOUT, MAX_BADGE_TEXT_LENGTH, parseModelListing, requestModelListing } from '../src/listing.ts'
+import { LISTING_TIMEOUT, MAX_BADGE_TEXT_LENGTH, modelListingURL, parseModelListing, requestModelListing } from '../src/listing.ts'
 import type { ListedCapabilities } from '../src/listing.ts'
 
 /** The listing the service returned to an account token on 2026-09-24. */
