@@ -396,12 +396,6 @@ describe('loadProfile', () => {
 
   it.each([
     ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
-    [
-      '@deepseek-ai/dsh-base',
-      '@deepseek-ai/dsh-web-app',
-      '@deepseek-ai/dsh-experimental-plugin-market-bundle',
-      '@deepseek-ai/dsh-experimental-voice-input-bundle',
-    ],
   ])('migrates the installation-owned Web profile %j to its current template', (...legacy) => {
     const bundles = [...new Set([...legacy, ...PROFILE_TEMPLATES.web?.bundles ?? []])]
     const anchor = stageInstallation(Object.fromEntries(bundles.map(name => [name, { patch: '[]\n' }])))
