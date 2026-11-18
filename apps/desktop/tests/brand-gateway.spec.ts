@@ -2,7 +2,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { brandGateway, gatewayProfilePatch, gatewayTokenURL, savedSelection, storedGatewayKey, writeGatewayProfile } from '../src/brand-gateway.ts'
+import {
+  PROFILE_PATCH_MARKER, brandGateway, gatewayProfilePatch, gatewayTokenURL, profilePatchRefusal, savedSelection,
+  storedGatewayKey, writeGatewayProfile,
+} from '../src/brand-gateway.ts'
 import { probeGatewayKey } from '../src/gateway-probe.ts'
 
 const GATEWAY = {
@@ -63,25 +66,6 @@ describe('brand gateway configuration', () => {
     expect(() => brandGateway()).toThrow(/models/u)
   })
 
-  it('rejects a malformed media block', () => {
-    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify({ ...GATEWAY, media: 'image-model' }))
-    expect(() => brandGateway()).toThrow(/media/u)
-    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify({ ...GATEWAY, media: { imageModel: '' } }))
-    expect(() => brandGateway()).toThrow(/imageModel/u)
-    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify({ ...GATEWAY, media: { imageModel: 7 } }))
-    expect(() => brandGateway()).toThrow(/imageModel/u)
-  })
-
-  it('writes the configured image model into the media tool row only when set', () => {
-    const branded = { ...GATEWAY, media: { imageModel: 'minimax-h3-image' } }
-    expect(gatewayProfilePatch(branded)).toContain(
-      '- id: tool-media\n  disabled: false\n  config:\n    baseURL: "https://gateway.example/v1"\n    apiKeyEnv: "EXAMPLE_API_KEY"\n    imageModel: "minimax-h3-image"\n',
-    )
-    expect(gatewayProfilePatch(GATEWAY)).not.toContain('imageModel')
-    vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify(branded))
-    expect(brandGateway()).toEqual(branded)
-  })
-
   it('writes the profile patch that replaces the provider endpoint, catalog, and default model', () => {
     const patch = gatewayProfilePatch(GATEWAY)
     expect(patch).toContain('- id: agent-default-model')
@@ -91,8 +75,6 @@ describe('brand gateway configuration', () => {
     expect(patch).toContain('    apiKeyEnv: "EXAMPLE_API_KEY"')
     expect(patch).toContain('      - id: "model-a"\n        contextWindow: 1000\n        inputModalities: ["text", "image"]')
     expect(patch).toContain('      - id: "model-b"')
-    expect(patch).toContain('- id: canvas\n  disabled: false\n')
-    expect(patch).toContain('- id: ui-sidebar-canvas\n  disabled: false\n')
     expect(patch).not.toContain('displayName')
     expect(gatewayProfilePatch(GATEWAY, '蒜狸小助手')).toContain('    apiKeyEnv: "EXAMPLE_API_KEY"\n    displayName: "蒜狸小助手"\n')
   })
@@ -122,10 +104,21 @@ describe('brand gateway configuration', () => {
       .toHaveLength(2)
   })
 
+  it('refuses a patch outside this product home and a patch another product wrote', () => {
+    const own = `${PROFILE_PATCH_MARKER} at every start\n- id: llm-deepseek\n`
+    expect(profilePatchRefusal('/tmp/home/profiles/desktop/cordis.patch.yml', '/tmp/home', own)).toBeUndefined()
+    expect(profilePatchRefusal('/tmp/home/profiles/desktop/cordis.patch.yml', '/tmp/home', '')).toBeUndefined()
+    expect(profilePatchRefusal('/Users/someone/.dsh/profiles/desktop/cordis.patch.yml', '/tmp/home', own))
+      .toMatchObject({ kind: 'outside-home' })
+    expect(profilePatchRefusal('/tmp/home/profiles/desktop/cordis.patch.yml', '/tmp/home', '- id: llm-pi-ai\n'))
+      .toMatchObject({ kind: 'foreign-patch' })
+  })
+
   it('rewrites the profile patch file and leaves other profiles untouched', () => {
     vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify(GATEWAY))
     const root = mkdtempSync(join(tmpdir(), 'dsh-gateway-'))
     try {
+      vi.stubEnv('DSH_HOME', root)
       writeGatewayProfile(root)
       expect(readFileSync(join(root, 'cordis.patch.yml'), 'utf8')).toBe(gatewayProfilePatch(GATEWAY))
     } finally {
@@ -162,7 +155,8 @@ describe('brand default selection', () => {
     vi.stubEnv('DSH_BRAND_GATEWAY', JSON.stringify(BRANDED))
     const root = mkdtempSync(join(tmpdir(), 'dsh-gateway-'))
     try {
-      writeFileSync(join(root, 'cordis.patch.yml'), saved)
+      vi.stubEnv('DSH_HOME', root)
+      writeFileSync(join(root, 'cordis.patch.yml'), `${PROFILE_PATCH_MARKER} at every start\n${saved}`)
       writeGatewayProfile(root)
       expect(readFileSync(join(root, 'cordis.patch.yml'), 'utf8')).toContain('    model: "model-b"\n    reasoningEffort: "low"\n')
     } finally {

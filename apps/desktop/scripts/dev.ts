@@ -9,6 +9,7 @@ import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import type { DesktopRelease } from '../src/release.ts'
 import { developmentRuntimeDirectory, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
 import { prepareDevelopmentProject } from './development-project.ts'
+import { isIsolatedDevelopmentHome } from '../src/dev-home.ts'
 import { prepareDevelopmentApp } from './development-app.ts'
 import { preparePrimaryRuntime } from './prepare-primary-runtime.ts'
 
@@ -63,7 +64,16 @@ async function launchElectron(): Promise<void> {
   const mainPort = debugPort('DSH_DESKTOP_MAIN_INSPECT_PORT', 9229)
   const rendererPort = debugPort('DSH_DESKTOP_RENDERER_DEBUG_PORT', 9222)
   const hostPort = debugPort('DSH_DESKTOP_HOST_INSPECT_PORT', 9230)
-  const home = resolve(process.env.DSH_HOME ?? join(DEVELOPMENT_ROOT, 'home'))
+  // A development run must never resolve the user's own harness home: the shell rewrites the
+  // desktop profile patch, and the Host reads and writes that home's sessions and credentials.
+  const requestedHome = process.env.DSH_HOME
+  if (requestedHome === undefined || requestedHome.trim() === '') {
+    throw new Error('desktop development: set DSH_HOME to an isolated directory (mktemp -d) before launching; the default home is the user\'s own harness data')
+  }
+  const home = resolve(requestedHome)
+  if (!isIsolatedDevelopmentHome(home)) {
+    throw new Error(`desktop development: DSH_HOME=${home} is outside the temporary roots this launcher accepts; point it at a scratch directory such as $(mktemp -d)`)
+  }
   const userData = resolve(process.env.DSH_DESKTOP_USER_DATA_DIR ?? join(DEVELOPMENT_ROOT, 'electron-user-data'))
   const environment: NodeJS.ProcessEnv = {
     ...process.env,

@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { DSH_HOME_ENV } from '@deepseek-ai/dsh-home-paths'
 import { parse } from 'yaml'
 
@@ -168,18 +168,57 @@ export function gatewayProfilePatch(
   ].join('\n')
 }
 
+/** First line every patch this shell writes carries, so a later run can tell its own file apart. */
+export const PROFILE_PATCH_MARKER = '# Written by the desktop shell'
+
+/** Why a profile patch write was refused; each names the file it protects. */
+export type ProfilePatchRefusal =
+  | { readonly kind: 'outside-home'; readonly path: string; readonly home: string }
+  | { readonly kind: 'foreign-patch'; readonly path: string }
+
+/**
+ * Decide whether this shell may replace one profile patch.
+ *
+ * A build that resolves the wrong harness home would otherwise rewrite another product's
+ * profile — its plugin rows and model gateway — without anyone asking. Two facts make a
+ * write safe: the file lives inside the home this process owns, and an existing file was
+ * written by this shell.
+ * @param path - patch file the shell would write.
+ * @param home - Harness home this process resolved for itself.
+ * @param previous - current file text, or an empty string when the file does not exist.
+ * @returns the refusal, or undefined when the write is allowed.
+ */
+export function profilePatchRefusal(path: string, home: string, previous: string): ProfilePatchRefusal | undefined {
+  if (!resolve(path).startsWith(`${resolve(home)}${sep}`)) return { kind: 'outside-home', path, home }
+  if (previous !== '' && !previous.startsWith(PROFILE_PATCH_MARKER)) return { kind: 'foreign-patch', path }
+  return undefined
+}
+
 /**
  * Replace the profile's patch layer with the baked gateway configuration, keeping the default
  * model selection the user saved from settings.
  * @param profileDir - Desktop profile directory created before the Host starts.
+ * @throws when the target is outside this product's harness home or holds another product's patch.
  */
 export function writeGatewayProfile(profileDir: string): void {
   const gateway = brandGateway()
   if (gateway === undefined) return
+  const home = process.env[DSH_HOME_ENV]
+  if (home === undefined || home === '') throw new Error('desktop profile: DSH_HOME must name the product harness home before writing its patch')
   const path = join(profileDir, 'cordis.patch.yml')
   let previous = ''
   try { previous = readFileSync(path, 'utf8') } catch { /* first start */ }
+  const refusal = profilePatchRefusal(path, home, previous)
+  if (refusal?.kind === 'outside-home') {
+    throw new Error(`desktop profile: refusing to write ${refusal.path}, which is outside this product's harness home ${refusal.home}`)
+  }
+  if (refusal?.kind === 'foreign-patch') {
+    throw new Error(`desktop profile: refusing to overwrite ${refusal.path}; it was written by another product`)
+  }
   const patch = gatewayProfilePatch(gateway, process.env.DSH_DESKTOP_PRODUCT_NAME, savedSelection(gateway, previous))
+  if (previous !== '') {
+    writeFileSync(`${path}.bak-${new Date().toISOString().replace(/[:.]/gu, '-')}`, previous, { encoding: 'utf8', mode: 0o600 })
+  }
   writeFileSync(path, patch, { encoding: 'utf8', mode: 0o600 })
 }
 
