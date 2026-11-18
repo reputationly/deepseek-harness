@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import css from './ConnectionPill.module.css'
 
@@ -21,9 +21,20 @@ export interface GatewayStatusFace {
   readonly refresh: () => Promise<GatewayStatus>
 }
 
-/** Render inputs: the sidebar width flag, the Host namespace, and the plugin dictionary. */
-export type ConnectionPillProps =
-  PropsRuntime<'sidebar.footer.action'> & PropsLocale<'gatewayStatus'> & InjectFace<GatewayStatusFace>
+/**
+ * Render inputs the light needs: the sidebar width flag, the Host operations, and the dictionary.
+ * The slot supplies more than this, so the registration passes those members through.
+ */
+export interface ConnectionPillProps {
+  /** Whether the sidebar shows its expanded rail. */
+  readonly wide: boolean
+  /** Read the last observation without probing. */
+  readonly read: () => Promise<GatewayStatus>
+  /** Probe the gateway now. */
+  readonly refresh: () => Promise<GatewayStatus>
+  /** Translate one dictionary key of this plugin's namespace. */
+  readonly t: TranslateNS<'gatewayStatus'>
+}
 
 /**
  * @param props - sidebar width flag, connection operations, and locale seat.

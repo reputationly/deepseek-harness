@@ -3,20 +3,23 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
+import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { ConnectionPill, type ConnectionPillProps } from '../src/client/ConnectionPill.tsx'
-import { en, type GatewayStatusKey } from '../src/client/locales.ts'
+import { en } from '../src/client/locales.ts'
 
 afterEach(cleanup)
 
 /** The plugin's `t` seat, with the `{detail}` interpolation the pill relies on. */
-type PillText = (key: GatewayStatusKey, params?: Record<string, string>) => string
-const t: PillText = (key, params) =>
-  (en[key] ?? key).replace(/\{(\w+)\}/gu, (_match, name: string) => params?.[name] ?? '')
+const t: TranslateNS<'gatewayStatus'> = (key, params) => {
+  const dictionary: Partial<Record<string, string>> = en
+  const template = dictionary[key] ?? key
+  return template.replace(/\{(\w+)\}/gu, (_match, name: string) => String(params?.[name] ?? ''))
+}
 
 function mount(initial: GatewayStatus, ...later: GatewayStatus[]) {
   const read = vi.fn(async () => initial)
   const refresh = vi.fn(async () => later.shift() ?? initial)
-  const props = { wide: true, read, refresh, t } as unknown as ConnectionPillProps
+  const props: ConnectionPillProps = { wide: true, read, refresh, t }
   render(<ConnectionPill {...props} />)
   return { read, refresh }
 }
@@ -60,7 +63,7 @@ it('re-probes when the light is pressed', async () => {
 
 it('renders the dot alone in the collapsed rail', async () => {
   const status = { state: 'connected', code: 'connected' } as const
-  const props = { wide: false, read: vi.fn(async () => status), refresh: vi.fn(async () => status), t } as unknown as ConnectionPillProps
+  const props: ConnectionPillProps = { wide: false, read: vi.fn(async () => status), refresh: vi.fn(async () => status), t }
   render(<ConnectionPill {...props} />)
   const pill = await screen.findByRole('button', { name: en.connected })
   expect(pill.textContent).toBe('')

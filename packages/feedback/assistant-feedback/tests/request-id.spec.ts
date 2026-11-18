@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
+import { MessageId, ProviderRequestId } from '@deepseek-ai/dsh-llm'
 import { resolveRequestId } from '../src/request-id.ts'
 
 type Event = Parameters<typeof resolveRequestId>[0][number]
@@ -12,15 +14,18 @@ type Event = Parameters<typeof resolveRequestId>[0][number]
 function reply(id: string, requestId?: string): Event {
   return {
     type: 'assistant/message',
-    seq: 1,
+    seq: SessionSeq(1),
     time: 0,
     surfaceOp: 'append',
     data: {
       turn: 1, step: 1, stream: [],
-      message: { id, role: 'assistant', content: [] },
-      ...requestId === undefined ? {} : { providerRequestId: requestId },
+      message: {
+        id: MessageId(id), role: 'assistant', content: [],
+        source: { kind: 'model', provider: 'deepseek-official', model: 'deepseek-chat' },
+      },
+      ...requestId === undefined ? {} : { providerRequestId: ProviderRequestId(requestId) },
     },
-  } as unknown as Event
+  }
 }
 
 describe('resolveRequestId', () => {

@@ -24,9 +24,7 @@ import { isExperimentalPackageName } from './experimental-package-policy.ts'
 // The independently published entry package owns platform-engine dependencies.
 const EXTERNAL_KIT_PACKAGES = new Set(['@deepseek-ai/libreoffice-kit'])
 const PROFILE_SOURCE = 'packages/util/official-bundles/src/bundles.ts'
-const DEFAULT_WECHAT_BUNDLE = '@deepseek-ai/dsh-wechat-bundle'
 const WECHAT_COMPOSITION_PACKAGES = new Set([
-  DEFAULT_WECHAT_BUNDLE,
   '@deepseek-ai/dsh-wechat',
   '@deepseek-ai/dsh-client-ui-wechat',
 ])
@@ -115,11 +113,8 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
   let webPluginCount = 0
   const isExperimental = (pkg: Package): boolean => isExperimentalPackageName(pkg.manifest.name)
     || display(pkg.directory).startsWith('packages/experimental/')
-  const isApprovedWechatReference = (name: string, origin: string, owner?: Package): boolean =>
-    WECHAT_COMPOSITION_PACKAGES.has(name)
-    && (origin === PROFILE_SOURCE
-      || origin.startsWith('packages/experimental/wechat-bundle/')
-      || owner?.manifest.name === DEFAULT_WECHAT_BUNDLE)
+  const isApprovedWechatReference = (name: string, origin: string): boolean =>
+    WECHAT_COMPOSITION_PACKAGES.has(name) && origin === PROFILE_SOURCE
   const add = (pkg: Package, origin: string, approvedWechat = false): void => {
     if (isExperimental(pkg) && !approvedWechat) {
       failures.push(`${origin} -> ${pkg.manifest.name}: default product must not include experimental packages`)
@@ -143,11 +138,11 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       const target = name.startsWith('file://') ? fileURLToPath(name)
         : resolve(owner?.directory ?? root, name.replace(/^(?:file|link):/, ''))
       const pkg = directories.get(target) ?? ownerOf(target)
-      if (pkg !== undefined) add(pkg, origin, isApprovedWechatReference(pkg.manifest.name, origin, owner))
+      if (pkg !== undefined) add(pkg, origin, isApprovedWechatReference(pkg.manifest.name, origin))
       return
     }
     const packageName = barePackageName(name)
-    const approvedWechat = isApprovedWechatReference(packageName, origin, owner)
+    const approvedWechat = isApprovedWechatReference(packageName, origin)
     if (isExperimentalPackageName(packageName) && !approvedWechat) {
       failures.push(`${origin} -> ${name}: default product must not include experimental packages`)
       return
@@ -188,7 +183,7 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       const owner = directories.get(resolved) ?? ownerOf(resolved)
       if (owner !== undefined && isExperimental(owner)) {
         const origin = display(path)
-        add(owner, origin, isApprovedWechatReference(owner.manifest.name, origin, ownerOf(path)))
+        add(owner, origin, isApprovedWechatReference(owner.manifest.name, origin))
       }
       if (/cordis[^/]*\.ya?ml$/.test(basename(resolved))) scanConfig(resolved)
       if (followLocal && target !== undefined) scanSource(target, true)
@@ -261,7 +256,7 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       if (packages.get(name)?.manifest.dsh?.bundle?.patch === undefined) {
         failures.push(`${PROFILE_SOURCE}: default bundle ${name} must declare dsh.bundle.patch`)
       }
-      if (optionalBundles.has(name) && name !== DEFAULT_WECHAT_BUNDLE) {
+      if (optionalBundles.has(name)) {
         failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must not be a default bundle`)
       }
     }

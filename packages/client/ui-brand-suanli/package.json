@@ -24,7 +24,8 @@
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json",
-    "./assets/*": "./lib/assets/*"
+    "./assets/*": "./lib/assets/*",
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "client": {
@@ -59,6 +60,7 @@
     "react-dom": "^18.2.0"
   },
   "files": [
+    "locale/*.json",
     "lib/index.js",
     "lib/client.js",
     "lib/assets",

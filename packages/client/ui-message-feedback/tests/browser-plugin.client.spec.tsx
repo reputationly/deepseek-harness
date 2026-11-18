@@ -106,7 +106,7 @@ async function bench(options: { recordResult?: unknown; recordCarrier?: unknown 
       return {
         ...entry.options,
         locale: entry.locale,
-        inject: entry.inject as unknown as ((sessionId: SessionId) => MessageFeedbackInjected) | undefined,
+        inject: entry.inject as ((sessionId: SessionId) => MessageFeedbackInjected) | undefined,
       }
     },
     dialogEntry: () => {
@@ -115,7 +115,7 @@ async function bench(options: { recordResult?: unknown; recordCarrier?: unknown 
       return {
         ...entry.options,
         locale: entry.locale,
-        inject: entry.inject as unknown as ((sessionId: SessionId) => FeedbackDialogInjected) | undefined,
+        inject: entry.inject as ((sessionId: SessionId) => FeedbackDialogInjected) | undefined,
       }
     },
     generalEntry: () => {
@@ -124,7 +124,7 @@ async function bench(options: { recordResult?: unknown; recordCarrier?: unknown 
       return {
         ...entry.options,
         locale: entry.locale,
-        inject: entry.inject as unknown as (() => FeedbackDialogInjected) | undefined,
+        inject: entry.inject as (() => FeedbackDialogInjected) | undefined,
       }
     },
   }

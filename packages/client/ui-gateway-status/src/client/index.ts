@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /** Sidebar footer light reporting whether the model gateway answers for the stored key. */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -7,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-api-gateway-status/remote'
 import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import { createElement, type ComponentProps } from 'react'
 import { ConnectionPill, type GatewayStatusFace } from './ConnectionPill.tsx'
 import { de, en, es, fr, ja, pt, ru, zh, type GatewayStatusKey } from './locales.ts'
 
@@ -36,7 +38,7 @@ export function apply(ctx: Context): void {
       read: async () => unwrap(await ctx.remote.gatewayStatus.read()),
       refresh: async () => unwrap(await ctx.remote.gatewayStatus.refresh()),
     }),
-  }, ConnectionPill))
+  }, (props: ComponentProps<typeof ConnectionPill>) => createElement(ConnectionPill, props)))
 }
 
 /**
