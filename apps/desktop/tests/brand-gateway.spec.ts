@@ -112,6 +112,9 @@ describe('brand gateway configuration', () => {
       .toMatchObject({ kind: 'outside-home' })
     expect(profilePatchRefusal('/tmp/home/profiles/desktop/cordis.patch.yml', '/tmp/home', '- id: llm-pi-ai\n'))
       .toMatchObject({ kind: 'foreign-patch' })
+    // A freshly created profile ships a comment-only template; replacing it loses nothing.
+    expect(profilePatchRefusal('/tmp/home/profiles/desktop/cordis.patch.yml', '/tmp/home',
+      '# Your patch layer for this dsh profile\n[]\n')).toBeUndefined()
   })
 
   it('rewrites the profile patch file and leaves other profiles untouched', () => {

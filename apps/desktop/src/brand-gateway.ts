@@ -190,8 +190,14 @@ export type ProfilePatchRefusal =
  */
 export function profilePatchRefusal(path: string, home: string, previous: string): ProfilePatchRefusal | undefined {
   if (!resolve(path).startsWith(`${resolve(home)}${sep}`)) return { kind: 'outside-home', path, home }
-  if (previous !== '' && !previous.startsWith(PROFILE_PATCH_MARKER)) return { kind: 'foreign-patch', path }
-  return undefined
+  if (previous === '' || previous.startsWith(PROFILE_PATCH_MARKER)) return undefined
+  // Profile creation ships an empty template (`# comments` plus `[]`): it holds no rows, so no
+  // other product's configuration can be lost by replacing it.
+  const body = previous.split('\n')
+    .filter(line => line.trim() !== '' && !line.trimStart().startsWith('#'))
+    .join('\n')
+    .trim()
+  return body === '' || body === '[]' ? undefined : { kind: 'foreign-patch', path }
 }
 
 /**
