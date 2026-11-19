@@ -1,17 +1,19 @@
 /**
- * Manual installer handoff for builds Squirrel.Mac and the Windows NSIS verifier reject.
+ * Installer handoff for unsigned builds that cannot use electron-updater.
  *
- * An unsigned build cannot be replaced in place: macOS refuses the adhoc signature while applying
- * the update, and the installed copy stays on its old version. This module takes the other route —
- * download the artifact the feed already publishes, then hand it to the operating system so the
- * user runs the installer they are used to.
+ * macOS opens the downloaded disk image while the application keeps running. Windows starts the
+ * downloaded NSIS installer silently and lets it replace the running application after shutdown.
  *
  * @module update-manual-install
  */
 
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { createWriteStream } from 'node:fs'
+import { mkdir, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { Readable, Transform } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 
 /** One installer artifact as the update feed lists it. */
 export interface InstallerAsset {
@@ -40,20 +42,31 @@ export function selectInstallerAsset(
   return files.find(file => file.name.toLowerCase().endsWith(suffix))
 }
 
-/** Download-and-open handoff the coordinator drives instead of an in-place replacement. */
+/** Download and platform-specific installer handoff driven by the coordinator. */
 export interface ManualInstallPort {
+  /** Whether installation replaces the running application in place. */
+  readonly replacesInPlace: boolean
   /**
    * Resolve this platform's installer for one version, download it, and verify it.
    * @param version - version the caller confirmed, checked against the published index.
    * @param onProgress - receives whole percentages while the artifact streams in.
    * @returns the saved path.
+   * @throws If the feed, download, size, or digest is invalid. Partial downloads are removed.
    */
   prepare(version: string, onProgress: (percent: number) => void): Promise<string>
   /**
-   * Hand a downloaded installer to the operating system.
+   * Open a downloaded installer without replacing the running application.
    * @param path - saved installer path.
    */
   open(path: string): Promise<void>
+  /**
+   * Start a silent Windows replacement and quit after the installer starts.
+   * `/S` installs silently; `--updated` makes NSIS wait for the old process to exit; `--force-run`
+   * makes the installer launch the updated application with `--updated` when installation finishes.
+   * @param path - saved Windows installer path.
+   * @throws If this platform does not support replacement or the installer cannot be started.
+   */
+  replace(path: string): Promise<void>
 }
 
 /** Inputs of one manual handoff. */
@@ -62,41 +75,84 @@ export interface ManualInstallOptions {
   readonly directory: string
   /** Published index directory, the same one carrying `latest.json`. */
   readonly feedDirectory: string
+  /** Platform used to select the installer and replacement behavior; defaults to the current platform. */
+  readonly platform?: NodeJS.Platform
   /** Transport, injected so tests own their bytes. */
   readonly send?: typeof fetch
   /** Opens a saved file the way the desktop shell does. */
   readonly openPath: (path: string) => Promise<string>
+  /** Starts the Windows installer; defaults to `node:child_process`'s `spawn`. */
+  readonly spawn?: typeof spawn
+  /** Quits the desktop application after the replacement installer starts. */
+  readonly quit: () => void
 }
 
 /**
- * Create the download-and-open handoff.
- * @param options - destination directory, transport, and the shell's open operation.
+ * Create the streamed installer download and platform-specific handoff.
+ * @param options - destination, platform, transport, and shell operations.
  * @returns the port the coordinator calls.
  */
 export function createManualInstall(options: ManualInstallOptions): ManualInstallPort {
   const send = options.send ?? fetch
+  const platform = options.platform ?? process.platform
+  const start = options.spawn ?? spawn
   return {
+    replacesInPlace: platform === 'win32',
     async prepare(version, onProgress) {
       const index = await readIndex(options.feedDirectory, send)
       if (index.version !== version) {
         throw new Error(`desktop update: the feed offers ${index.version}, the confirmed target is ${version}`)
       }
-      const asset = selectInstallerAsset(index.files, process.platform)
+      const asset = selectInstallerAsset(index.files, platform)
       if (asset === undefined) throw new Error('desktop update: the feed lists no installer for this platform')
       const target = `${options.directory}/${asset.name}`
-      await mkdir(dirname(target), { recursive: true })
-      const response = await send(asset.url)
-      if (!response.ok) throw new Error(`desktop update: installer download answered HTTP ${String(response.status)}`)
-      const bytes = Buffer.from(await response.arrayBuffer())
-      if (asset.size !== undefined && bytes.byteLength !== asset.size) {
-        throw new Error(`desktop update: installer is ${String(bytes.byteLength)} bytes, the feed published ${String(asset.size)}`)
-      }
-      if (asset.sha256 !== undefined) {
-        const digest = createHash('sha256').update(bytes).digest('hex')
-        if (digest !== asset.sha256) throw new Error('desktop update: installer SHA-256 does not match the published index')
+      const temporary = `${target}.download`
+      let downloaded = 0
+      let lastProgress = 0
+      try {
+        await mkdir(dirname(target), { recursive: true })
+        const response = await send(asset.url)
+        if (!response.ok) throw new Error(`desktop update: installer download answered HTTP ${String(response.status)}`)
+        if (response.body === null) throw new Error('desktop update: installer download failed')
+        const contentLength = response.headers.get('content-length')
+        const advertisedSize = asset.size ?? (contentLength === null ? undefined : Number(contentLength))
+        const total = advertisedSize !== undefined && Number.isFinite(advertisedSize) && advertisedSize > 0
+          ? advertisedSize : undefined
+        const hash = createHash('sha256')
+        await pipeline(
+          Readable.from(response.body),
+          new Transform({
+            transform(chunk: Uint8Array, _encoding, callback) {
+              try {
+                hash.update(chunk)
+                downloaded += chunk.byteLength
+                if (total !== undefined) {
+                  const percent = Math.min(99, Math.floor(downloaded / total * 100))
+                  if (percent > lastProgress) {
+                    lastProgress = percent
+                    onProgress(percent)
+                  }
+                }
+                callback(null, chunk)
+              } catch (error) {
+                callback(error instanceof Error ? error : new Error(String(error)))
+              }
+            },
+          }),
+          createWriteStream(temporary),
+        )
+        if (asset.size !== undefined && downloaded !== asset.size) {
+          throw new Error(`desktop update: installer is ${String(downloaded)} bytes, the feed published ${String(asset.size)}`)
+        }
+        if (asset.sha256 !== undefined && hash.digest('hex') !== asset.sha256) {
+          throw new Error('desktop update: installer SHA-256 does not match the published index')
+        }
+        await rename(temporary, target)
+      } catch (error) {
+        await rm(temporary, { force: true })
+        throw error
       }
       onProgress(100)
-      await writeFile(target, bytes)
       return target
     },
     async open(path) {
@@ -105,6 +161,20 @@ export function createManualInstall(options: ManualInstallOptions): ManualInstal
         await rm(path, { force: true })
         throw new Error(`desktop update: the installer could not be opened: ${failure}`)
       }
+    },
+    async replace(path) {
+      if (platform !== 'win32') throw new Error('desktop update: in-place replacement is only supported on Windows')
+      await new Promise<void>((resolve, reject) => {
+        const child = start(path, ['/S', '--updated', '--force-run'], {
+          detached: true, stdio: 'ignore', windowsHide: false,
+        })
+        child.once('spawn', () => {
+          child.unref()
+          options.quit()
+          resolve()
+        })
+        child.once('error', reject)
+      })
     },
   }
 }

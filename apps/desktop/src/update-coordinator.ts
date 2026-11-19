@@ -228,10 +228,18 @@ export class DesktopUpdateCoordinator {
       if (this.manual !== undefined) {
         try {
           if (this.installerPath === undefined) throw new Error('desktop update: no installer was downloaded')
+          if (this.manual.replacesInPlace) {
+            if (!await this.beforeRestart()) return this.setState({ phase: 'ready', version })
+            this.assertLive()
+            this.release = { kind: 'handed-off', version }
+            await this.manual.replace(this.installerPath)
+            return this.current
+          }
           await this.manual.open(this.installerPath)
           this.release = { kind: 'handed-off', version }
           return this.setState({ phase: 'ready', version, opened: true })
         } catch (error) {
+          if (this.manual.replacesInPlace) this.release = { kind: 'downloaded', version }
           return this.setState(this.failure(error, 'install'))
         }
       }

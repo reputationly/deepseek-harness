@@ -426,7 +426,7 @@ async function main(): Promise<void> {
   let updateState: DesktopUpdateState = { phase: 'idle' }
   let channelState: DesktopChannelState | undefined
   const updatePresentation = (state: DesktopUpdateState) => ({ ...presentDesktopUpdate(state),
-    ...(manualInstall ? { manualInstall: true } : {}),
+    ...(manualInstall && process.platform !== 'win32' ? { manualInstall: true } : {}),
     ...(channelState?.error === undefined ? {} : { configurationError: channelState.error }) })
   const systemLanguages = app.getPreferredSystemLanguages()
   let locale = windowsLanguage === undefined
@@ -686,7 +686,7 @@ async function main(): Promise<void> {
 
   const manifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
   const packagedChannel = desktopUpdateChannel(manifest)
-  // Unsigned builds hand the published installer to the user instead of replacing themselves.
+  // Unsigned builds use the published installer instead of electron-updater.
   const manualInstall = desktopManualUpdate(manifest)
   const updateFeedDirectory = manualInstall
     ? await readFeedDirectory(process.resourcesPath, async path => readFile(path, 'utf8'))
@@ -760,6 +760,7 @@ async function main(): Promise<void> {
       ? createManualInstall({
         directory: app.getPath('downloads'), feedDirectory: updateFeedDirectory,
         openPath: path => shell.openPath(path),
+        quit: () => { app.quit() },
       })
       : undefined,
   )

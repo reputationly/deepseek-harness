@@ -50,8 +50,12 @@ afterEach(() => { for (const item of coordinators.splice(0)) item.dispose() })
 /** Optional feed artifacts and manual handoff the shared fixture can carry. */
 interface FixtureOptions {
   readonly files?: { url: string; size?: number; sha512?: string }[]
-  readonly manual?: { prepare: (version: string, onProgress: (percent: number) => void) => Promise<string>
-    open: (path: string) => Promise<void> }
+  readonly manual?: {
+    prepare: (version: string, onProgress: (percent: number) => void) => Promise<string>
+    replacesInPlace: boolean
+    open: (path: string) => Promise<void>
+    replace: (path: string) => Promise<void>
+  }
 }
 
 function fixture(
@@ -464,14 +468,17 @@ it('does not diagnose a filesystem cause from error wording alone', async () => 
 
 describe('desktop update coordinator (manual installer handoff)', () => {
   /** Build one manual-mode fixture over the shared stub without duplicating its cast. */
-  function manualFixture(files: { url: string; size?: number; sha512?: string }[]) {
+  function manualFixture(files: { url: string; size?: number; sha512?: string }[], replacesInPlace = false) {
     const prepare = vi.fn(async (
       _version: string,
       onProgress: (percent: number) => void,
     ) => { onProgress(42); onProgress(100); return '/downloads/app-installer' })
     const open = vi.fn(async () => {})
-    const f = fixture('nightly', '1.1.0-rc.1', undefined, { files, manual: { prepare, open } })
-    return { ...f, prepare, open }
+    const replace = vi.fn(async () => {})
+    const f = fixture('nightly', '1.1.0-rc.1', undefined, {
+      files, manual: { prepare, open, replace, replacesInPlace },
+    })
+    return { ...f, prepare, open, replace }
   }
 
   const files = [
@@ -497,8 +504,44 @@ describe('desktop update coordinator (manual installer handoff)', () => {
     expect(await f.coordinator.install('1.1.0-rc.2'))
       .toEqual({ phase: 'ready', version: '1.1.0-rc.2', opened: true })
     expect(f.open).toHaveBeenCalledWith('/downloads/app-installer')
+    expect(f.replace).not.toHaveBeenCalled()
     expect(f.beforeRestart).not.toHaveBeenCalled()
     expect(f.quitAndInstall).not.toHaveBeenCalled()
+  })
+
+  it('prepares the host before handing off an in-place installer', async () => {
+    const f = manualFixture(files, true)
+    const order: string[] = []
+    f.beforeRestart.mockImplementation(async () => { order.push('beforeRestart'); return true })
+    f.replace.mockImplementation(async () => { order.push('replace') })
+    await f.coordinator.check()
+    await f.coordinator.download('1.1.0-rc.2')
+    expect(await f.coordinator.install('1.1.0-rc.2')).toEqual({ phase: 'installing', version: '1.1.0-rc.2' })
+    expect(order).toEqual(['beforeRestart', 'replace'])
+    expect(f.replace).toHaveBeenCalledWith('/downloads/app-installer')
+    expect(f.open).not.toHaveBeenCalled()
+  })
+
+  it('keeps the downloaded installer ready when restart preparation declines', async () => {
+    const f = manualFixture(files, true)
+    f.beforeRestart.mockResolvedValue(false)
+    await f.coordinator.check()
+    await f.coordinator.download('1.1.0-rc.2')
+    expect(await f.coordinator.install('1.1.0-rc.2')).toEqual({ phase: 'ready', version: '1.1.0-rc.2' })
+    expect(f.beforeRestart).toHaveBeenCalledOnce()
+    expect(f.replace).not.toHaveBeenCalled()
+  })
+
+  it('reports a replacement failure and retains the downloaded installer for retry', async () => {
+    const f = manualFixture(files, true)
+    f.replace.mockRejectedValueOnce(new Error('spawn failed'))
+    await f.coordinator.check()
+    await f.coordinator.download('1.1.0-rc.2')
+    expect(await f.coordinator.install('1.1.0-rc.2'))
+      .toMatchObject({ phase: 'error', version: '1.1.0-rc.2', failedOperation: 'install', message: 'spawn failed' })
+    f.replace.mockResolvedValueOnce()
+    expect(await f.coordinator.install('1.1.0-rc.2')).toEqual({ phase: 'installing', version: '1.1.0-rc.2' })
+    expect(f.replace).toHaveBeenCalledTimes(2)
   })
 
   it('surfaces a handoff failure as a download failure', async () => {
