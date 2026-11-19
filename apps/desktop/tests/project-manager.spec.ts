@@ -121,8 +121,12 @@ describe('desktop external plugin profile', () => {
     }
     expect(manifest.dependencies.plugin).toBe('1.0.0')
     expect(manifest.dsh.profile.bundles).not.toContain('plugin')
-    expect(manifest.dsh.profile.bundles).toContain('@deepseek-ai/dsh-web-app')
+    expect(manifest.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
     await manager.applyRelease()
+    // The one-time selection is already recorded, so recovery leaves the IM assistant off.
+    expect((JSON.parse(readFileSync(join(manager.paths.profile, 'package.json'), 'utf8')) as {
+      dsh: { profile: { bundles: string[] } }
+    }).dsh.profile.bundles).not.toContain('@michengai/dsh-im-connect')
     expect(readFileSync(patch, 'utf8')).toContain('[]')
   })
 

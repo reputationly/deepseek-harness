@@ -24,12 +24,14 @@ import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, readProfileManifest, removeLinkProjections, sanitizeProfile, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
 import { writeGatewayProfile } from './brand-gateway.ts'
-import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
+import { OPTIONAL_BUNDLES, PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
+/** Recovery keeps only the built-in layers; optional bundles the template selects, such as the IM assistant, go off. */
+const RECOVERY_BUNDLES = WEB_PROFILE.bundles.filter(name => !OPTIONAL_BUNDLES.includes(name))
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
 const PROFILE_BUILD_SETTINGS = 'allowBuilds:\n  protobufjs: false\n'
 function writeJson(path: string, value: unknown): void {
@@ -70,12 +72,12 @@ export class DesktopProjectManager {
   ) {}
 
   /**
-   * Back up the profile patch and disable third-party bundles without loading application resources.
+   * Back up the profile patch and disable third-party and optional bundles without loading application resources.
    * The caller must stop the Host first.
    * @returns Backup path after the locked profile write, or undefined if the patch was absent.
    */
   async disableAllPlugins(): Promise<string | undefined> {
-    return this.withLock(() => sanitizeProfile('dsh', this.paths.profile, WEB_PROFILE.bundles))
+    return this.withLock(() => sanitizeProfile('dsh', this.paths.profile, RECOVERY_BUNDLES))
   }
 
   /**

@@ -164,7 +164,7 @@ The signed `resources/app.asar/dsh/desktop-runtime.json` binds the shell version
 2. Before Host startup, Desktop validates the runtime descriptor and prepares the profile without modifying installed packages, declarations, or the lockfile; it removes only the `.dsh-module-fallback` projections earlier link-backend launches wrote, and startup never runs pnpm. Packages inside the profile keep native precedence, and installation package names resolve through the runtime resolution ([lookup order](../../.agents/notes/implemented/architecture/2026-09-19-profile-resolution-lookup-order.md); [cleanup removal](../../.agents/notes/implemented/simplification/2026-09-19-remove-desktop-profile-core-cleanup.md)).
 3. Changes to Electron's Node version, platform, or architecture preserve installed plugins. Native incompatibilities surface during loading and can be repaired through pnpm.
 4. The main application’s Plugins page uses the shared [plugin manager](../../packages/boot/plugin-manager/README.md) against the Desktop profile. Package operations use bundled pnpm with normal user and profile configuration.
-5. The shared manager owns installation errors, activation, and restart requirements. Native recovery can disable third-party bundles even when the Host cannot start.
+5. The shared manager owns installation errors, activation, and restart requirements. Native recovery can disable third-party and optional bundles, including the IM assistant, even when the Host cannot start.
 
 The [Web plugin UI](../../packages/client/ui-plugin-manager/README.md) owns the management interface. Desktop profile initialization and recovery preserve installed plugin files.
 
