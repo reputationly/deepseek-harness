@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for suanli-gateway.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/suanli-gateway.md
+/suanli-gateway-surfaces:
+  en: 2b3a23aa2796ede2
+  zh: ee0fc621c3ad6230
+/suanli-gateway-surfaces/what-the-catalog-adopts:
+  en: af52f6d1620af1c2
+  zh: 0c2b282769631dab
+/suanli-gateway-surfaces/what-the-task-transport-drives:
+  en: 8f8595105f07a41c
+  zh: 59e53d33a6cb7e95
+/suanli-gateway-surfaces/authority-and-limits:
+  en: 381c3ec811d0b7ff
+  zh: f539150fddec9cdf

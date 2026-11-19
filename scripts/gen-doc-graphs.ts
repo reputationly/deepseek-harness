@@ -124,6 +124,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Reads the current catalog text of an official plugin card and enables the plugin through the profile plugin manager after a click.',
   },
   {
+    key: 'deepseekChatImport',
+    pkg: 'deepseek-chat-import',
+    title: 'DeepSeek chat export import',
+    mode: 'service',
+    note: 'Serves the owner-only upload route that imports each conversation of a DeepSeek chat export as a Session, and the upload limits the browser checks first.',
+  },
+  {
     key: 'headlessStartup',
     pkg: 'headless',
     title: 'Headless invocation options',
@@ -269,14 +276,9 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The native provider owns application consent and cancellation; the optional Client page queries and changes those decisions through its Remote.',
   },
   {
-    key: 'canvas', pkg: 'canvas', title: 'Project canvas document',
-    mode: 'core', consumers: ['tool-media', 'client-ui-sidebar-canvas'],
-    note: 'One validated document per project directory; the model tools, the media tools, and the Client all write through this service.',
-  },
-  {
-    key: 'officeToPdf', pkg: 'office-to-pdf', title: 'Office to PDF conversion',
-    mode: 'core', consumers: ['client-ui-sidebar-documentpreview'],
-    note: 'Authorized Office bytes are converted on the Host using the declared native target engine, or Node WASM when no native target is declared.',
+    key: 'officeKit', pkg: 'office-kit', title: 'Office rendering, conversion, and recalculation',
+    mode: 'core', consumers: ['client-ui-sidebar-documentpreview', 'tool-office'],
+    note: 'Authorized Office bytes are rendered as PDFs or images, converted, or recalculated on the Host using the declared native target engine, or Node WASM when no native target is declared.',
   },
   {
     key: 'attachments',
@@ -498,9 +500,9 @@ const SERVICE_ROLES: ServiceRole[] = [
     key: 'deepseekAccount',
     pkg: 'deepseek-account',
     title: 'DeepSeek account',
-    mode: 'seam',
-    implementations: ['deepseek-account-platform'],
-    consumers: ['api-account-controller', 'llm-deepseek'],
+    mode: 'service',
+    implementations: [],
+    consumers: ['llm-deepseek'],
     note: 'The Host owns browser authorization and local credentials; UI consumers receive state without tokens.',
   },
   {
@@ -770,7 +772,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'terminal',
     title: 'Persistent PTY session registry',
     mode: 'seam',
-    implementations: ['terminal-bash'],
+    implementations: ['terminal-bash', 'terminal-panel'],
     consumers: ['tool-terminal'],
     note: 'The registry owns exact-Agent session identity and cleanup; backends own terminal mechanics, while tool-terminal exposes the owner-scoped model tools.',
   },
@@ -780,7 +782,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Process-sandbox seam',
     mode: 'seam',
     implementations: ['sandbox-local', 'sandbox-ssh'],
-    consumers: ['bash-sandbox', 'terminal-bash'],
+    consumers: ['bash-sandbox', 'terminal-bash', 'api-terminal-controller'],
     note: 'Consumers hand over the exact argv they are about to spawn; same-world backends wrap it under a per-call policy and report enforcement.',
   },
   {
@@ -789,7 +791,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Sandbox policy home',
     mode: 'core',
     implementations: [],
-    consumers: ['bash-sandbox', 'fs-sandbox', 'terminal-bash'],
+    consumers: ['bash-sandbox', 'fs-sandbox', 'terminal-bash', 'terminal-panel'],
     note: 'The one home for the deployment default mode + workspace root; only the sandboxed executor and provider read the service (the tool layers use the pure `sandbox/mode` fold it also exports). Both enforcing families read it so bash and fs cannot confine to different roots.',
   },
   {
@@ -978,20 +980,6 @@ const SERVICE_ROLES: ServiceRole[] = [
     mode: 'core',
     consumers: ['tool-cordis'],
     note: 'Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport.',
-  },
-  {
-    key: 'gatewayStatus',
-    pkg: 'api-gateway-status',
-    title: 'Gateway availability Remote',
-    mode: 'service',
-    note: 'Publishes cached gateway availability; refresh resolves the credential reference and coalesces concurrent probes. Status payloads exclude credentials.',
-  },
-  {
-    key: 'wechat',
-    pkg: 'wechat',
-    title: 'Local WeChat binding Remote',
-    mode: 'service',
-    note: 'Owns the local iLink binding and exposes login, logout, project selection and sanitized connection status to settings.',
   },
   {
     key: 'liveshareShares',

@@ -1,0 +1,113 @@
+# 蒜狸网关面
+
+[English](suanli-gateway.md) | 中文
+
+本产品的每一次模型调用都经过同一个网关，因此有两个 Host 命名空间把网关自己的契约翻译成客户端与设置页要渲染的东西：[`@deepseek-ai/dsh-suanli-model-catalog`](../../packages/llm/suanli-model-catalog) 采用网关的模型列表与能力目录，[`@deepseek-ai/dsh-suanli-media-tasks`](../../packages/llm/suanli-media-tasks) 在图像与视频传输上驱动生成任务。两者都把网关 key 留在 Host；任何 key、任务 id 与产物地址都不经过模型请求。
+
+## 目录采纳了什么
+
+一次刷新读取 `GET <modelsPath>`（默认 `/v1/models`），只留要求的端点类型（默认 `openai`，即对话端点），与本部署已知的条目合并——留下来的条目保留它们已有的 `contextWindow` 与 `inputModalities`，因为网关列表不带这些字段——再把结果写进路由的 volatile `models` 字段，选择器因此无须重启即可跟随平台。失败的、未授权的或空的列表永远不清空目录：路由继续提供原有内容，`refresh()` 上报 `no-credential`、`unauthorized`、`unreachable` 或 `empty-listing`。同一次刷新还读 `GET <capabilitiesPath>`（默认 `/v1/ov/capabilities`），把网关声明的能力归入本产品的能力类：对话、文生图与图生图、文生视频、首尾帧、参考生视频、音乐与语音。一个声明了多种玩法的条目属于它命名的每一个类，所以一个同时带 `t2i` 与 `i2i` 的图像条目会填满两个图像类；词表之外的组合归入 `other` 而不是消失。
+
+## 任务传输驱动了什么
+
+网关用 OpenAI 兼容的任务端点提供生成：图像在 `/v1/images/generations`，视频与音乐在 `/v1/videos`。提交要么直接返回产物——图像端点会阻塞到图真的生成完——要么返回任务 id 供轮询；`status` 与 `wait` 把网关的词归一化成 `running`、`succeeded`、`failed`，读取 `progress` 与产物地址，而到截止时间的等待上报 `timed-out` 并让任务继续跑。只有显式 `cancel` 才让网关停下任务，且任务越过可停止的时点后网关可能用 `409` 拒绝。`download` 拉取任务上报的产物，`saveArtifact` 对调用方已持有的地址做同样的事，同步出图就是这样落盘的。
+
+## 权威与边界
+
+网关拥有「有哪些模型、每个模型提供哪些玩法、一个任务要跑多久」；本产品拥有合并、类别词表与预算。这里不决定模型的价格、可用性或产出质量，而网关没有声明的类不会出现，界面因此不会承诺平台给不出的能力。
+
+<!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
+
+<a id="cordis-surface"></a>
+
+## Cordis API
+
+Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxsuanlimedia--suanlimediatasksservice"></a>
+
+### `ctx.suanliMedia` — `SuanliMediaTasksService`
+
+Host service backing the generated `ctx.remote.suanliMedia` namespace.
+
+```ts cordis-catalog
+/**
+ * Submit one generation.
+ * @param request - operation, model, prompt, and parameters.
+ * @returns the task handle, or why no task exists.
+ */
+@Remote async submit(request: MediaSubmitRequest): Promise<MediaSubmitResult>
+
+/**
+ * Read one task's state.
+ * @param taskId - gateway task id.
+ * @param operation - operation that submitted it; the transport follows from it.
+ * @returns the observation, or why it could not be read.
+ */
+@Remote async status(taskId: string, operation: MediaOperation): Promise<MediaStatusResult>
+
+/**
+ * Poll one task until it finishes.
+ * @param taskId - gateway task id.
+ * @param operation - operation that submitted it.
+ * @param timeoutMs - how long the caller will wait.
+ * @returns the terminal observation, or why the wait ended early.
+ */
+@Remote async wait(taskId: string, operation: MediaOperation, timeoutMs: number): Promise<MediaStatusResult>
+
+/**
+ * Ask the gateway to cancel one task.
+ * @param taskId - gateway task id.
+ * @param operation - operation that submitted it.
+ * @returns whether the gateway accepted the request.
+ */
+@Remote async cancel(taskId: string, operation: MediaOperation): Promise<MediaCancelResult>
+
+/**
+ * Save an artifact URL a caller already received; image generation answers synchronously.
+ * @param url - artifact URL the gateway reported.
+ * @param targetPath - absolute path inside the caller's workspace.
+ * @returns the written path and size, or why nothing was written.
+ */
+@Remote async saveArtifact(url: string, targetPath: string): Promise<MediaDownloadResult>
+
+/**
+ * Download a finished artifact to a path the caller owns.
+ * @param taskId - gateway task id.
+ * @param operation - operation that submitted it.
+ * @param targetPath - absolute path inside the caller's workspace.
+ * @returns the written path and size, or why nothing was written.
+ */
+@Remote async download(taskId: string, operation: MediaOperation, targetPath: string): Promise<MediaDownloadResult>
+```
+
+Source: [`packages/llm/suanli-media-tasks/src/index.ts`](../../packages/llm/suanli-media-tasks/src/index.ts)
+
+<a id="ctxsuanlimodels--suanlimodelcatalogservice"></a>
+
+### `ctx.suanliModels` — `SuanliModelCatalogService`
+
+Host service backing the generated `ctx.remote.suanliModels` namespace.
+
+```ts cordis-catalog
+/**
+ * Refresh the catalog from the gateway and put it in effect.
+ * @returns how the catalog changed, or why it stayed as it was.
+ */
+@Remote refresh(): Promise<CatalogSyncResult>
+
+/**
+ * Read the entries the route offers now, without contacting the gateway.
+ * @returns the catalog in effect.
+ */
+@Remote read(): readonly CatalogEntry[]
+
+/**
+ * Read the capability classes the gateway declared at the last refresh.
+ * @returns one member list per class, empty before a refresh reads the catalog.
+ */
+@Remote capabilities(): readonly ClassMembers[]
+```
+
+Source: [`packages/llm/suanli-model-catalog/src/index.ts`](../../packages/llm/suanli-model-catalog/src/index.ts)
+<!-- END GENERATED cordis-surface -->
