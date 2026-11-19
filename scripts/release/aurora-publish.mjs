@@ -286,12 +286,15 @@ function zipApplication(artifacts, targetDirectory, zipName) {
 }
 
 /**
- * Build the macOS feed electron-updater reads when the build produced none.
+ * Build the feed electron-updater reads when the build produced none.
+ *
+ * On macOS the ZIP stays the in-place payload; the disk image is listed after it because builds
+ * that hand the installer to the user pick their download from the feed's file list.
  * @param options - artifact directory, target, version, and the installers already collected.
  * @returns the feed text, with the ZIP appended to the caller's file list.
  */
-function synthesizeFeed({ artifacts, target, version, files }) {
-  let payload
+export function synthesizeFeed({ artifacts, target, version, files }) {
+  let entries
   if (target.startsWith('darwin')) {
     const diskImage = files.find(name => name.endsWith('.dmg'))
     if (diskImage === undefined) throw new Error(`aurora publish: ${target} produced no disk image to pair with a ZIP`)
@@ -299,23 +302,23 @@ function synthesizeFeed({ artifacts, target, version, files }) {
     const zipPath = join(artifacts, zipName)
     if (!existsSync(zipPath)) zipApplication(artifacts, target === 'darwin-arm64' ? 'mac-arm64' : 'mac', zipName)
     if (!files.includes(zipName)) files.push(zipName)
-    payload = zipName
+    entries = [zipName, diskImage]
   } else {
     const installer = files.find(name => name.endsWith('.exe'))
     if (installer === undefined) throw new Error(`aurora publish: ${target} produced no installer`)
-    payload = installer
+    entries = [installer]
   }
-  const bytes = readFileSync(join(artifacts, payload))
-  const sha512 = createHash('sha512').update(bytes).digest('base64')
-  const size = bytes.length
+  const described = entries.map((name) => {
+    const bytes = readFileSync(join(artifacts, name))
+    return { name, sha512: createHash('sha512').update(bytes).digest('base64'), size: bytes.length }
+  })
+  const [payload] = described
   return [
     `version: ${version}`,
     'files:',
-    `  - url: ${payload}`,
-    `    sha512: ${sha512}`,
-    `    size: ${size}`,
-    `path: ${payload}`,
-    `sha512: ${sha512}`,
+    ...described.flatMap(file => [`  - url: ${file.name}`, `    sha512: ${file.sha512}`, `    size: ${String(file.size)}`]),
+    `path: ${payload.name}`,
+    `sha512: ${payload.sha512}`,
     `releaseDate: '${new Date().toISOString()}'`,
     '',
   ].join('\n')

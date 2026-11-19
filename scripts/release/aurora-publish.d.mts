@@ -24,6 +24,21 @@ export interface AuroraTargetArtifacts {
  */
 export declare function collect(directory: string): Map<string, AuroraTargetArtifacts>
 
+/** Inputs of one synthesized update feed. */
+export interface AuroraFeedOptions {
+  readonly artifacts: string
+  readonly target: string
+  readonly version: string
+  readonly files: string[]
+}
+
+/**
+ * Build the feed electron-updater reads when the build produced none.
+ * @param options - artifact directory, target, version, and the installers already collected.
+ * @returns the feed text, with the ZIP appended to the caller's file list.
+ */
+export declare function synthesizeFeed(options: AuroraFeedOptions): string
+
 /**
  * Rewrite one electron-builder feed so its URLs point at the versioned directory.
  * @param source - original feed text.

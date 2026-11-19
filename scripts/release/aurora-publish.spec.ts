@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { buildIndex, collect, latestName, type AuroraIndex } from './aurora-publish.mjs'
+import { buildIndex, collect, latestName, rewriteFeed, synthesizeFeed, type AuroraIndex } from './aurora-publish.mjs'
 
 describe('aurora publish artifact grouping', () => {
   it('names the channel feeds packaged clients request', () => {
@@ -56,5 +56,35 @@ describe('latest index', () => {
       size: 15,
       sha256: createHash('sha256').update('hello installer').digest('hex'),
     })
+  })
+})
+
+describe('synthesized macOS feed', () => {
+  it('keeps the ZIP as the in-place payload and lists the disk image for installer handoff', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'aurora-feed-'))
+    onTestFinished(() => { rmSync(directory, { recursive: true, force: true }) })
+    const diskImage = 'suanli-assistant-1.0.0-mac-arm64-unsigned.dmg'
+    const zip = 'suanli-assistant-1.0.0-mac-arm64-unsigned.zip'
+    writeFileSync(join(directory, diskImage), 'disk image')
+    writeFileSync(join(directory, zip), 'zip payload')
+    const files = [diskImage]
+    const feed = rewriteFeed(
+      synthesizeFeed({ artifacts: directory, target: 'darwin-arm64', version: '1.0.0', files }),
+      'https://download.example.test', 'suanli-assistant', 'darwin-arm64', '1.0.0',
+    )
+    const base = 'https://download.example.test/suanli-assistant/darwin-arm64/versions/1.0.0'
+    const sha512 = (text: string): string => createHash('sha512').update(text).digest('base64')
+    expect(files).toEqual([diskImage, zip])
+    expect(feed).toContain([
+      'files:',
+      `  - url: ${base}/${zip}`,
+      `    sha512: ${sha512('zip payload')}`,
+      '    size: 11',
+      `  - url: ${base}/${diskImage}`,
+      `    sha512: ${sha512('disk image')}`,
+      '    size: 10',
+      `path: ${base}/${zip}`,
+      `sha512: ${sha512('zip payload')}`,
+    ].join('\n'))
   })
 })
