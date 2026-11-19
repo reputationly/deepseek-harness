@@ -50,7 +50,7 @@ afterEach(() => { for (const item of coordinators.splice(0)) item.dispose() })
 /** Optional feed artifacts and manual handoff the shared fixture can carry. */
 interface FixtureOptions {
   readonly files?: { url: string; size?: number; sha512?: string }[]
-  readonly manual?: { prepare: (asset: { url: string; name: string }, onProgress: (percent: number) => void) => Promise<string>
+  readonly manual?: { prepare: (version: string, onProgress: (percent: number) => void) => Promise<string>
     open: (path: string) => Promise<void> }
 }
 
@@ -466,7 +466,7 @@ describe('desktop update coordinator (manual installer handoff)', () => {
   /** Build one manual-mode fixture over the shared stub without duplicating its cast. */
   function manualFixture(files: { url: string; size?: number; sha512?: string }[]) {
     const prepare = vi.fn(async (
-      _asset: { url: string; name: string },
+      _version: string,
       onProgress: (percent: number) => void,
     ) => { onProgress(42); onProgress(100); return '/downloads/app-installer' })
     const open = vi.fn(async () => {})
@@ -486,10 +486,7 @@ describe('desktop update coordinator (manual installer handoff)', () => {
     expect(await f.coordinator.download('1.1.0-rc.2')).toEqual({ phase: 'ready', version: '1.1.0-rc.2' })
     expect(f.downloadUpdate).not.toHaveBeenCalled()
     expect(f.prepare).toHaveBeenCalledOnce()
-    const asset = f.prepare.mock.calls[0]![0]
-    expect(asset.url).toBe(process.platform === 'win32'
-      ? 'https://cdn.example/app-1.1.0-rc.2-win-x64.exe'
-      : 'https://cdn.example/app-1.1.0-rc.2-mac-arm64.dmg')
+    expect(f.prepare.mock.calls[0]![0]).toBe('1.1.0-rc.2')
     expect(f.states.some(state => state.phase === 'downloading' && state.percent === 42)).toBe(true)
   })
 
@@ -504,12 +501,11 @@ describe('desktop update coordinator (manual installer handoff)', () => {
     expect(f.quitAndInstall).not.toHaveBeenCalled()
   })
 
-  it('reports a feed without a runnable installer instead of promising a restart', async () => {
-    const f = manualFixture([{ url: 'https://cdn.example/app-1.1.0-rc.2-mac-arm64.zip' }])
+  it('surfaces a handoff failure as a download failure', async () => {
+    const f = manualFixture(files)
+    f.prepare.mockRejectedValueOnce(new Error('desktop update: the feed lists no installer for this platform'))
     await f.coordinator.check()
-    expect(await f.coordinator.download('1.1.0-rc.2')).toMatchObject({
-      phase: 'error', failedOperation: 'download',
-    })
-    expect(String((await f.coordinator.download('1.1.0-rc.2')).message)).toMatch(/no installer for this platform/u)
+    expect(await f.coordinator.download('1.1.0-rc.2')).toMatchObject({ phase: 'error', failedOperation: 'download' })
+    expect(f.coordinator.state.message).toMatch(/no installer for this platform/u)
   })
 })

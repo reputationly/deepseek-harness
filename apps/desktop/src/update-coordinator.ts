@@ -6,7 +6,7 @@ import { app } from 'electron'
 import electronUpdater, { type AppUpdater, type ProgressInfo, type UpdateInfo, type UpdateCheckResult } from 'electron-updater'
 import { gt, valid } from 'semver'
 import type { DesktopUpdateState } from './ipc.ts'
-import { selectInstallerAsset, type InstallerAsset, type ManualInstallPort } from './update-manual-install.ts'
+import type { ManualInstallPort } from './update-manual-install.ts'
 import { DesktopUpdateHttpExecutor } from './updates/electron-updater/http-executor.ts'
 import { DesktopUpdatePreparationError, downloadFailureDetails } from './update-error.ts'
 import type { DesktopUpdateChannel } from './update-channel.ts'
@@ -29,8 +29,6 @@ export class DesktopUpdateCoordinator {
   private checkOperation: Promise<DesktopUpdateState> | undefined
   private downloadOperation: Promise<DesktopUpdateState> | undefined
   private installOperation: Promise<DesktopUpdateState> | undefined
-  /** Installer asset the feed published for this target, when this build hands it off. */
-  private manualAsset: InstallerAsset | undefined
   /** Downloaded installer path, cleared when a different target becomes the candidate. */
   private installerPath: string | undefined
 
@@ -190,9 +188,7 @@ export class DesktopUpdateCoordinator {
       this.setState({ phase: 'downloading', version, percent: 0 })
       try {
         if (this.manual !== undefined) {
-          const asset = this.manualAsset
-          if (asset === undefined) throw new Error('desktop update: the feed lists no installer for this platform')
-          const path = await this.manual.prepare(asset, (percent) => {
+          const path = await this.manual.prepare(version, (percent) => {
             if (generation === this.generation && !this.disposed) this.setState({ phase: 'downloading', version, percent })
           })
           if (generation !== this.generation || this.disposed) return this.current
@@ -307,30 +303,10 @@ export class DesktopUpdateCoordinator {
       this.release = result.isUpdateAvailable && gt(version, this.currentVersion())
         ? { kind: 'checked', version } : { kind: 'none' }
       this.installerPath = undefined
-      this.manualAsset = this.manual === undefined || this.candidate === undefined ? undefined
-        : selectInstallerAsset(installerAssetsOf(result.updateInfo.files), process.platform)
       return this.setState(this.candidate === undefined ? { phase: 'idle' } : { phase: 'available', version })
     } catch (error) {
       if (generation !== this.generation || this.disposed) return this.current
       return this.failure(error, 'check')
     }
   }
-}
-
-/**
- * Map the feed's file list onto the fields the installer handoff reads.
- * @param files - artifacts named by the update feed.
- * @returns installer candidates in feed order.
- */
-function installerAssetsOf(files: readonly { url: string; size?: number; sha512?: string }[] | undefined): InstallerAsset[] {
-  return (files ?? []).flatMap((file) => {
-    const name = file.url.split('/').pop()
-    if (name === undefined || name === '') return []
-    return [{
-      url: file.url,
-      name,
-      ...(file.size === undefined ? {} : { size: file.size }),
-      ...(file.sha512 === undefined ? {} : { sha512: file.sha512 }),
-    }]
-  })
 }

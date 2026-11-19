@@ -21,8 +21,8 @@ export interface InstallerAsset {
   readonly name: string
   /** Published byte size, checked against the download when the feed names it. */
   readonly size?: number
-  /** Published base64 SHA-512, checked against the download when the feed names it. */
-  readonly sha512?: string
+  /** Published SHA-256, checked against the download when the index names it. */
+  readonly sha256?: string
 }
 
 /**
@@ -43,12 +43,12 @@ export function selectInstallerAsset(
 /** Download-and-open handoff the coordinator drives instead of an in-place replacement. */
 export interface ManualInstallPort {
   /**
-   * Download one installer and verify what the feed published about it.
-   * @param asset - artifact to fetch.
+   * Resolve this platform's installer for one version, download it, and verify it.
+   * @param version - version the caller confirmed, checked against the published index.
    * @param onProgress - receives whole percentages while the artifact streams in.
    * @returns the saved path.
    */
-  prepare(asset: InstallerAsset, onProgress: (percent: number) => void): Promise<string>
+  prepare(version: string, onProgress: (percent: number) => void): Promise<string>
   /**
    * Hand a downloaded installer to the operating system.
    * @param path - saved installer path.
@@ -60,6 +60,8 @@ export interface ManualInstallPort {
 export interface ManualInstallOptions {
   /** Directory the installer is saved in, normally the user's downloads folder. */
   readonly directory: string
+  /** Published index directory, the same one carrying `latest.json`. */
+  readonly feedDirectory: string
   /** Transport, injected so tests own their bytes. */
   readonly send?: typeof fetch
   /** Opens a saved file the way the desktop shell does. */
@@ -74,7 +76,13 @@ export interface ManualInstallOptions {
 export function createManualInstall(options: ManualInstallOptions): ManualInstallPort {
   const send = options.send ?? fetch
   return {
-    async prepare(asset, onProgress) {
+    async prepare(version, onProgress) {
+      const index = await readIndex(options.feedDirectory, send)
+      if (index.version !== version) {
+        throw new Error(`desktop update: the feed offers ${index.version}, the confirmed target is ${version}`)
+      }
+      const asset = selectInstallerAsset(index.files, process.platform)
+      if (asset === undefined) throw new Error('desktop update: the feed lists no installer for this platform')
       const target = `${options.directory}/${asset.name}`
       await mkdir(dirname(target), { recursive: true })
       const response = await send(asset.url)
@@ -83,9 +91,9 @@ export function createManualInstall(options: ManualInstallOptions): ManualInstal
       if (asset.size !== undefined && bytes.byteLength !== asset.size) {
         throw new Error(`desktop update: installer is ${String(bytes.byteLength)} bytes, the feed published ${String(asset.size)}`)
       }
-      if (asset.sha512 !== undefined) {
-        const digest = createHash('sha512').update(bytes).digest('base64')
-        if (digest !== asset.sha512) throw new Error('desktop update: installer SHA-512 does not match update metadata')
+      if (asset.sha256 !== undefined) {
+        const digest = createHash('sha256').update(bytes).digest('hex')
+        if (digest !== asset.sha256) throw new Error('desktop update: installer SHA-256 does not match the published index')
       }
       onProgress(100)
       await writeFile(target, bytes)
@@ -99,4 +107,60 @@ export function createManualInstall(options: ManualInstallOptions): ManualInstal
       }
     },
   }
+}
+
+/** One published index, in the fields the handoff reads. */
+interface PublishedIndex {
+  readonly version: string
+  readonly files: readonly InstallerAsset[]
+}
+
+/**
+ * Read the published index beside the update feed.
+ * @param feedDirectory - directory the packaged update manifest points at.
+ * @param send - transport.
+ * @returns the version and installer entries it names.
+ */
+async function readIndex(feedDirectory: string, send: typeof fetch): Promise<PublishedIndex> {
+  const response = await send(`${feedDirectory}/latest.json`)
+  if (!response.ok) throw new Error(`desktop update: latest.json answered HTTP ${String(response.status)}`)
+  const payload: unknown = await response.json()
+  if (typeof payload !== 'object' || payload === null) throw new Error('desktop update: latest.json is not an object')
+  const { version, files } = payload as { version?: unknown; files?: unknown }
+  if (typeof version !== 'string' || version === '') throw new Error('desktop update: latest.json has no version')
+  if (!Array.isArray(files)) throw new Error('desktop update: latest.json lists no files')
+  return {
+    version,
+    files: files.flatMap((entry: unknown) => {
+      if (typeof entry !== 'object' || entry === null) return []
+      const { name, url, size, sha256 } = entry as { name?: unknown; url?: unknown; size?: unknown; sha256?: unknown }
+      if (typeof name !== 'string' || typeof url !== 'string' || name === '' || url === '') return []
+      return [{
+        name,
+        url,
+        ...(typeof size === 'number' ? { size } : {}),
+        ...(typeof sha256 === 'string' ? { sha256 } : {}),
+      }]
+    }),
+  }
+}
+
+/**
+ * Read the update feed directory the packaged application polls.
+ * @param resourcesPath - packaged `Resources` directory.
+ * @param readFile - file reader, injected so tests need no packaged app.
+ * @returns the directory URL, or `undefined` when the build carries no update source.
+ */
+export async function readFeedDirectory(
+  resourcesPath: string,
+  readFile: (path: string) => Promise<string>,
+): Promise<string | undefined> {
+  let text: string
+  try {
+    text = await readFile(`${resourcesPath}/app-update.yml`)
+  } catch {
+    return undefined
+  }
+  const match = /^url:\s*(\S+)\s*$/mu.exec(text)
+  return match?.[1]
 }

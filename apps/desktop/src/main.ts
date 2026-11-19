@@ -40,7 +40,7 @@ import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLoc
 import type { DesktopMessages } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { desktopManualUpdate, desktopUpdateChannel } from './update-channel.ts'
-import { createManualInstall } from './update-manual-install.ts'
+import { createManualInstall, readFeedDirectory } from './update-manual-install.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
@@ -688,6 +688,9 @@ async function main(): Promise<void> {
   const packagedChannel = desktopUpdateChannel(manifest)
   // Unsigned builds hand the published installer to the user instead of replacing themselves.
   const manualInstall = desktopManualUpdate(manifest)
+  const updateFeedDirectory = manualInstall
+    ? await readFeedDirectory(process.resourcesPath, async path => readFile(path, 'utf8'))
+    : undefined
   const channelSettings = new DesktopUpdateSettings(app.getPath('userData'), packagedChannel)
   const initialChannel = await channelSettings.load()
   channelState = { channel: initialChannel.kind === 'ready' ? initialChannel.channel : null,
@@ -753,8 +756,11 @@ async function main(): Promise<void> {
     (success, reason) => { void track('desktop_upgrade_download_result', { is_success: success, ...reason === undefined ? {} : { error_reason: reason } }) },
     updateChannel,
     undefined,
-    manualInstall
-      ? createManualInstall({ directory: app.getPath('downloads'), openPath: path => shell.openPath(path) })
+    manualInstall && updateFeedDirectory !== undefined
+      ? createManualInstall({
+        directory: app.getPath('downloads'), feedDirectory: updateFeedDirectory,
+        openPath: path => shell.openPath(path),
+      })
       : undefined,
   )
 
