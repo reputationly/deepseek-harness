@@ -12,6 +12,7 @@ import { syncWindowsAppearance } from './preload-windows.ts'
 import { installMandatoryUpdateOverlay } from './preload-mandatory-overlay.ts'
 import { createDesktopBrowserBridge } from './preload-browser.ts'
 import type { FileDragHandle } from '@deepseek-ai/dsh-util-file-drag'
+import { createPetHostBridge } from './pet/pet-host-bridge.ts'
 
 function createProductApi(): DshDesktopProductApi {
   return {
@@ -141,4 +142,5 @@ if (location.protocol === `${SCHEME}:` && location.hostname === 'app') {
     read: () => ipcRenderer.invoke(DESKTOP_IPC.localeBootstrap),
     onChange: (locale: string) => { ipcRenderer.send(DESKTOP_IPC.localeChanged, locale) },
   })
+  if (process.isMainFrame) contextBridge.exposeInMainWorld('dshPetHost', createPetHostBridge(ipcRenderer))
 }

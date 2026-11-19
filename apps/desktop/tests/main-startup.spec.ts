@@ -183,6 +183,7 @@ const harness = await vi.hoisted(async () => {
     getLocale: (): string => 'en-US',
     getPreferredSystemLanguages: () => ['en-US'],
     getVersion: () => '1.0.0',
+    getName: (): string => 'desktop-test',
     getAppPath: (): string => 'desktop-test-app',
     setAppLogsPath: vi.fn(),
     getPath: vi.fn<(name: string) => string>(),
@@ -337,6 +338,8 @@ vi.mock('electron', () => ({
   Tray: harness.FakeTray,
   nativeImage: { createFromPath: (path: string) => ({ path }) },
 }))
+// The pet window owns a native surface of its own; its policy has a dedicated spec.
+vi.mock('../src/pet/pet-window.ts', () => ({ installPetWindow: vi.fn(() => () => {}) }))
 vi.mock('../src/background-notice.ts', () => ({ DesktopBackgroundNotice: class {
   constructor(options: { markerPath: string }) { harness.backgroundNotice.markerPath = options.markerPath }
   readonly close = harness.backgroundNotice.close

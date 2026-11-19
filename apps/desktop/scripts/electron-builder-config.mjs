@@ -164,6 +164,7 @@ export function createElectronBuilderConfig(
       'lib/preload-platform-account.cjs',
       'lib/preload-update-dialog.cjs',
       'lib/preload-welcome.cjs',
+      'lib/preload-pet.cjs',
       'renderer/**/*',
       'package.json',
       '!node_modules/**/*.{js,cjs,mjs,ts,cts,mts,css}.map',

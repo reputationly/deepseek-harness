@@ -50,6 +50,7 @@ import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashRep
 import { OperationJournal } from './operation-journal.ts'
 import { runOperationReportJob, type OperationReportJobResult } from './operation-report-job.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
+import { installPetWindow } from './pet/pet-window.ts'
 import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
 import { brandGateway, gatewayTokenURL, storedGatewayKey } from './brand-gateway.ts'
 import { probeGatewayKey } from './gateway-probe.ts'
@@ -1608,6 +1609,7 @@ async function main(): Promise<void> {
   })
 
   mainWindow = createMainWindow()
+  installPetWindow({ source: () => mainWindow?.webContents, reveal: () => { focusPrimaryWindow() } })
   if (typeof manifest !== 'object' || manifest === null) throw new Error('desktop policy: invalid application manifest')
   const developmentPolicy = app.isPackaged ? undefined : process.env.DSH_DESKTOP_MANDATORY_UPDATE_CONFIG
   const policyInput: unknown = app.isPackaged
