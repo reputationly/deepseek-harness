@@ -62,8 +62,16 @@ function indexFor(
   }
 }
 
-function manualPort(directory: string, send: typeof fetch, openPath: (path: string) => Promise<string> = async () => '') {
-  return createManualInstall({ directory, feedDirectory: FEED, platform: 'darwin', send, openPath, quit: () => {} })
+function manualPort(
+  directory: string,
+  send: typeof fetch,
+  openPath: (path: string) => Promise<string> = async () => '',
+  ownsDirectory?: boolean,
+) {
+  return createManualInstall({
+    directory, feedDirectory: FEED, platform: 'darwin', send, openPath, quit: () => {},
+    ...(ownsDirectory === undefined ? {} : { ownsDirectory }),
+  })
 }
 
 async function expectDownloadFilesMissing(directory: string) {
@@ -141,6 +149,40 @@ describe('createManualInstall', () => {
     const percent: number[] = []
     await port.prepare('1.1.0-rc.2', (value) => { percent.push(value) })
     expect(percent).toEqual([100])
+  })
+
+  it('clears old installers when the updater owns the directory', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
+    created.push(directory)
+    const oldPath = join(directory, 'old-installer.exe')
+    await writeFile(oldPath, 'old installer')
+    const { send } = transport(indexFor())
+    const port = manualPort(directory, send, async () => '', true)
+    const path = await port.prepare('1.1.0-rc.2', () => {})
+    await expect(readFile(oldPath)).rejects.toThrow()
+    expect([...await readFile(path)]).toEqual([...bytes])
+  })
+
+  it('preserves old installers when the updater does not own the directory', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
+    created.push(directory)
+    const oldPath = join(directory, 'old-installer.exe')
+    await writeFile(oldPath, 'old installer')
+    const { send } = transport(indexFor())
+    const port = manualPort(directory, send)
+    await port.prepare('1.1.0-rc.2', () => {})
+    await expect(readFile(oldPath)).resolves.toEqual(Buffer.from('old installer'))
+  })
+
+  it('preserves old installers when feed validation fails before owned-directory cleanup', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
+    created.push(directory)
+    const oldPath = join(directory, 'old-installer.exe')
+    await writeFile(oldPath, 'old installer')
+    const { send } = transport(indexFor())
+    const port = manualPort(directory, send, async () => '', true)
+    await expect(port.prepare('1.1.0-rc.1', () => {})).rejects.toThrow(/the feed offers 1.1.0-rc.2/u)
+    await expect(readFile(oldPath)).resolves.toEqual(Buffer.from('old installer'))
   })
 
   it('rejects a version the feed no longer offers', async () => {

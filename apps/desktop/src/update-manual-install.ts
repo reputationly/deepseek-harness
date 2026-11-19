@@ -85,6 +85,8 @@ type ManualInstallSpawn = (
 export interface ManualInstallOptions {
   /** Directory the installer is saved in, normally the user's downloads folder. */
   readonly directory: string
+  /** Whether the updater owns this directory and clears it before each download. */
+  readonly ownsDirectory?: boolean
   /** Published index directory, the same one carrying `latest.json`. */
   readonly feedDirectory: string
   /** Platform used to select the installer and replacement behavior; defaults to the current platform. */
@@ -117,6 +119,7 @@ export function createManualInstall(options: ManualInstallOptions): ManualInstal
       }
       const asset = selectInstallerAsset(index.files, platform)
       if (asset === undefined) throw new Error('desktop update: the feed lists no installer for this platform')
+      if (options.ownsDirectory) await rm(options.directory, { recursive: true, force: true })
       const target = `${options.directory}/${asset.name}`
       const temporary = `${target}.download`
       let downloaded = 0

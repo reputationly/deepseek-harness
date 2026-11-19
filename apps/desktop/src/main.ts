@@ -7,7 +7,7 @@ import { DesktopUpdateSettings } from './update-settings.ts'
 import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
-import { access, readFile, writeFile } from 'node:fs/promises'
+import { access, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -691,6 +691,13 @@ async function main(): Promise<void> {
   const updateFeedDirectory = manualInstall
     ? await readFeedDirectory(process.resourcesPath, async path => readFile(path, 'utf8'))
     : undefined
+  const installerDirectory = process.platform === 'win32'
+    ? join(app.getPath('temp'), `${app.getName()}-update`)
+    : app.getPath('downloads')
+  if (manualInstall && process.platform === 'win32' && raiseAfterUpdate) {
+    void rm(installerDirectory, { recursive: true, force: true })
+      .catch((error: unknown) => { console.error(error) })
+  }
   const channelSettings = new DesktopUpdateSettings(app.getPath('userData'), packagedChannel)
   const initialChannel = await channelSettings.load()
   channelState = { channel: initialChannel.kind === 'ready' ? initialChannel.channel : null,
@@ -758,9 +765,14 @@ async function main(): Promise<void> {
     undefined,
     manualInstall && updateFeedDirectory !== undefined
       ? createManualInstall({
-        directory: app.getPath('downloads'), feedDirectory: updateFeedDirectory,
+        directory: installerDirectory, feedDirectory: updateFeedDirectory,
+        ...(process.platform === 'win32' ? { ownsDirectory: true } : {}),
         openPath: path => shell.openPath(path),
-        quit: () => { app.quit() },
+        quit: () => {
+          app.quit()
+          // NSIS waits 10 seconds; the Host is already stopped, so force exit after 5 if graceful quit stalls.
+          setTimeout(() => { app.exit(0) }, 5000).unref()
+        },
       })
       : undefined,
   )
