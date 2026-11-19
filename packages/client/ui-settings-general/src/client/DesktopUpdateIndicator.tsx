@@ -12,6 +12,9 @@ const BUSY_PHASES: ReadonlySet<DesktopUpdatePresentation['phase']> = new Set([
 ])
 
 function updateCopy(state: DesktopUpdatePresentation, t: SettingsTranslate): { label: string; detail: string } {
+  // A build that cannot replace itself hands over the installer; the label says so instead of
+  // promising a restart the platform would refuse.
+  const manual = state.manualInstall === true
   if (state.configurationError !== undefined) return { label: t('desktop.channel.unavailable'), detail: t(`desktop.update.configuration.${state.configurationError}`) }
   const labels: Readonly<Record<DesktopUpdatePresentation['phase'], string>> = {
     idle: '',
@@ -20,10 +23,13 @@ function updateCopy(state: DesktopUpdatePresentation, t: SettingsTranslate): { l
     downloading: t('desktop.update.progress', { percent: state.percent ?? 0 }),
     verifying: t('desktop.update.verifying'),
     installing: t('desktop.update.installing'),
-    ready: t('desktop.update.ready'),
+    ready: manual ? t('desktop.update.openInstaller') : t('desktop.update.ready'),
     error: t('desktop.update.retry'),
   }
   const label = labels[state.phase]
+  if (state.phase === 'ready' && state.opened === true) {
+    return { label, detail: t('desktop.update.installerOpened') }
+  }
   if (state.phase === 'checking' || state.phase === 'verifying' || state.phase === 'installing') {
     return { label, detail: state.version ?? label }
   }

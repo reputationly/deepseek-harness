@@ -65,6 +65,8 @@ export interface DesktopUpdateState {
   readonly preparationFailure?: DesktopUpdatePreparationFailureKind
   /** Current filesystem failure, independent of previous cache cleanup attempts. */
   readonly downloadFailure?: 'space' | 'permission' | 'busy'
+  /** Set once the downloaded installer was handed to the operating system. */
+  readonly opened?: boolean
 }
 
 /** Classified failure copy selected by the Web locale without exposing raw updater diagnostics. */
@@ -91,6 +93,10 @@ export interface DesktopUpdatePresentation {
   readonly percent?: number
   readonly failure?: DesktopUpdateFailureKind
   readonly configurationError?: DesktopChannelState['error']
+  /** This build replaces nothing in place: the user runs the downloaded installer. */
+  readonly manualInstall?: boolean
+  /** The installer was opened; the user finishes the installation themselves. */
+  readonly opened?: boolean
 }
 
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */

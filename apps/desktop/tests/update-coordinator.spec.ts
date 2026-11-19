@@ -47,11 +47,23 @@ describe('desktop release metadata', () => {
 const coordinators: InstanceType<typeof DesktopUpdateCoordinator>[] = []
 afterEach(() => { for (const item of coordinators.splice(0)) item.dispose() })
 
-function fixture(channel: 'nightly' | 'stable' = 'nightly', version = '1.1.0-alpha.1', discard?: (updater: AppUpdater) => Promise<void>) {
+/** Optional feed artifacts and manual handoff the shared fixture can carry. */
+interface FixtureOptions {
+  readonly files?: { url: string; size?: number; sha512?: string }[]
+  readonly manual?: { prepare: (asset: { url: string; name: string }, onProgress: (percent: number) => void) => Promise<string>
+    open: (path: string) => Promise<void> }
+}
+
+function fixture(
+  channel: 'nightly' | 'stable' = 'nightly',
+  version = '1.1.0-alpha.1',
+  discard?: (updater: AppUpdater) => Promise<void>,
+  options: FixtureOptions = {},
+) {
   const events = new EventEmitter()
   const checkForUpdates = vi.fn(async () => ({
     isUpdateAvailable: true,
-    updateInfo: { version: '1.1.0-rc.2' },
+    updateInfo: { version: '1.1.0-rc.2', ...options.files === undefined ? {} : { files: options.files } },
   }))
   const downloadUpdate = vi.fn(async () => {
     events.emit('download-progress', { percent: 58 })
@@ -66,7 +78,7 @@ function fixture(channel: 'nightly' | 'stable' = 'nightly', version = '1.1.0-alp
   const updater = Object.assign(events, { checkForUpdates, downloadUpdate, quitAndInstall }) as unknown as AppUpdater
   const coordinator = new DesktopUpdateCoordinator(
     (state) => { states.push(state); return state },
-    beforeRestart, updater, () => true, () => version, downloadResult, channel, discard,
+    beforeRestart, updater, () => true, () => version, downloadResult, channel, discard, options.manual,
   )
   coordinators.push(coordinator)
   return { coordinator, updater, events, states, checkForUpdates, downloadUpdate, quitAndInstall, beforeRestart, downloadResult }
@@ -448,4 +460,56 @@ it('does not diagnose a filesystem cause from error wording alone', async () => 
   await f.coordinator.check()
   f.downloadUpdate.mockRejectedValueOnce(new Error('ENOSPC or EACCES in a remote response'))
   expect((await f.coordinator.download('1.1.0-rc.2')).downloadFailure).toBeUndefined()
+})
+
+describe('desktop update coordinator (manual installer handoff)', () => {
+  /** Build one manual-mode fixture over the shared stub without duplicating its cast. */
+  function manualFixture(files: { url: string; size?: number; sha512?: string }[]) {
+    const prepare = vi.fn(async (
+      _asset: { url: string; name: string },
+      onProgress: (percent: number) => void,
+    ) => { onProgress(42); onProgress(100); return '/downloads/app-installer' })
+    const open = vi.fn(async () => {})
+    const f = fixture('nightly', '1.1.0-rc.1', undefined, { files, manual: { prepare, open } })
+    return { ...f, prepare, open }
+  }
+
+  const files = [
+    { url: 'https://cdn.example/app-1.1.0-rc.2-mac-arm64.zip', size: 10, sha512: 'zip' },
+    { url: 'https://cdn.example/app-1.1.0-rc.2-mac-arm64.dmg', size: 11, sha512: 'dmg' },
+    { url: 'https://cdn.example/app-1.1.0-rc.2-win-x64.exe', size: 12, sha512: 'exe' },
+  ]
+
+  it('downloads the platform installer instead of an in-place package', async () => {
+    const f = manualFixture(files)
+    await f.coordinator.check()
+    expect(await f.coordinator.download('1.1.0-rc.2')).toEqual({ phase: 'ready', version: '1.1.0-rc.2' })
+    expect(f.downloadUpdate).not.toHaveBeenCalled()
+    expect(f.prepare).toHaveBeenCalledOnce()
+    const asset = f.prepare.mock.calls[0]![0]
+    expect(asset.url).toBe(process.platform === 'win32'
+      ? 'https://cdn.example/app-1.1.0-rc.2-win-x64.exe'
+      : 'https://cdn.example/app-1.1.0-rc.2-mac-arm64.dmg')
+    expect(f.states.some(state => state.phase === 'downloading' && state.percent === 42)).toBe(true)
+  })
+
+  it('opens the downloaded installer and leaves the running app in place', async () => {
+    const f = manualFixture(files)
+    await f.coordinator.check()
+    await f.coordinator.download('1.1.0-rc.2')
+    expect(await f.coordinator.install('1.1.0-rc.2'))
+      .toEqual({ phase: 'ready', version: '1.1.0-rc.2', opened: true })
+    expect(f.open).toHaveBeenCalledWith('/downloads/app-installer')
+    expect(f.beforeRestart).not.toHaveBeenCalled()
+    expect(f.quitAndInstall).not.toHaveBeenCalled()
+  })
+
+  it('reports a feed without a runnable installer instead of promising a restart', async () => {
+    const f = manualFixture([{ url: 'https://cdn.example/app-1.1.0-rc.2-mac-arm64.zip' }])
+    await f.coordinator.check()
+    expect(await f.coordinator.download('1.1.0-rc.2')).toMatchObject({
+      phase: 'error', failedOperation: 'download',
+    })
+    expect(String((await f.coordinator.download('1.1.0-rc.2')).message)).toMatch(/no installer for this platform/u)
+  })
 })

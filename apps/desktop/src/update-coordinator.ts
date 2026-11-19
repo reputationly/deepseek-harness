@@ -6,6 +6,7 @@ import { app } from 'electron'
 import electronUpdater, { type AppUpdater, type ProgressInfo, type UpdateInfo, type UpdateCheckResult } from 'electron-updater'
 import { gt, valid } from 'semver'
 import type { DesktopUpdateState } from './ipc.ts'
+import { selectInstallerAsset, type InstallerAsset, type ManualInstallPort } from './update-manual-install.ts'
 import { DesktopUpdateHttpExecutor } from './updates/electron-updater/http-executor.ts'
 import { DesktopUpdatePreparationError, downloadFailureDetails } from './update-error.ts'
 import type { DesktopUpdateChannel } from './update-channel.ts'
@@ -28,6 +29,10 @@ export class DesktopUpdateCoordinator {
   private checkOperation: Promise<DesktopUpdateState> | undefined
   private downloadOperation: Promise<DesktopUpdateState> | undefined
   private installOperation: Promise<DesktopUpdateState> | undefined
+  /** Installer asset the feed published for this target, when this build hands it off. */
+  private manualAsset: InstallerAsset | undefined
+  /** Downloaded installer path, cleared when a different target becomes the candidate. */
+  private installerPath: string | undefined
 
   private readonly onProgress = (progress: ProgressInfo): void => {
     if (this.downloadGeneration !== this.generation || this.downloadOperation === undefined || this.downloaded) return
@@ -66,6 +71,7 @@ export class DesktopUpdateCoordinator {
     private readonly downloadResult?: (success: boolean, reason?: string) => void,
     private channel: DesktopUpdateChannel = 'nightly',
     private readonly discard: (updater: AppUpdater) => Promise<void> = discardDesktopUpdate,
+    private readonly manual?: ManualInstallPort,
   ) {
     if (updater === autoUpdater) {
       // electron-updater omits this internal transport property from its public declarations.
@@ -183,6 +189,18 @@ export class DesktopUpdateCoordinator {
       if (version !== this.candidate) throw new Error('desktop update: download confirmation is stale')
       this.setState({ phase: 'downloading', version, percent: 0 })
       try {
+        if (this.manual !== undefined) {
+          const asset = this.manualAsset
+          if (asset === undefined) throw new Error('desktop update: the feed lists no installer for this platform')
+          const path = await this.manual.prepare(asset, (percent) => {
+            if (generation === this.generation && !this.disposed) this.setState({ phase: 'downloading', version, percent })
+          })
+          if (generation !== this.generation || this.disposed) return this.current
+          this.installerPath = path
+          this.release = { kind: 'downloaded', version }
+          this.downloadResult?.(true)
+          return this.setState({ phase: 'ready', version })
+        }
         await this.updater.downloadUpdate(this.cancellation)
         if (generation !== this.generation || this.disposed) return this.current
         if (!this.downloaded) throw new Error('desktop update: platform preparation did not report readiness')
@@ -211,6 +229,16 @@ export class DesktopUpdateCoordinator {
     if (!this.downloaded || this.downloadOperation !== undefined || version !== this.candidate) throw new Error('desktop update: confirmed target is not ready')
     this.installOperation ??= Promise.resolve().then(async () => {
       this.setState({ phase: 'installing', version })
+      if (this.manual !== undefined) {
+        try {
+          if (this.installerPath === undefined) throw new Error('desktop update: no installer was downloaded')
+          await this.manual.open(this.installerPath)
+          this.release = { kind: 'handed-off', version }
+          return this.setState({ phase: 'ready', version, opened: true })
+        } catch (error) {
+          return this.setState(this.failure(error, 'install'))
+        }
+      }
       try {
         if (!await this.beforeRestart()) return this.setState({ phase: 'ready', version })
         this.assertLive()
@@ -278,10 +306,31 @@ export class DesktopUpdateCoordinator {
       if (valid(version) === null) throw new Error('desktop update: feed version is invalid')
       this.release = result.isUpdateAvailable && gt(version, this.currentVersion())
         ? { kind: 'checked', version } : { kind: 'none' }
+      this.installerPath = undefined
+      this.manualAsset = this.manual === undefined || this.candidate === undefined ? undefined
+        : selectInstallerAsset(installerAssetsOf(result.updateInfo.files), process.platform)
       return this.setState(this.candidate === undefined ? { phase: 'idle' } : { phase: 'available', version })
     } catch (error) {
       if (generation !== this.generation || this.disposed) return this.current
       return this.failure(error, 'check')
     }
   }
+}
+
+/**
+ * Map the feed's file list onto the fields the installer handoff reads.
+ * @param files - artifacts named by the update feed.
+ * @returns installer candidates in feed order.
+ */
+function installerAssetsOf(files: readonly { url: string; size?: number; sha512?: string }[] | undefined): InstallerAsset[] {
+  return (files ?? []).flatMap((file) => {
+    const name = file.url.split('/').pop()
+    if (name === undefined || name === '') return []
+    return [{
+      url: file.url,
+      name,
+      ...(file.size === undefined ? {} : { size: file.size }),
+      ...(file.sha512 === undefined ? {} : { sha512: file.sha512 }),
+    }]
+  })
 }

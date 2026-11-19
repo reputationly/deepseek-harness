@@ -24,6 +24,10 @@ export interface DesktopUpdatePresentation {
   readonly percent?: number
   readonly failure?: DesktopUpdateFailureKind
   readonly configurationError?: DesktopChannelState['error']
+  /** The build cannot replace itself: the user runs the downloaded installer. */
+  readonly manualInstall?: boolean
+  /** The installer has been handed to the operating system. */
+  readonly opened?: boolean
 }
 
 /** Optional carrier API; it cannot select artifacts or authorize installation. */

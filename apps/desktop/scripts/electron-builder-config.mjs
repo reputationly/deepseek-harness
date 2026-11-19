@@ -122,6 +122,9 @@ export function createElectronBuilderConfig(
       name: PACKAGE_NAME,
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
+      // Unsigned builds cannot be replaced in place (Squirrel.Mac rejects the adhoc signature,
+      // the Windows verifier rejects an unsigned updater), so they ship the installer handoff.
+      dshDesktopManualUpdate: unsigned === true,
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
       ...buildVersion === productVersion ? {} : { version: buildVersion },
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
