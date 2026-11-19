@@ -19,20 +19,25 @@ const CLASSES: readonly {
 ]
 
 /**
- * Classify one entry: the first class whose operation matches and whose tasks intersect wins,
- * and an entry without task types belongs to its operation's first class.
+ * Classes one entry belongs to.
+ *
+ * One catalog entry covers several plays: an image entry that declares both `t2i` and `i2i`
+ * is text-to-image *and* image-to-image, and a music entry that adds `cover` stays music.
+ * An entry without task types belongs to its operation's first declared class.
  * @param entry - capability entry from the gateway.
- * @returns the class it belongs to.
+ * @returns the classes it serves, in class order.
  */
-export function classify(entry: GatewayCapability): CapabilityClass {
+export function classify(entry: GatewayCapability): CapabilityClass[] {
   const tasks = entry.taskTypes.map(task => task.toLowerCase())
-  for (const candidate of CLASSES) {
-    if (candidate.operation !== entry.operation) continue
-    if (candidate.tasks === undefined) return candidate.capability
-    if (tasks.length === 0) continue
-    if (tasks.some(task => candidate.tasks?.includes(task) === true)) return candidate.capability
-  }
-  return 'other'
+  const matched = CLASSES.filter((candidate) => {
+    if (candidate.operation !== entry.operation) return false
+    if (candidate.tasks === undefined) return true
+    if (tasks.length === 0) return false
+    return tasks.some(task => candidate.tasks?.includes(task) === true)
+  })
+  if (matched.length > 0) return matched.map(candidate => candidate.capability)
+  const first = CLASSES.find(candidate => candidate.operation === entry.operation && candidate.tasks === undefined)
+  return first === undefined ? ['other'] : [first.capability]
 }
 
 /**
@@ -43,10 +48,11 @@ export function classify(entry: GatewayCapability): CapabilityClass {
 export function classMembers(entries: readonly GatewayCapability[]): ClassMembers[] {
   const groups = new Map<CapabilityClass, string[]>()
   for (const entry of entries) {
-    const capability = classify(entry)
-    const models = groups.get(capability) ?? []
-    if (!models.includes(entry.model)) models.push(entry.model)
-    groups.set(capability, models)
+    for (const capability of classify(entry)) {
+      const models = groups.get(capability) ?? []
+      if (!models.includes(entry.model)) models.push(entry.model)
+      groups.set(capability, models)
+    }
   }
   const order: CapabilityClass[] = ['chat', 'vision.image', 'vision.video', 'image.generate', 'image.edit',
     'video.generate', 'video.first-last-frame', 'video.reference', 'music.generate', 'speech.generate', 'other']

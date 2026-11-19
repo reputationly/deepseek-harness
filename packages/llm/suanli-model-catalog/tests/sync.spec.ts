@@ -101,15 +101,17 @@ describe('capability classes', () => {
   const entry = (operation: string, model: string, taskTypes: string[] = []) => ({ operation, model, taskTypes, maxReferenceImages: 0 })
 
   it('names the product classes from operation and task type', () => {
-    expect(classify(entry('chat', 'deepseek-v4-1-flash'))).toBe('chat')
-    expect(classify(entry('generate_image', 'minimax-h3-image', ['t2i']))).toBe('image.generate')
-    expect(classify(entry('generate_image', 'minimax-h3-image', ['i2i']))).toBe('image.edit')
-    expect(classify(entry('generate_video', 'h3', ['t2v']))).toBe('video.generate')
-    expect(classify(entry('generate_video', 'h3', ['flf2v', 'i2v']))).toBe('video.first-last-frame')
-    expect(classify(entry('generate_video', 'h3', ['r2va']))).toBe('video.reference')
-    expect(classify(entry('generate_music', 'ace-step', ['t2m']))).toBe('music.generate')
-    expect(classify(entry('generate_speech', 'tts2'))).toBe('speech.generate')
-    expect(classify(entry('upscale', 'relayvsr'))).toBe('other')
+    expect(classify(entry('chat', 'deepseek-v4-1-flash'))).toEqual(['chat'])
+    expect(classify(entry('generate_image', 'minimax-h3-image', ['t2i']))).toEqual(['image.generate'])
+    expect(classify(entry('generate_image', 'minimax-h3-image', ['i2i']))).toEqual(['image.edit'])
+    // One entry covering both plays belongs to both classes.
+    expect(classify(entry('generate_image', 'minimax-h3-image', ['i2i', 't2i']))).toEqual(['image.generate', 'image.edit'])
+    expect(classify(entry('generate_video', 'h3', ['t2v']))).toEqual(['video.generate'])
+    expect(classify(entry('generate_video', 'h3', ['flf2v', 'i2v']))).toEqual(['video.first-last-frame'])
+    expect(classify(entry('generate_video', 'h3', ['r2va']))).toEqual(['video.reference'])
+    expect(classify(entry('generate_music', 'ace-step', ['cover', 'repaint', 't2m']))).toEqual(['music.generate'])
+    expect(classify(entry('generate_speech', 'tts2'))).toEqual(['speech.generate'])
+    expect(classify(entry('upscale', 'relayvsr'))).toEqual(['other'])
   })
 
   it('groups entries in class order without repeating a model', () => {

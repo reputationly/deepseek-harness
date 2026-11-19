@@ -20,6 +20,7 @@ function client(options: {
     baseURL: 'https://gateway.example',
     paths: { images: { collection: '/v1/images/generations' }, videos: { collection: '/v1/videos' } },
     timeoutMs: 1_000,
+    imagesTimeoutMs: 1_000,
     pollIntervalMs: options.pollIntervalMs ?? 1,
     send: vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -155,5 +156,22 @@ describe('normalizeState', () => {
     expect(normalizeState('FAILURE')).toBe('failed')
     expect(normalizeState('IN_PROGRESS')).toBe('running')
     expect(normalizeState(undefined)).toBe('running')
+  })
+})
+
+describe('save', () => {
+  it('writes a synchronously produced artifact', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'media-save-'))
+    created.push(directory)
+    const target = join(directory, 'out.png')
+    const { subject } = client({ answer: () => new Response(new Uint8Array([9, 9, 9, 9])) })
+    await expect(subject.save('https://cdn.example/a.png', target, signal)).resolves.toEqual({ ok: true, path: target, bytes: 4 })
+    expect([...await readFile(target)]).toEqual([9, 9, 9, 9])
+  })
+
+  it('reports an unreachable artifact host', async () => {
+    const { subject } = client({ answer: () => new Response(null, { status: 502 }) })
+    await expect(subject.save('https://cdn.example/a.png', '/tmp/never', signal))
+      .resolves.toMatchObject({ ok: false, reason: 'unreachable', detail: 'HTTP 502' })
   })
 })

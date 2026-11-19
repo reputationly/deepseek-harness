@@ -26,8 +26,10 @@ export type * from './types.ts'
 export const DEFAULT_IMAGES_PATH = '/v1/images/generations'
 /** Default video collection path of an OpenAI-compatible gateway. */
 export const DEFAULT_VIDEOS_PATH = '/v1/videos'
-/** Default request budget of one HTTP call. */
+/** Default request budget of one task-transport call. */
 export const DEFAULT_MEDIA_TIMEOUT_MS = 30_000
+/** Default request budget of one image call; the image endpoint answers only when the image exists. */
+export const DEFAULT_MEDIA_IMAGE_TIMEOUT_MS = 240_000
 /** Default interval between two status reads. */
 export const DEFAULT_MEDIA_POLL_MS = 2_000
 
@@ -48,8 +50,10 @@ export interface Config {
   readonly imagesPath?: string
   /** Video and music collection path (default `/v1/videos`). */
   readonly videosPath?: string
-  /** Request budget of one HTTP call, in milliseconds. */
+  /** Request budget of one task-transport call, in milliseconds. */
   readonly timeoutMs?: number
+  /** Request budget of one image call, in milliseconds; image generation blocks until the file exists. */
+  readonly imagesTimeoutMs?: number
   /** Interval between two status reads, in milliseconds. */
   readonly pollIntervalMs?: number
 }
@@ -64,6 +68,7 @@ export class SuanliMediaTasksService extends TypertRemoteService {
     imagesPath: z.string().pattern(/^\//u).default(DEFAULT_IMAGES_PATH),
     videosPath: z.string().pattern(/^\//u).default(DEFAULT_VIDEOS_PATH),
     timeoutMs: z.natural().min(1).default(DEFAULT_MEDIA_TIMEOUT_MS),
+    imagesTimeoutMs: z.natural().min(1).default(DEFAULT_MEDIA_IMAGE_TIMEOUT_MS),
     pollIntervalMs: z.natural().min(1).default(DEFAULT_MEDIA_POLL_MS),
   })
 
@@ -84,6 +89,7 @@ export class SuanliMediaTasksService extends TypertRemoteService {
         videos: { collection: config.videosPath ?? DEFAULT_VIDEOS_PATH },
       },
       timeoutMs: config.timeoutMs ?? DEFAULT_MEDIA_TIMEOUT_MS,
+      imagesTimeoutMs: config.imagesTimeoutMs ?? DEFAULT_MEDIA_IMAGE_TIMEOUT_MS,
       pollIntervalMs: config.pollIntervalMs ?? DEFAULT_MEDIA_POLL_MS,
       send: (input, init) => fetch(input, init),
       credential: async () => {
@@ -135,6 +141,17 @@ export class SuanliMediaTasksService extends TypertRemoteService {
   @Remote
   async cancel(taskId: string, operation: MediaOperation): Promise<MediaCancelResult> {
     return await this.client.cancel(taskId, transportFor(operation), new AbortController().signal)
+  }
+
+  /**
+   * Save an artifact URL a caller already received; image generation answers synchronously.
+   * @param url - artifact URL the gateway reported.
+   * @param targetPath - absolute path inside the caller's workspace.
+   * @returns the written path and size, or why nothing was written.
+   */
+  @Remote
+  async saveArtifact(url: string, targetPath: string): Promise<MediaDownloadResult> {
+    return await this.client.save(url, targetPath, new AbortController().signal)
   }
 
   /**

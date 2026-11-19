@@ -29,7 +29,8 @@ The platform's capability catalog names generation operations that the chat rout
 - A wait ends at the caller's deadline with `timed-out` and leaves the task running; only an explicit `cancel` asks the gateway to stop it.
 - A caller cancellation stops the wait without a gateway call.
 - The gateway may refuse a cancellation with `409` when the task is already past the point where it can stop; that surface is reported as `rejected` with the HTTP status rather than as a transport failure.
-- `download` reads the artifact URL the task reported and writes exactly the path the caller names.
+- `download` reads the artifact URL the task reported and writes exactly the path the caller names; `saveArtifact` does the same for a URL a caller already holds, which is how a synchronous image answer reaches disk.
+- Image calls get their own budget (default 240 s): the image endpoint answers only when the image exists, while the task transports answer with an id and poll separately.
 
 ## Model Experience
 
@@ -42,6 +43,7 @@ None: no model request is built or cached here.
 ## Known Limitations and Deferred Work
 
 - No caller inside the product yet: the Agent tool and the composer surface that would submit these tasks are not wired, so the namespace is exercised by its own tests and by direct Remote calls.
+- Image calls are slow (about 36 s for a 2K image on this deployment), so a caller must budget for a blocking call rather than showing a spinner without a deadline.
 - Image editing and reference-to-video need the platform to declare those capability entries first; until then their models are not in the catalog this deployment reads.
 - Artifacts are downloaded to a caller-supplied absolute path; a caller inside the product must confine that path to the Session workspace.
 

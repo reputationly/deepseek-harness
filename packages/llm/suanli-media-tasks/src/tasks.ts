@@ -16,7 +16,9 @@ export interface MediaTaskClientOptions {
   readonly baseURL: string
   /** Paths by transport. */
   readonly paths: Readonly<Record<MediaTransport, TransportPaths>>
-  /** Request budget of one HTTP call. */
+  /** Request budget of one image call; image generation blocks until the artifact exists. */
+  readonly imagesTimeoutMs: number
+  /** Request budget of one video or music call; those answer with a task id. */
   readonly timeoutMs: number
   /** Interval between two status reads while waiting. */
   readonly pollIntervalMs: number
@@ -189,13 +191,47 @@ export class MediaTaskClient {
     const url = answer.status.url
     if (url === undefined) return { ok: false, reason: 'no-artifact', detail: 'the task reported no artifact' }
     try {
-      const response = await this.options.send(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(this.options.timeoutMs)]) })
+      const budget = AbortSignal.timeout(this.options.imagesTimeoutMs)
+      const response = await this.options.send(url, { signal: AbortSignal.any([signal, budget]) })
       if (!response.ok) return { ok: false, reason: 'unreachable', detail: `HTTP ${String(response.status)}` }
       const bytes = Buffer.from(await response.arrayBuffer())
       await writeFile(targetPath, bytes)
       return { ok: true, path: targetPath, bytes: bytes.byteLength }
     } catch {
       return { ok: false, reason: 'unreachable' }
+    }
+  }
+
+  /**
+   * Request budget for one path: image generation blocks until the artifact exists, while the
+   * task transports answer with an id and poll separately.
+   * @param path - collection path being called.
+   * @returns the budget in milliseconds.
+   */
+  private budgetFor(path: string): number {
+    return path.startsWith(this.options.paths.images.collection)
+      ? this.options.imagesTimeoutMs
+      : this.options.timeoutMs
+  }
+
+  /**
+   * Save one artifact a caller already received (an image endpoint answers synchronously).
+   * @param url - artifact URL the gateway reported.
+   * @param targetPath - absolute path the caller owns.
+   * @param signal - caller cancellation.
+   * @returns the written path and size, or why nothing was written.
+   */
+  async save(url: string, targetPath: string, signal: AbortSignal): Promise<MediaDownloadResult> {
+    const { writeFile } = await import('node:fs/promises')
+    try {
+      const budget = AbortSignal.timeout(this.options.imagesTimeoutMs)
+      const response = await this.options.send(url, { signal: AbortSignal.any([signal, budget]) })
+      if (!response.ok) return { ok: false, reason: 'unreachable', detail: `HTTP ${String(response.status)}` }
+      const bytes = Buffer.from(await response.arrayBuffer())
+      await writeFile(targetPath, bytes)
+      return { ok: true, path: targetPath, bytes: bytes.byteLength }
+    } catch {
+      return { ok: false, reason: signal.aborted ? 'cancelled' : 'unreachable' }
     }
   }
 
@@ -214,7 +250,7 @@ export class MediaTaskClient {
           ...body === undefined ? {} : { 'content-type': 'application/json' },
         },
         ...body === undefined ? {} : { body: JSON.stringify(body) },
-        signal: AbortSignal.any([signal, AbortSignal.timeout(this.options.timeoutMs)]),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(this.budgetFor(path))]),
       })
     } catch {
       return { ok: false, reason: signal.aborted ? 'cancelled' : 'unreachable' }
