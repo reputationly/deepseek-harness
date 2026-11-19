@@ -1,5 +1,10 @@
 /** Desktop-only omissions from already installed production npm packages. */
 
+import { excludedNames } from 'app-builder-lib/out/fileMatcher.js'
+
+// electron-builder leaves these out of app.asar, so the sealed inventory must leave them out too.
+const PACKAGER_NAMES = new Set(excludedNames.split(','))
+
 /**
  * Identify build, diagnostic and other-platform files omitted from the immutable Desktop runtime.
  * Unrecognized assets and target runtime binaries are retained. Paths name the copied
@@ -16,6 +21,7 @@ export function desktopRuntimeFileExclusion(
   if (parts.some(part => ['.bin', '.pnpm', '.modules.yaml', '.pnpm-workspace-state-v1.json'].includes(part))) {
     return 'package-manager metadata'
   }
+  if (parts.some(part => PACKAGER_NAMES.has(part))) return 'electron-builder default exclusion'
   const file = parts.at(-1)!
   if (/\.(?:[cm]?[jt]s|css)\.map$/u.test(file)) return 'source map'
   if (/\.d\.[cm]?ts$/u.test(file)) return 'TypeScript declaration'
