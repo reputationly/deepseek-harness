@@ -17,6 +17,8 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
       '@deepseek-ai/dsh-base',
       '@deepseek-ai/dsh-web-app',
       '@michengai/dsh-im-connect',
+      // The pet companion ships with the Suanli artwork and stays switchable from the plugin manager.
+      '@michengai/dsh-codex-pet',
     ],
   },
   headless: {
@@ -77,6 +79,7 @@ export const OPTIONAL_BUNDLES: readonly string[] = [
   '@deepseek-ai/dsh-experimental-forge-bundle',
   '@deepseek-ai/dsh-deepseek-chat-import',
   '@michengai/dsh-im-connect',
+  '@michengai/dsh-codex-pet',
 ]
 
 /** Public DSH release members available through the ordinary on-demand bundle installer. */

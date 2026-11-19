@@ -4,7 +4,7 @@ import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_pr
 import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { parseArgs } from 'node:util'
 
@@ -182,9 +182,29 @@ export function publishWorkspaceRange(range: string, targetVersion: string): str
   return range
 }
 
+/**
+ * Version a workspace package's release-tarball URL dependency installs. npm reads a URL dependency's manifest from
+ * the network instead of the local registry, so the registry copy of the dependent names the installed release.
+ */
+function installedTarballVersion(packageDirectory: string, name: string): string | undefined {
+  try {
+    const manifest = JSON.parse(readFileSync(join(packageDirectory, 'node_modules', name, 'package.json'), 'utf8')) as PackageManifest
+    return typeof manifest.version === 'string' ? manifest.version : undefined
+  } catch (_error: unknown) {
+    // A dependency that is not installed keeps its URL, and npm reports it.
+    return undefined
+  }
+}
+
+function publishTarballRange(range: string, packageDirectory: string | undefined, name: string): string {
+  if (packageDirectory === undefined || !/^https?:\/\//u.test(range)) return range
+  return installedTarballVersion(packageDirectory, name) ?? range
+}
+
 function copyPublishedManifest(
   source: PackageManifest,
   workspaceVersions: ReadonlyMap<string, string>,
+  packageDirectory?: string,
 ): RegistryVersion | undefined {
   if (typeof source.name !== 'string' || typeof source.version !== 'string') return undefined
   const output: Record<string, unknown> = { name: source.name, version: source.version }
@@ -194,7 +214,9 @@ function copyPublishedManifest(
     if (field === 'dependencies' || field === 'optionalDependencies' || field === 'peerDependencies') {
       output[field] = Object.fromEntries(Object.entries(value as Record<string, string>).map(([name, range]) => {
         const targetVersion = workspaceVersions.get(name)
-        return [name, targetVersion === undefined ? range : publishWorkspaceRange(range, targetVersion)]
+        return [name, targetVersion === undefined
+          ? publishTarballRange(range, packageDirectory, name)
+          : publishWorkspaceRange(range, targetVersion)]
       }))
     } else {
       output[field] = structuredClone(value)
@@ -231,8 +253,8 @@ export function buildRegistryIndex(root: string, ref?: string): RegistryIndex {
     typeof manifest.name === 'string' && typeof manifest.version === 'string'
       ? [[manifest.name, manifest.version] as const]
       : []))
-  for (const manifest of workspace) {
-    const copied = copyPublishedManifest(manifest, workspaceVersions)
+  for (const [position, manifest] of workspace.entries()) {
+    const copied = copyPublishedManifest(manifest, workspaceVersions, dirname(resolve(root, paths[position] ?? '')))
     if (copied !== undefined) addManifest(index, copied)
   }
   return index

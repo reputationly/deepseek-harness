@@ -89,6 +89,23 @@ describe('npm resolution benchmark', () => {
     })
   })
 
+  it('serves a workspace dependency on a release tarball URL as the installed release', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-npm-registry-index-'))
+    roots.push(root)
+    writeJson(root, 'apps/cli/node_modules/plugin/package.json', { name: 'plugin', version: '1.2.0-fork.1' })
+    writeJson(root, 'apps/cli/package.json', {
+      name: '@deepseek-ai/dsh',
+      version: '0.1.0',
+      dependencies: { plugin: 'https://example.com/plugin-1.2.0-fork.1.tgz', absent: 'https://example.com/absent.tgz', external: '^2.0.0' },
+    })
+
+    expect(buildRegistryIndex(root).get('@deepseek-ai/dsh')?.get('0.1.0')?.dependencies).toEqual({
+      plugin: '1.2.0-fork.1',
+      absent: 'https://example.com/absent.tgz',
+      external: '^2.0.0',
+    })
+  })
+
   it('runs npm against the local registry without requesting an archive', async () => {
     const index: RegistryIndex = new Map([[
       '@deepseek-ai/dsh',
