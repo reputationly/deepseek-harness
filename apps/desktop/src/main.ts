@@ -7,7 +7,7 @@ import { DesktopUpdateSettings } from './update-settings.ts'
 import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
-import { access, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -40,7 +40,7 @@ import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLoc
 import type { DesktopMessages } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { desktopManualUpdate, desktopUpdateChannel } from './update-channel.ts'
-import { createManualInstall, readFeedDirectory } from './update-manual-install.ts'
+import { clearInstallerDirectory, createManualInstall, readFeedDirectory } from './update-manual-install.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
@@ -695,8 +695,7 @@ async function main(): Promise<void> {
     ? join(app.getPath('temp'), `${app.getName()}-update`)
     : app.getPath('downloads')
   if (manualInstall && process.platform === 'win32' && raiseAfterUpdate) {
-    // NSIS briefly holds its own files after launching the updated app.
-    void rm(installerDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 1000 })
+    void clearInstallerDirectory(installerDirectory)
       .catch((error: unknown) => { console.error(error) })
   }
   const channelSettings = new DesktopUpdateSettings(app.getPath('userData'), packagedChannel)

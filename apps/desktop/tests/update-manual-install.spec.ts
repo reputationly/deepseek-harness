@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  createManualInstall, readFeedDirectory, selectInstallerAsset, type ManualInstallOptions,
+  clearInstallerDirectory, createManualInstall, readFeedDirectory, selectInstallerAsset, type ManualInstallOptions,
 } from '../src/update-manual-install.ts'
 
 const created: string[] = []
@@ -125,6 +125,44 @@ describe('readFeedDirectory', () => {
 
   it('reports no feed when the build carries no update source', async () => {
     await expect(readFeedDirectory('/res', async () => { throw new Error('ENOENT') })).resolves.toBeUndefined()
+  })
+})
+
+describe('clearInstallerDirectory', () => {
+  it('retries removal failures until a later attempt succeeds', async () => {
+    const directory = '/temp/suanli-assistant-update'
+    const paths: string[] = []
+    const remove = vi.fn(async (path: string) => {
+      paths.push(path)
+      if (paths.length < 3) throw Object.assign(new Error('access denied'), { code: 'EACCES' })
+    })
+
+    await expect(clearInstallerDirectory(directory, { attempts: 4, delayMs: 0, remove }))
+      .resolves.toBeUndefined()
+    expect(paths).toEqual([directory, directory, directory])
+  })
+
+  it('rejects with the last error after exhausting attempts', async () => {
+    const directory = '/temp/suanli-assistant-update'
+    const attempts = 4
+    const paths: string[] = []
+    const lastError = new Error('last removal failure')
+    const remove = vi.fn(async (path: string) => {
+      paths.push(path)
+      throw paths.length === attempts ? lastError : new Error(`removal failure ${String(paths.length)}`)
+    })
+
+    await expect(clearInstallerDirectory(directory, { attempts, delayMs: 0, remove })).rejects.toBe(lastError)
+    expect(paths).toEqual(Array.from({ length: attempts }, () => directory))
+  })
+
+  it('returns after the first successful removal attempt', async () => {
+    const paths: string[] = []
+    const remove = vi.fn(async (path: string) => { paths.push(path) })
+
+    await expect(clearInstallerDirectory('/temp/suanli-assistant-update', { attempts: 4, delayMs: 0, remove }))
+      .resolves.toBeUndefined()
+    expect(paths).toEqual(['/temp/suanli-assistant-update'])
   })
 })
 

@@ -259,6 +259,41 @@ export function createManualInstall(options: ManualInstallOptions): ManualInstal
   }
 }
 
+/**
+ * Remove the updater-owned installer directory, retrying removal failures.
+ * NSIS may keep its own files open for a while after launching the updated application.
+ * @param directory - Installer directory to remove.
+ * @param options - Retry attempts, delay, and removal operation; defaults to 12 attempts, 10 seconds, and recursive forced removal.
+ * @returns Resolves once the directory is removed.
+ * @throws The last removal error if every attempt fails.
+ */
+export async function clearInstallerDirectory(
+  directory: string,
+  options?: {
+    attempts?: number
+    delayMs?: number
+    remove?: (path: string) => Promise<void>
+  },
+): Promise<void> {
+  const attempts = options?.attempts ?? 12
+  const delayMs = options?.delayMs ?? 10_000
+  const remove = options?.remove ?? (path => rm(path, { recursive: true, force: true }))
+  if (attempts < 1) throw new RangeError('desktop update: directory cleanup needs at least one attempt')
+  let lastError: unknown
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await remove(directory)
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt + 1 < attempts) {
+        await new Promise<void>(resolve => setTimeout(resolve, delayMs))
+      }
+    }
+  }
+  throw lastError
+}
+
 /** One published index, in the fields the handoff reads. */
 interface PublishedIndex {
   readonly version: string
