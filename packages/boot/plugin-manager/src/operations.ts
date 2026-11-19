@@ -291,7 +291,8 @@ function bundleComponentManifests(manifest: ProfileManifest, dir: string, anchor
  * of them must be the expected package, which must be installed at its version with a bundle declaration. Any other
  * untouched dependency never blocks an unrelated operation and stays denied at startup.
  * A denial before pnpm runs changes nothing; one after it restores the profile manifest and lockfile and reinstalls
- * the restored lockfile, while downloaded files stay in the pnpm store.
+ * the restored lockfile, while downloaded files stay in the pnpm store. A run that fails or is terminated restores the
+ * manifest and lockfile without reinstalling, so repeating the command installs and activates the package again.
  * @param context Launcher-owned profile and resolution locations.
  * @param args Pnpm arguments, before relative path anchoring.
  * @param options Output, activation and cancellation policy.
@@ -573,6 +574,10 @@ export async function runProfilePnpm(
           append(Buffer.from(diagnostic))
         }
       }
+    } else {
+      // pnpm can save a dependency before a later step fails; keeping it would make a retry see an existing
+      // dependency and skip its activation.
+      await restore()
     }
   } finally {
     control.settled = true

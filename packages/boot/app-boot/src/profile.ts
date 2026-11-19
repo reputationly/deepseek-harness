@@ -180,12 +180,16 @@ const PROFILE_PATCH_TEMPLATE = `# Your patch layer for this dsh profile, applied
 // The hoisted linker gives out-of-tree plugins a flat node_modules whose
 // missing peers (cordis and friends) use the runtime resolution, so every plugin shares the
 // installation's single cordis instance instead of a duplicate. pnpm ≥10
-// reads its settings from pnpm-workspace.yaml, not .npmrc.
+// reads its settings from pnpm-workspace.yaml, not .npmrc. pnpm ≥10 also fails an install
+// on any unreviewed dependency build script; protobufjs, which IM SDKs pull in, ships only a
+// no-op postinstall, so profiles deny it as the installation itself does.
 const PROFILE_PNPM_WORKSPACE = `packages:
   - .
 
 nodeLinker: hoisted
 autoInstallPeers: false
+allowBuilds:
+  protobufjs: false
 `
 
 /**

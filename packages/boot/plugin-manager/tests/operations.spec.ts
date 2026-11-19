@@ -717,13 +717,19 @@ it.each([runPluginCommand, runProfilePnpm])('installs into the supplied applicat
   expect(readProfileManifest('test', namedDir).dsh?.profile?.bundles).toEqual([])
 })
 
-it('retains partial package-manager changes after a failed install without activating them', async () => {
+it.each(['service', 'cli'] as const)('restores the manifest after a failed %s install so a retry activates the bundle', async (execution) => {
   const { dir, context, pnpm } = fixture()
+  const manifest = readFileSync(join(dir, 'package.json'), 'utf8')
   pnpm.mutate = (target) => { install(target, 'partial') }
   pnpm.exitCode = 1
-  expect(await runProfilePnpm(context, ['add', 'partial'], { execution: 'service', outputBytes: 100 })).toMatchObject({ exitCode: 1 })
+  expect(await runProfilePnpm(context, ['add', 'partial'], { execution, outputBytes: 100 })).toMatchObject({ exitCode: 1 })
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(manifest)
+  // Downloaded files stay; only the profile's own records go back.
+  expect(existsSync(join(dir, 'node_modules/partial/package.json'))).toBe(true)
+  pnpm.exitCode = 0
+  expect(await runProfilePnpm(context, ['add', 'partial'], { execution, outputBytes: 100 })).toMatchObject({ exitCode: 0 })
   expect(readProfileManifest('test', dir).dependencies).toEqual({ partial: '1' })
-  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toEqual([])
+  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toEqual(['partial'])
 })
 
 

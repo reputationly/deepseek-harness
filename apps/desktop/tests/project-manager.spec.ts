@@ -147,7 +147,41 @@ describe('desktop external plugin profile', () => {
     const { manager } = setup()
     await manager.applyRelease()
     expect(readFileSync(join(manager.paths.profile, 'pnpm-workspace.yaml'), 'utf8'))
-      .toBe('packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n')
+      .toBe('packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\nallowBuilds:\n  protobufjs: false\n')
+  })
+
+  it('selects the IM assistant once in a profile an earlier release created', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'package.json')
+    const record = join(manager.paths.profile, 'desktop-default-bundles.json')
+    const bundles = (): string[] => (JSON.parse(readFileSync(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }).dsh.profile.bundles
+    const shipped = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@michengai/dsh-im-connect']
+    expect(bundles()).toEqual(shipped)
+    // An earlier release left a customized list and no record.
+    seedPlugin(manager)
+    const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
+    manifest.dsh.profile.bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'plugin']
+    writeFileSync(path, JSON.stringify(manifest))
+    unlinkSync(record)
+    await manager.applyRelease()
+    expect(bundles()).toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'plugin', '@michengai/dsh-im-connect'])
+    // Switching the assistant off is kept across launches.
+    manifest.dsh.profile.bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'plugin']
+    writeFileSync(path, JSON.stringify(manifest))
+    await manager.applyRelease()
+    expect(bundles()).toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'plugin'])
+    expect(JSON.parse(readFileSync(record, 'utf8'))).toEqual({ schemaVersion: 1, offered: shipped })
+  })
+
+  it('reports a damaged default-bundle record without changing the profile', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'package.json')
+    const before = readFileSync(path, 'utf8')
+    writeFileSync(join(manager.paths.profile, 'desktop-default-bundles.json'), JSON.stringify({ schemaVersion: 1, offered: [1] }))
+    await expect(manager.applyRelease()).rejects.toThrow('invalid desktop-default-bundles.json')
+    expect(readFileSync(path, 'utf8')).toBe(before)
   })
 
   it('opens a linked profile and migrates only the generated pnpm defaults', async () => {
@@ -159,10 +193,11 @@ describe('desktop external plugin profile', () => {
     await manager.applyRelease()
     const path = join(target, 'pnpm-workspace.yaml')
     const defaults = readFileSync(path, 'utf8')
-    writeFileSync(path, `${defaults}strictDepBuilds: true\nallowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  "@deepseek-ai/dsh-subprocess-local": true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`)
+    const generated = 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n'
+    writeFileSync(path, `${generated}strictDepBuilds: true\nallowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  "@deepseek-ai/dsh-subprocess-local": true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`)
     await manager.applyRelease()
     expect(readFileSync(path, 'utf8')).toBe(defaults)
-    const custom = `${defaults}allowBuilds:\n  my-plugin: true\n`
+    const custom = `${generated}allowBuilds:\n  my-plugin: true\n`
     writeFileSync(path, custom)
     await manager.applyRelease()
     expect(readFileSync(path, 'utf8')).toBe(custom)

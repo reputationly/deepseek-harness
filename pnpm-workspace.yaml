@@ -55,6 +55,8 @@ allowBuilds:
   msgpackr-extract: false
 
 minimumReleaseAgeExclude:
+  # The Web composition ships this exact IM assistant release, qualified with this repository's profiles.
+  - '@michengai/dsh-im-connect@1.0.46'
   # Native Codex and Claude tests qualify this exact release with its local patches.
   - '@botiverse/oar@0.67.0'
   # Office engines and their API are qualified and released together by the kit repository.

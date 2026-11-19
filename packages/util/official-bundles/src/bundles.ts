@@ -12,9 +12,11 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
   },
   web: {
+    // The IM assistant is the default messaging integration and stays switchable from the plugin manager.
     bundles: [
       '@deepseek-ai/dsh-base',
       '@deepseek-ai/dsh-web-app',
+      '@michengai/dsh-im-connect',
     ],
   },
   headless: {
@@ -34,10 +36,7 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
  */
 export const INSTALLATION_OWNED_PROFILE_TUPLES: Readonly<Record<string, readonly (readonly string[])[]>> = {
   headless: [['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless']],
-  // Profiles created before the market, voice input, and WeChat bundles joined the Web composition.
-  web: [
-    ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
-  ],
+  // No Web tuple: switching the IM assistant off restores the earlier list, which must stay as the person left it.
 }
 
 /** Bundles an earlier release shipped and the installation no longer carries; app-boot removes them from profiles. */
@@ -77,6 +76,7 @@ export const OPTIONAL_BUNDLES: readonly string[] = [
   '@deepseek-ai/dsh-experimental-tool-worktree',
   '@deepseek-ai/dsh-experimental-forge-bundle',
   '@deepseek-ai/dsh-deepseek-chat-import',
+  '@michengai/dsh-im-connect',
 ]
 
 /** Public DSH release members available through the ordinary on-demand bundle installer. */

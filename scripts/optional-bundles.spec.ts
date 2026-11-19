@@ -1,6 +1,7 @@
 /** The delivered Web composition's Schedule rows, the optional bundles it ships switched off, and their display metadata. */
 
 import { globSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -25,8 +26,16 @@ const bundles = new Map(globSync('packages/*/*/package.json', { cwd: root }).map
   return [manifest.name, { dir: dirname(resolve(root, path)), manifest }]
 }))
 
+// Bundles published outside this repository resolve from the dsh installation that ships them.
+const installation = createRequire(resolve(root, 'apps/cli/package.json'))
+function installedBundle(name: string): { dir: string; manifest: Manifest } | undefined {
+  if (!name.startsWith('@michengai/')) return undefined
+  const path = installation.resolve(`${name}/package.json`)
+  return { dir: dirname(path), manifest: JSON.parse(readFileSync(path, 'utf8')) as Manifest }
+}
+
 function bundle(name: string): { dir: string; patches: ReturnType<typeof loadOverlayPatches> } {
-  const entry = bundles.get(name)
+  const entry = bundles.get(name) ?? installedBundle(name)
   if (entry?.manifest.dsh?.bundle === undefined) throw new Error(`${name} is not a workspace bundle`)
   return { dir: entry.dir, patches: bundlePatchPaths(entry.dir, entry.manifest.dsh.bundle).flatMap(path => loadOverlayPatches('test', path)) }
 }

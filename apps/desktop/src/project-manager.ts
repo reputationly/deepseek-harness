@@ -22,7 +22,7 @@ import {
 import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
-import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
+import { initProfile, readProfileManifest, removeLinkProjections, sanitizeProfile, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
 import { writeGatewayProfile } from './brand-gateway.ts'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 
@@ -31,6 +31,7 @@ const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
+const PROFILE_BUILD_SETTINGS = 'allowBuilds:\n  protobufjs: false\n'
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
 }
@@ -40,7 +41,7 @@ function workspaceFile(overrides: Readonly<Record<string, string>> = {}): string
   const overrideSection = entries.length === 0
     ? ''
     : `overrides:\n${entries.map(([name, spec]) => `  ${JSON.stringify(name)}: ${JSON.stringify(spec)}`).join('\n')}\n`
-  if (entries.length === 0) return `packages:\n  - .\n\n${WORKSPACE_SETTINGS}`
+  if (entries.length === 0) return `packages:\n  - .\n\n${WORKSPACE_SETTINGS}${PROFILE_BUILD_SETTINGS}`
   const coreBuildSpec = overrides[CORE_BUILD_PACKAGE]
   const coreBuildKey = coreBuildSpec === undefined
     ? CORE_BUILD_PACKAGE
@@ -86,6 +87,7 @@ export class DesktopProjectManager {
       readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
       createPluginProfile(this.paths.profile)
+      adoptShippedBundles(this.paths.profile)
       writeGatewayProfile(this.paths.profile)
       removeLinkProjections(this.paths.profile)
     })
@@ -169,6 +171,34 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
   }
   writeJson(join(projectDir, 'package.json'), manifest)
   writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
+}
+
+/** Desktop-owned record of the Web template bundles already selected once in this profile. */
+const OFFERED_BUNDLES_FILE = 'desktop-default-bundles.json'
+
+function readOfferedBundles(path: string): string[] {
+  if (!existsSync(path)) return []
+  const value = JSON.parse(readFileSync(path, 'utf8')) as { schemaVersion?: unknown; offered?: unknown }
+  if (value.schemaVersion !== 1 || !Array.isArray(value.offered) || !value.offered.every(name => typeof name === 'string')) {
+    throw new Error(`desktop project: invalid ${OFFERED_BUNDLES_FILE}`)
+  }
+  return value.offered
+}
+
+/**
+ * Select each Web template bundle once in a profile an earlier release created, then record it, so a bundle the
+ * person later switches off stays off.
+ */
+function adoptShippedBundles(projectDir: string): void {
+  const path = join(projectDir, OFFERED_BUNDLES_FILE)
+  const offered = readOfferedBundles(path)
+  const pending = WEB_PROFILE.bundles.filter(name => !offered.includes(name))
+  if (pending.length === 0) return
+  const manifest = readProfileManifest('dsh', projectDir)
+  const bundles = manifest.dsh?.profile?.bundles ?? []
+  const missing = pending.filter(name => !bundles.includes(name))
+  if (missing.length > 0) writeProfileBundles(projectDir, manifest, [...bundles, ...missing])
+  writeJson(path, { schemaVersion: 1, offered: [...offered, ...pending] })
 }
 
 /** Create the first external plugin profile without running a package manager. */

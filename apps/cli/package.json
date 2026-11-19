@@ -118,7 +118,12 @@
     "@deepseek-ai/dsh-experimental-plugin-market-bundle": "workspace:*",
     "@deepseek-ai/dsh-personalized-recommendations": "workspace:*",
     "@deepseek-ai/dsh-experimental-forge-bundle": "workspace:*",
-    "@deepseek-ai/dsh-deepseek-chat-import": "workspace:*"
+    "@deepseek-ai/dsh-deepseek-chat-import": "workspace:*",
+    "@deepseek-ai/dsh-client-locale": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-settings": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
+    "@michengai/dsh-im-connect": "1.0.46"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-skill-badge": "workspace:*",

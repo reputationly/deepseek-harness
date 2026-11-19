@@ -188,7 +188,7 @@ Failures preserve completed steps and report the actual remaining state. Profile
 
 | Failed operation | Handling |
 |---|---|
-| Install: pnpm or bundle validation fails | Restore `package.json` and `pnpm-lock.yaml` as snapshotted before pnpm ran; files pnpm downloaded may remain. Report installation failure. |
+| Install: pnpm or bundle validation fails | Restore `package.json` and `pnpm-lock.yaml` as snapshotted before pnpm ran, for `dsh plugin` as for the service, so repeating the command installs and activates the bundle; files pnpm downloaded may remain. Report installation failure. |
 | Enable: saving selection or loading fails | Keep the installed dependency and any saved selection. Report enablement failure; allow repair, disablement or removal. |
 | Resolution publication after a successful package operation fails | Keep completed disk changes and the previous runtime table. Report `application: 'failed'` with the publication diagnostic; pnpm's zero exit code does not mean publication succeeded. |
 | Remove: any step fails | Stop at the failed step. Preserve completed changes, retain remaining dependencies for retry, and report removal failure. Do not re-enable the bundle. |
