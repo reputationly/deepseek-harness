@@ -1,12 +1,13 @@
 /** Manual installer handoff: streamed verification, platform-specific replacement, and open failures. */
 import { EventEmitter } from 'node:events'
-import { type ChildProcess, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createManualInstall, readFeedDirectory, selectInstallerAsset } from '../src/update-manual-install.ts'
+import {
+  createManualInstall, readFeedDirectory, selectInstallerAsset, type ManualInstallOptions,
+} from '../src/update-manual-install.ts'
 
 const created: string[] = []
 afterEach(async () => {
@@ -39,10 +40,18 @@ function responseFromChunks(chunks: readonly Uint8Array[], headers?: HeadersInit
         controller.enqueue(chunk)
       }
     },
-  }), { headers })
+  }), headers === undefined ? undefined : { headers })
 }
 
-function indexFor(overrides: Partial<{ name: string; url: string; size: number; sha256: string }> = {}, version = '1.1.0-rc.2') {
+function indexFor(
+  overrides: {
+    name?: string
+    url?: string
+    size?: number | undefined
+    sha256?: string | undefined
+  } = {},
+  version = '1.1.0-rc.2',
+) {
   return {
     version,
     files: [
@@ -208,8 +217,8 @@ describe('createManualInstall', () => {
     const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
     created.push(directory)
     const unref = vi.fn()
-    const child = Object.assign(new EventEmitter(), { unref }) as ChildProcess
-    const start = vi.fn<typeof spawn>(() => child)
+    const child = Object.assign(new EventEmitter(), { unref })
+    const start = vi.fn<NonNullable<ManualInstallOptions['spawn']>>(() => child)
     const quit = vi.fn()
     const port = createManualInstall({
       directory, feedDirectory: FEED, platform: 'win32', openPath: async () => '', spawn: start, quit,
@@ -232,8 +241,8 @@ describe('createManualInstall', () => {
     const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
     created.push(directory)
     const unref = vi.fn()
-    const child = Object.assign(new EventEmitter(), { unref }) as ChildProcess
-    const start = vi.fn<typeof spawn>(() => child)
+    const child = Object.assign(new EventEmitter(), { unref })
+    const start = vi.fn<NonNullable<ManualInstallOptions['spawn']>>(() => child)
     const quit = vi.fn()
     const port = createManualInstall({
       directory, feedDirectory: FEED, platform: 'win32', openPath: async () => '', spawn: start, quit,

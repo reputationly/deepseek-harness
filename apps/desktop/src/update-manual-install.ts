@@ -69,6 +69,18 @@ export interface ManualInstallPort {
   replace(path: string): Promise<void>
 }
 
+interface SpawnedInstaller {
+  once(event: 'spawn', listener: () => void): this
+  once(event: 'error', listener: (error: Error) => void): this
+  unref(): void
+}
+
+type ManualInstallSpawn = (
+  path: string,
+  args: string[],
+  options: { detached: true; stdio: 'ignore'; windowsHide: false },
+) => SpawnedInstaller
+
 /** Inputs of one manual handoff. */
 export interface ManualInstallOptions {
   /** Directory the installer is saved in, normally the user's downloads folder. */
@@ -82,7 +94,7 @@ export interface ManualInstallOptions {
   /** Opens a saved file the way the desktop shell does. */
   readonly openPath: (path: string) => Promise<string>
   /** Starts the Windows installer; defaults to `node:child_process`'s `spawn`. */
-  readonly spawn?: typeof spawn
+  readonly spawn?: ManualInstallSpawn
   /** Quits the desktop application after the replacement installer starts. */
   readonly quit: () => void
 }
