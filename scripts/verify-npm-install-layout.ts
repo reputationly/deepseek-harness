@@ -90,9 +90,10 @@ function cloneForVersion(manifest: object, version: string): MutableRegistryMani
  * Let an external package that names DSH packages, such as a shipped third-party bundle, accept either synthetic
  * release, as it accepts the working release it was published against.
  */
-function acceptSyntheticReleases(manifest: MutableRegistryManifest): MutableRegistryManifest {
-  if (!DEPENDENCY_FIELDS.some(field => Object.keys(manifest[field] ?? {}).some(isDshPackage))) return manifest
-  const cloned = structuredClone(manifest)
+function acceptSyntheticReleases<T extends object>(manifest: T): T {
+  const fields = manifest as MutableRegistryManifest
+  if (!DEPENDENCY_FIELDS.some(field => Object.keys(fields[field] ?? {}).some(isDshPackage))) return manifest
+  const cloned = structuredClone(manifest) as T & MutableRegistryManifest
   const range = SYNTHETIC_DSH_VERSIONS.map(version => `^${version}`).join(' || ')
   for (const field of DEPENDENCY_FIELDS) {
     const dependencies = cloned[field]
@@ -115,7 +116,8 @@ export function buildDualDshRegistry(index: RegistryIndex, sourceVersion: string
   let dshPackages = 0
   for (const [name, versions] of index) {
     if (!isDshPackage(name)) {
-      output.set(name, new Map([...versions].map(([version, manifest]) => [version, acceptSyntheticReleases(manifest)])))
+      const accepted = new Map([...versions].map(([version, manifest]) => [version, acceptSyntheticReleases(manifest)]))
+      output.set(name, [...accepted].every(([version, manifest]) => manifest === versions.get(version)) ? versions : accepted)
       continue
     }
     const source = versions.get(sourceVersion)

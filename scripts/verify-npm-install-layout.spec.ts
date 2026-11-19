@@ -39,6 +39,19 @@ function validLayout(): NpmPackageLock {
 }
 
 describe('npm install layout verifier', () => {
+  it('lets an external package that names DSH packages accept both synthetic releases', () => {
+    type Manifest = { name: string; version: string; dependencies: Record<string, string>; peerDependencies: Record<string, string> }
+    const index: RegistryIndex = new Map<string, ReadonlyMap<string, Manifest>>([
+      ['@deepseek-ai/dsh', new Map([['0.2.2-rc.5', { name: '@deepseek-ai/dsh', version: '0.2.2-rc.5', dependencies: { plugin: '1.0.0' }, peerDependencies: {} }]])],
+      ['plugin', new Map([['1.0.0', { name: 'plugin', version: '1.0.0', dependencies: {}, peerDependencies: { '@deepseek-ai/dsh': '>=0.2.2-rc.1 <0.3.0-0', react: '^18.2.0' } }]])],
+    ])
+
+    const dual = buildDualDshRegistry(index, '0.2.2-rc.5')
+
+    expect(dual.get('plugin')?.get('1.0.0')?.peerDependencies).toEqual({ '@deepseek-ai/dsh': '^0.1.0 || ^0.2.0', react: '^18.2.0' })
+    expect(index.get('plugin')?.get('1.0.0')?.peerDependencies).toEqual({ '@deepseek-ai/dsh': '>=0.2.2-rc.1 <0.3.0-0', react: '^18.2.0' })
+  })
+
   it('creates two incompatible versions of every DSH package', () => {
     const index: RegistryIndex = new Map([
       ['@deepseek-ai/dsh', new Map([['0.1.1-rc.2', {
