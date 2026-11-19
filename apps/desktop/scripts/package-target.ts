@@ -502,6 +502,8 @@ export async function packageTarget(
       '--pack-destination',
       buildPaths.packedDsh,
     ], buildEnv, REPOSITORY_ROOT)
+    await executePreparation(
+      ['exec', 'tsx', 'apps/desktop/scripts/stage-external-packages.ts', '--out', buildPaths.packedDsh], buildEnv, REPOSITORY_ROOT)
     await executePreparation(['run', 'release:pack', '--family', 'vendor', '--out', buildPaths.packedVendor, ...packArguments], buildEnv, REPOSITORY_ROOT)
     rmSync(buildPaths.packedLandlock, { recursive: true, force: true })
     mkdirSync(buildPaths.packedLandlock, { recursive: true })
