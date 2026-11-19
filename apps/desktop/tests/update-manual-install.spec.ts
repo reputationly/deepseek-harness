@@ -43,6 +43,19 @@ function responseFromChunks(chunks: readonly Uint8Array[], headers?: HeadersInit
   }), headers === undefined ? undefined : { headers })
 }
 
+function interruptedResponse(chunk: Uint8Array, headers?: HeadersInit): Response {
+  let sent = false
+  return new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent) controller.error(new TypeError('terminated'))
+      else {
+        sent = true
+        controller.enqueue(chunk)
+      }
+    },
+  }), headers === undefined ? undefined : { headers })
+}
+
 function indexFor(
   overrides: {
     name?: string
@@ -62,15 +75,16 @@ function indexFor(
   }
 }
 
-function manualPort(
-  directory: string,
-  send: typeof fetch,
-  openPath: (path: string) => Promise<string> = async () => '',
-  ownsDirectory?: boolean,
-) {
+function manualPort(directory: string, send: typeof fetch, options: {
+  openPath?: (path: string) => Promise<string>
+  ownsDirectory?: boolean
+  retryDelayMs?: number
+} = {}) {
   return createManualInstall({
-    directory, feedDirectory: FEED, platform: 'darwin', send, openPath, quit: () => {},
-    ...(ownsDirectory === undefined ? {} : { ownsDirectory }),
+    directory, feedDirectory: FEED, platform: 'darwin', send,
+    openPath: options.openPath ?? (async () => ''), quit: () => {},
+    ...(options.ownsDirectory === undefined ? {} : { ownsDirectory: options.ownsDirectory }),
+    ...(options.retryDelayMs === undefined ? {} : { retryDelayMs: options.retryDelayMs }),
   })
 }
 
@@ -157,7 +171,7 @@ describe('createManualInstall', () => {
     const oldPath = join(directory, 'old-installer.exe')
     await writeFile(oldPath, 'old installer')
     const { send } = transport(indexFor())
-    const port = manualPort(directory, send, async () => '', true)
+    const port = manualPort(directory, send, { ownsDirectory: true })
     const path = await port.prepare('1.1.0-rc.2', () => {})
     await expect(readFile(oldPath)).rejects.toThrow()
     expect([...await readFile(path)]).toEqual([...bytes])
@@ -180,7 +194,7 @@ describe('createManualInstall', () => {
     const oldPath = join(directory, 'old-installer.exe')
     await writeFile(oldPath, 'old installer')
     const { send } = transport(indexFor())
-    const port = manualPort(directory, send, async () => '', true)
+    const port = manualPort(directory, send, { ownsDirectory: true })
     await expect(port.prepare('1.1.0-rc.1', () => {})).rejects.toThrow(/the feed offers 1.1.0-rc.2/u)
     await expect(readFile(oldPath)).resolves.toEqual(Buffer.from('old installer'))
   })
@@ -229,18 +243,114 @@ describe('createManualInstall', () => {
     await expectDownloadFilesMissing(directory)
   })
 
-  it('removes partial files when the artifact stream fails', async () => {
+  it('removes partial files when the server rejects a resumed request', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
     created.push(directory)
-    const failedResponse = () => new Response(new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(bytes.subarray(0, 4))
-        controller.error(new Error('connection interrupted'))
-      },
-    }))
-    const { send } = transport(indexFor(), failedResponse)
-    const port = manualPort(directory, send)
-    await expect(port.prepare('1.1.0-rc.2', () => {})).rejects.toThrow(/connection interrupted/u)
+    let downloads = 0
+    const { send } = transport(indexFor(), () => {
+      downloads += 1
+      return downloads === 1
+        ? interruptedResponse(bytes.subarray(0, 4))
+        : new Response(null, { status: 416 })
+    })
+    const port = manualPort(directory, send, { retryDelayMs: 0 })
+    await expect(port.prepare('1.1.0-rc.2', () => {})).rejects.toThrow(/HTTP 416/u)
+    await expectDownloadFilesMissing(directory)
+  })
+
+  it('resumes an interrupted download with the received byte range and ETag', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
+    created.push(directory)
+    const split = Math.floor(bytes.byteLength / 2)
+    const etag = '"installer-v1"'
+    const requests: (RequestInit | undefined)[] = []
+    const send = vi.fn<typeof fetch>(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url.endsWith('/latest.json')) return new Response(JSON.stringify(indexFor()))
+      requests.push(init)
+      if (requests.length === 1) {
+        return interruptedResponse(bytes.subarray(0, split), {
+          etag, 'content-length': String(bytes.byteLength),
+        })
+      }
+      return new Response(bytes.subarray(split), {
+        status: 206,
+        headers: { 'content-range': `bytes ${split}-${bytes.byteLength - 1}/${bytes.byteLength}` },
+      })
+    })
+    const port = manualPort(directory, send, { retryDelayMs: 0 })
+    const progress: number[] = []
+    const path = await port.prepare('1.1.0-rc.2', (value) => { progress.push(value) })
+
+    expect(requests).toHaveLength(2)
+    expect(requests[0]).toBeUndefined()
+    const resumeHeaders = new Headers(requests[1]?.headers)
+    expect(resumeHeaders.get('range')).toBe(`bytes=${split}-`)
+    expect(resumeHeaders.get('if-range')).toBe(etag)
+    const result = await readFile(path)
+    expect([...result]).toEqual([...bytes])
+    expect(createHash('sha256').update(result).digest('hex')).toBe(digest)
+    expect(progress.at(-1)).toBe(100)
+    expect(progress.slice(0, -1).every(value => value < 100)).toBe(true)
+    expect(progress.every((value, index) => index === 0 || value > progress[index - 1]!)).toBe(true)
+  })
+
+  it('restarts from byte zero when a resume request receives the full file', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
+    created.push(directory)
+    const split = Math.floor(bytes.byteLength / 2)
+    const requests: (RequestInit | undefined)[] = []
+    const send = vi.fn<typeof fetch>(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url.endsWith('/latest.json')) return new Response(JSON.stringify(indexFor()))
+      requests.push(init)
+      if (requests.length === 1) return interruptedResponse(bytes.subarray(0, split))
+      return new Response(bytes)
+    })
+    const port = manualPort(directory, send, { retryDelayMs: 0 })
+    const path = await port.prepare('1.1.0-rc.2', () => {})
+    const result = await readFile(path)
+    expect(requests).toHaveLength(2)
+    expect(new Headers(requests[1]?.headers).get('range')).toBe(`bytes=${split}-`)
+    expect([...result]).toEqual([...bytes])
+    expect(createHash('sha256').update(result).digest('hex')).toBe(digest)
+  })
+
+  it('rejects a resumed response with the wrong Content-Range and removes partial files', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
+    created.push(directory)
+    const split = Math.floor(bytes.byteLength / 2)
+    let downloads = 0
+    const send = vi.fn<typeof fetch>(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url.endsWith('/latest.json')) return new Response(JSON.stringify(indexFor()))
+      downloads += 1
+      if (downloads === 1) return interruptedResponse(bytes.subarray(0, split))
+      return new Response(bytes.subarray(split), {
+        status: 206,
+        headers: { 'content-range': `bytes ${split + 1}-${bytes.byteLength - 1}/${bytes.byteLength}` },
+      })
+    })
+    const port = manualPort(directory, send, { retryDelayMs: 0 })
+    await expect(port.prepare('1.1.0-rc.2', () => {})).rejects.toThrow(/unexpected Content-Range/u)
+    await expectDownloadFilesMissing(directory)
+  })
+
+  it('stops after five consecutive interruptions without received bytes', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
+    created.push(directory)
+    let downloads = 0
+    const send = vi.fn<typeof fetch>(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url.endsWith('/latest.json')) return new Response(JSON.stringify(indexFor()))
+      downloads += 1
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) { controller.error(new TypeError(`terminated-${downloads}`)) },
+      }))
+    })
+    const port = manualPort(directory, send, { retryDelayMs: 0 })
+    await expect(port.prepare('1.1.0-rc.2', () => {})).rejects.toThrow(/terminated-5/u)
+    expect(downloads).toBe(5)
     await expectDownloadFilesMissing(directory)
   })
 
@@ -248,7 +358,7 @@ describe('createManualInstall', () => {
     const directory = await mkdtemp(join(tmpdir(), 'manual-install-'))
     created.push(directory)
     const { send } = transport(indexFor())
-    const port = manualPort(directory, send, async () => 'no handler')
+    const port = manualPort(directory, send, { openPath: async () => 'no handler' })
     const path = await port.prepare('1.1.0-rc.2', () => {})
     await writeFile(path, bytes)
     await expect(port.open(path)).rejects.toThrow(/could not be opened: no handler/u)

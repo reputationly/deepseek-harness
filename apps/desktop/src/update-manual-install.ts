@@ -9,11 +9,8 @@
 
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { createWriteStream } from 'node:fs'
-import { mkdir, rename, rm } from 'node:fs/promises'
+import { mkdir, open, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { Readable, Transform } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
 
 /** One installer artifact as the update feed lists it. */
 export interface InstallerAsset {
@@ -51,6 +48,7 @@ export interface ManualInstallPort {
    * @param version - version the caller confirmed, checked against the published index.
    * @param onProgress - receives whole percentages while the artifact streams in.
    * @returns the saved path.
+   * Network interruptions resume with HTTP Range requests.
    * @throws If the feed, download, size, or digest is invalid. Partial downloads are removed.
    */
   prepare(version: string, onProgress: (percent: number) => void): Promise<string>
@@ -81,6 +79,12 @@ type ManualInstallSpawn = (
   options: { detached: true; stdio: 'ignore'; windowsHide: false },
 ) => SpawnedInstaller
 
+class InstallerProcessingError extends Error {
+  constructor(readonly error: unknown) {
+    super('desktop update: installer download processing failed')
+  }
+}
+
 /** Inputs of one manual handoff. */
 export interface ManualInstallOptions {
   /** Directory the installer is saved in, normally the user's downloads folder. */
@@ -93,6 +97,8 @@ export interface ManualInstallOptions {
   readonly platform?: NodeJS.Platform
   /** Transport, injected so tests own their bytes. */
   readonly send?: typeof fetch
+  /** Base wait in milliseconds before retrying an interrupted download. */
+  readonly retryDelayMs?: number
   /** Opens a saved file the way the desktop shell does. */
   readonly openPath: (path: string) => Promise<string>
   /** Starts the Windows installer; defaults to `node:child_process`'s `spawn`. */
@@ -110,6 +116,7 @@ export function createManualInstall(options: ManualInstallOptions): ManualInstal
   const send = options.send ?? fetch
   const platform = options.platform ?? process.platform
   const start = options.spawn ?? spawn
+  const retryDelayMs = options.retryDelayMs ?? 1000
   return {
     replacesInPlace: platform === 'win32',
     async prepare(version, onProgress) {
@@ -126,41 +133,99 @@ export function createManualInstall(options: ManualInstallOptions): ManualInstal
       let lastProgress = 0
       try {
         await mkdir(dirname(target), { recursive: true })
-        const response = await send(asset.url)
-        if (!response.ok) throw new Error(`desktop update: installer download answered HTTP ${String(response.status)}`)
-        if (response.body === null) throw new Error('desktop update: installer download failed')
-        const contentLength = response.headers.get('content-length')
-        const advertisedSize = asset.size ?? (contentLength === null ? undefined : Number(contentLength))
-        const total = advertisedSize !== undefined && Number.isFinite(advertisedSize) && advertisedSize > 0
-          ? advertisedSize : undefined
-        const hash = createHash('sha256')
-        await pipeline(
-          Readable.from(response.body),
-          new Transform({
-            transform(chunk: Uint8Array, _encoding, callback) {
-              try {
-                hash.update(chunk)
-                downloaded += chunk.byteLength
-                if (total !== undefined) {
-                  const percent = Math.min(99, Math.floor(downloaded / total * 100))
-                  if (percent > lastProgress) {
-                    lastProgress = percent
-                    onProgress(percent)
-                  }
-                }
-                callback(null, chunk)
-              } catch (error) {
-                callback(error instanceof Error ? error : new Error(String(error)))
+        const handle = await open(temporary, 'w')
+        try {
+          let hash = createHash('sha256')
+          let writePosition = 0
+          let total: number | undefined
+          let etag: string | undefined
+          let firstResponse = true
+          let firstRequest = true
+          let consecutiveFailures = 0
+          while (true) {
+            const rangeRequest = !firstRequest
+            let response: Response
+            try {
+              if (firstRequest) {
+                firstRequest = false
+                response = await send(asset.url)
+              } else {
+                response = await send(asset.url, {
+                  headers: {
+                    Range: `bytes=${downloaded}-`,
+                    ...(etag === undefined ? {} : { 'If-Range': etag }),
+                  },
+                })
               }
-            },
-          }),
-          createWriteStream(temporary),
-        )
-        if (asset.size !== undefined && downloaded !== asset.size) {
-          throw new Error(`desktop update: installer is ${String(downloaded)} bytes, the feed published ${String(asset.size)}`)
-        }
-        if (asset.sha256 !== undefined && hash.digest('hex') !== asset.sha256) {
-          throw new Error('desktop update: installer SHA-256 does not match the published index')
+            } catch (error) {
+              consecutiveFailures += 1
+              if (consecutiveFailures >= 5) throw error
+              await new Promise<void>(resolve => setTimeout(resolve, retryDelayMs * consecutiveFailures))
+              continue
+            }
+            if (!response.ok) throw new Error(`desktop update: installer download answered HTTP ${String(response.status)}`)
+            if (response.body === null) throw new Error('desktop update: installer download failed')
+            if (firstResponse) {
+              firstResponse = false
+              etag = response.headers.get('etag') ?? undefined
+              const contentLength = response.headers.get('content-length')
+              const advertisedSize = asset.size ?? (contentLength === null ? undefined : Number(contentLength))
+              total = advertisedSize !== undefined && Number.isFinite(advertisedSize) && advertisedSize > 0
+                ? advertisedSize : undefined
+            }
+            if (response.status === 206) {
+              if (!response.headers.get('content-range')?.startsWith(`bytes ${downloaded}-`)) {
+                throw new Error('desktop update: installer resume response has an unexpected Content-Range')
+              }
+            } else if (rangeRequest && response.status === 200) {
+              await handle.truncate(0)
+              downloaded = 0
+              writePosition = 0
+              hash = createHash('sha256')
+            }
+            try {
+              for await (const chunk of response.body) {
+                try {
+                  let offset = 0
+                  while (offset < chunk.byteLength) {
+                    const { bytesWritten } = await handle.write(
+                      chunk, offset, chunk.byteLength - offset, writePosition + offset,
+                    )
+                    if (bytesWritten === 0) throw new Error('desktop update: installer download could not be written')
+                    offset += bytesWritten
+                  }
+                  hash.update(chunk)
+                  downloaded += chunk.byteLength
+                  writePosition += chunk.byteLength
+                  if (total !== undefined) {
+                    const percent = Math.min(99, Math.floor(downloaded / total * 100))
+                    if (percent > lastProgress) {
+                      lastProgress = percent
+                      onProgress(percent)
+                    }
+                  }
+                } catch (error) {
+                  throw new InstallerProcessingError(error)
+                }
+                consecutiveFailures = 0
+              }
+            } catch (error) {
+              if (error instanceof InstallerProcessingError) throw error.error
+              consecutiveFailures += 1
+              if (consecutiveFailures >= 5) throw error
+              await new Promise<void>(resolve => setTimeout(resolve, retryDelayMs * consecutiveFailures))
+              continue
+            }
+            break
+          }
+          if (asset.size !== undefined && downloaded !== asset.size) {
+            throw new Error(`desktop update: installer is ${String(downloaded)} bytes, the feed published ${String(asset.size)}`)
+          }
+          if (asset.sha256 !== undefined && hash.digest('hex') !== asset.sha256) {
+            throw new Error('desktop update: installer SHA-256 does not match the published index')
+          }
+        } finally {
+          await handle.close()
         }
         await rename(temporary, target)
       } catch (error) {
