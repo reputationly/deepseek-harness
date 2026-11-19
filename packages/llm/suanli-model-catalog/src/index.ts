@@ -17,18 +17,13 @@ import type {} from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { ClassMembers } from './types.ts'
 import { CatalogSync } from './sync.ts'
+import {
+  DEFAULT_CATALOG_CAPABILITIES_PATH, DEFAULT_CATALOG_MODELS_PATH, DEFAULT_CATALOG_TIMEOUT_MS,
+} from './defaults.ts'
 import type { CatalogEntry, CatalogSyncResult } from './types.ts'
 
-export { classMembers, classify, parseCapabilities } from './capabilities.ts'
-export { CatalogSync, mergeCatalog } from './sync.ts'
 export type * from './types.ts'
 
-/** Default listing path of an OpenAI-compatible gateway. */
-export const DEFAULT_CATALOG_MODELS_PATH = '/v1/models'
-/** Default path of the gateway capability catalog. */
-export const DEFAULT_CATALOG_CAPABILITIES_PATH = '/v1/ov/capabilities'
-/** Default request budget of one listing. */
-export const DEFAULT_CATALOG_TIMEOUT_MS = 10_000
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-api-gateway-status",
   "description": "Host Remote namespace reporting whether the configured model gateway answers for the stored key",
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.5",
   "publishConfig": {
     "access": "public"
   },
@@ -46,7 +46,6 @@
     "@deepseek-ai/dsh-typert-registry": "workspace:*"
   },
   "files": [
-    "locale/*.json",
     "lib/index.js",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts",

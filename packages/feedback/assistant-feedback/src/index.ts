@@ -15,15 +15,12 @@ import type {} from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { buildSnapshot, DEFAULT_MAX_TURNS } from './snapshot.ts'
+import { DEFAULT_MAX_CONTEXT_BYTES, DEFAULT_TIMEOUT_MS } from './defaults.ts'
 import { resolveRequestId } from './request-id.ts'
 import { postAssistantFeedback } from './submit.ts'
 import type { AssistantFeedbackSubmitRequest, AssistantFeedbackSubmitResult } from './types.ts'
 
-export { buildSnapshot, DEFAULT_MAX_TURNS } from './snapshot.ts'
-export { resolveRequestId } from './request-id.ts'
 export type { SnapshotOptions } from './snapshot.ts'
-export { isSecretKey, redactText, redactValue } from './redact.ts'
-export { feedbackEndpoint, postAssistantFeedback } from './submit.ts'
 export type { FeedbackEndpoint } from './submit.ts'
 export type * from './types.ts'
 
@@ -33,12 +30,6 @@ declare module '@deepseek-ai/cordis' {
     assistantFeedback: AssistantFeedbackService
   }
 }
-
-/** Snapshot byte ceiling the feedback site accepts. */
-export const DEFAULT_MAX_CONTEXT_BYTES = 60_000
-
-/** Request budget for one submission, milliseconds. */
-export const DEFAULT_TIMEOUT_MS = 15_000
 
 /** Where submissions go and how much conversation they may carry. */
 export interface Config {

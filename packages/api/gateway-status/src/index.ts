@@ -18,9 +18,7 @@ import { probeGatewayKey, PROBE_TIMEOUT_MS, type ProbeResult } from './probe.ts'
 import { GatewayStatusCache } from './status.ts'
 import type { GatewayStatus } from './types.ts'
 
-export { probeGatewayKey, PROBE_TIMEOUT_MS } from './probe.ts'
 export type { ProbeResult } from './probe.ts'
-export { GatewayStatusCache } from './status.ts'
 export type * from './types.ts'
 
 declare module '@deepseek-ai/cordis' {

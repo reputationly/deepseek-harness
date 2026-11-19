@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-assistant-feedback",
   "description": "Host namespace submitting assistant feedback and its redacted conversation snapshot to the deployment's new-api site",
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.5",
   "publishConfig": {
     "access": "public"
   },
@@ -50,7 +50,6 @@
     "@deepseek-ai/schemastery": "workspace:~"
   },
   "files": [
-    "locale/*.json",
     "lib/index.js",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts",

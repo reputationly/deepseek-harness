@@ -13,25 +13,18 @@ import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import {
+  DEFAULT_IMAGES_PATH, DEFAULT_MEDIA_IMAGE_TIMEOUT_MS, DEFAULT_MEDIA_POLL_MS, DEFAULT_MEDIA_TIMEOUT_MS,
+  DEFAULT_VIDEOS_PATH,
+} from './defaults.ts'
 import { MediaTaskClient, transportFor } from './tasks.ts'
 import type {
   MediaCancelResult, MediaDownloadResult, MediaOperation, MediaStatusResult, MediaSubmitRequest, MediaSubmitResult,
   MediaTransport,
 } from './types.ts'
 
-export { MediaTaskClient, normalizeState, transportFor } from './tasks.ts'
 export type * from './types.ts'
 
-/** Default image collection path of an OpenAI-compatible gateway. */
-export const DEFAULT_IMAGES_PATH = '/v1/images/generations'
-/** Default video collection path of an OpenAI-compatible gateway. */
-export const DEFAULT_VIDEOS_PATH = '/v1/videos'
-/** Default request budget of one task-transport call. */
-export const DEFAULT_MEDIA_TIMEOUT_MS = 30_000
-/** Default request budget of one image call; the image endpoint answers only when the image exists. */
-export const DEFAULT_MEDIA_IMAGE_TIMEOUT_MS = 240_000
-/** Default interval between two status reads. */
-export const DEFAULT_MEDIA_POLL_MS = 2_000
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-suanli-model-catalog",
   "description": "Host Remote namespace that refreshes the product's model catalog from its gateway",
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.5",
   "publishConfig": {
     "access": "public"
   },
@@ -48,7 +48,6 @@
     "@deepseek-ai/dsh-typert-registry": "workspace:*"
   },
   "files": [
-    "locale/*.json",
     "lib/index.js",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts",
