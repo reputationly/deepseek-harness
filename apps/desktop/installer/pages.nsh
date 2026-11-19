@@ -278,6 +278,17 @@ Function InstallerBrowsePath
     nsDialogs::SelectFolderDialog "$(INSTALLER_CHOOSE_PATH)" "$InstallerPath"
     Pop $0
     ${If} $0 != "error"
+        ; A chosen parent folder receives the application folder the default location ends with.
+        Push $1
+        StrCpy $1 $0 1 -1
+        ${If} $1 == "\"
+            StrCpy $0 $0 -1
+        ${EndIf}
+        ${GetFileName} $0 $1
+        ${If} $1 != "${APP_FILENAME}"
+            StrCpy $0 "$0\${APP_FILENAME}"
+        ${EndIf}
+        Pop $1
         ${NSD_SetText} $InstallerEdit "$0"
         Call InstallerValidateEditedPath
     ${EndIf}
