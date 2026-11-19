@@ -263,9 +263,10 @@ export function createManualInstall(options: ManualInstallOptions): ManualInstal
  * Remove the updater-owned installer directory, retrying removal failures.
  * NSIS may keep its own files open for a while after launching the updated application.
  * @param directory - Installer directory to remove.
- * @param options - Retry attempts, delay, and removal operation; defaults to 12 attempts, 10 seconds, and recursive forced removal.
+ * @param options - Retry settings. `attempts` includes the immediate first attempt (default 12), `delayMs` is the
+ *   wait before a retry (default 10,000 ms), and `remove` defaults to recursive forced removal.
  * @returns Resolves once the directory is removed.
- * @throws The last removal error if every attempt fails.
+ * @throws A `RangeError` if attempts is below one, or the last removal error if every attempt fails.
  */
 export async function clearInstallerDirectory(
   directory: string,

@@ -164,6 +164,14 @@ describe('clearInstallerDirectory', () => {
       .resolves.toBeUndefined()
     expect(paths).toEqual(['/temp/suanli-assistant-update'])
   })
+
+  it('requires at least one attempt', async () => {
+    const remove = vi.fn(async () => {})
+
+    await expect(clearInstallerDirectory('/temp/suanli-assistant-update', { attempts: 0, delayMs: 0, remove }))
+      .rejects.toThrow('at least one attempt')
+    expect(remove).not.toHaveBeenCalled()
+  })
 })
 
 describe('createManualInstall', () => {
