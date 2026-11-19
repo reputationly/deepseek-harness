@@ -171,6 +171,8 @@ export function installPetWindow(options: PetWindowOptions): () => void {
   }
 
   ipcMain.handle(PET_IPC.sync, async (event, value: unknown) => {
+    // The page hands its pet back while it unloads, which during quit is after this window is gone.
+    if (disposed) return
     if (!isSource(event) || !isApplicationPage(event.sender)) throw new Error('desktop pet: rejected an unknown source')
     if (value === null) { state = null; close(); return }
     const next = parsePetWindowState(value)
@@ -288,7 +290,6 @@ export function installPetWindow(options: PetWindowOptions): () => void {
     app.removeListener('web-contents-created', created)
     app.removeListener('before-quit', dispose)
     if (saveTimer !== undefined) clearTimeout(saveTimer)
-    ipcMain.removeHandler(PET_IPC.sync)
     ipcMain.removeHandler(PET_IPC.command)
     for (const [channel, listener] of listeners) ipcMain.removeListener(channel, listener)
     screen.removeListener('display-removed', clamp)
