@@ -87,6 +87,24 @@ function cloneForVersion(manifest: object, version: string): MutableRegistryMani
 }
 
 /**
+ * Let an external package that names DSH packages, such as a shipped third-party bundle, accept either synthetic
+ * release, as it accepts the working release it was published against.
+ */
+function acceptSyntheticReleases(manifest: MutableRegistryManifest): MutableRegistryManifest {
+  if (!DEPENDENCY_FIELDS.some(field => Object.keys(manifest[field] ?? {}).some(isDshPackage))) return manifest
+  const cloned = structuredClone(manifest)
+  const range = SYNTHETIC_DSH_VERSIONS.map(version => `^${version}`).join(' || ')
+  for (const field of DEPENDENCY_FIELDS) {
+    const dependencies = cloned[field]
+    if (dependencies === undefined) continue
+    for (const name of Object.keys(dependencies)) {
+      if (isDshPackage(name)) dependencies[name] = range
+    }
+  }
+  return cloned
+}
+
+/**
  * Replace the working release with two incompatible, internally consistent DSH releases.
  * @param index - Registry metadata containing the working release.
  * @param sourceVersion - Workspace version copied into each synthetic release.
@@ -97,7 +115,7 @@ export function buildDualDshRegistry(index: RegistryIndex, sourceVersion: string
   let dshPackages = 0
   for (const [name, versions] of index) {
     if (!isDshPackage(name)) {
-      output.set(name, versions)
+      output.set(name, new Map([...versions].map(([version, manifest]) => [version, acceptSyntheticReleases(manifest)])))
       continue
     }
     const source = versions.get(sourceVersion)
