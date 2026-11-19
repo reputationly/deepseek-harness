@@ -56,7 +56,7 @@ inline INT_PTR CALLBACK DialogProc(HWND window, UINT message, WPARAM wp, LPARAM 
 }
 
 // Size the localized paragraph with the font and wrapping used by its static control.
-static void InstallerStyleRestartBanner(HWND window, LPCWSTR text,
+static void InstallerStyleRestartBanner(HWND window, LPCWSTR title, LPCWSTR text,
     LPCWSTR locale, LPCWSTR face, int logicalFontSize, COLORREF background, COLORREF foreground) {
     const HWND label = GetDlgItem(window, restart_banner::bodyId);
     const HWND icon = GetDlgItem(window, restart_banner::iconId);
@@ -111,11 +111,11 @@ static void InstallerStyleRestartBanner(HWND window, LPCWSTR text,
     const int newHeight = height + outer.bottom - outer.top - client.bottom;
     SetWindowPos(window, nullptr, (outer.left + outer.right - newWidth) / 2,
         (outer.top + outer.bottom - newHeight) / 2, newWidth, newHeight, SWP_NOACTIVATE | SWP_NOZORDER);
-    const HWND title = GetDlgItem(window, restart_banner::titleId);
-    SetWindowLongPtrW(title, GWL_STYLE, (GetWindowLongPtrW(title, GWL_STYLE) & ~SS_TYPEMASK) | SS_LEFT | SS_NOPREFIX);
-    SetWindowTextW(title, L"DeepSeek Harness");
-    SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(state->titleFont), FALSE);
-    SetWindowPos(title, nullptr, padding + iconSize + gap, (height - textHeight) / 2,
+    const HWND titleLabel = GetDlgItem(window, restart_banner::titleId);
+    SetWindowLongPtrW(titleLabel, GWL_STYLE, (GetWindowLongPtrW(titleLabel, GWL_STYLE) & ~SS_TYPEMASK) | SS_LEFT | SS_NOPREFIX);
+    SetWindowTextW(titleLabel, title);
+    SendMessageW(titleLabel, WM_SETFONT, reinterpret_cast<WPARAM>(state->titleFont), FALSE);
+    SetWindowPos(titleLabel, nullptr, padding + iconSize + gap, (height - textHeight) / 2,
         width - 2 * padding - gap - iconSize, titleHeight, SWP_NOZORDER | SWP_SHOWWINDOW);
     const LONG_PTR style = GetWindowLongPtrW(label, GWL_STYLE);
     SetWindowLongPtrW(label, GWL_STYLE, (style & ~SS_TYPEMASK) | SS_LEFT | SS_NOPREFIX | SS_EDITCONTROL);

@@ -13,7 +13,7 @@ Var RestartStatusJob
   Push $2
   StrCpy $1 0
   StrCpy $2 "$(INSTALLER_UPDATE_WAIT)"
-  System::Call '$PLUGINSDIR\window-frame.dll::InstallerStartRestartStatus(w "$EXEPATH", w "$InstallerTheme", i $LANGUAGE, w r2) p.r1 ?c'
+  System::Call '$PLUGINSDIR\window-frame.dll::InstallerStartRestartStatus(w "$EXEPATH", w "$InstallerTheme", i $LANGUAGE, w "${PRODUCT_NAME}", w r2) p.r1 ?c'
   StrCpy $RestartStatusJob $1
   Pop $2
   Pop $1

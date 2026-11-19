@@ -695,7 +695,8 @@ async function main(): Promise<void> {
     ? join(app.getPath('temp'), `${app.getName()}-update`)
     : app.getPath('downloads')
   if (manualInstall && process.platform === 'win32' && raiseAfterUpdate) {
-    void rm(installerDirectory, { recursive: true, force: true })
+    // NSIS briefly holds its own files after launching the updated app.
+    void rm(installerDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 1000 })
       .catch((error: unknown) => { console.error(error) })
   }
   const channelSettings = new DesktopUpdateSettings(app.getPath('userData'), packagedChannel)

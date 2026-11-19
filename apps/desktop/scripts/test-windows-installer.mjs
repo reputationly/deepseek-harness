@@ -113,6 +113,7 @@ SectionEnd
     await execute(compiler.path, ['/V2', `/DOWNER_EXE=${owner}`,
       `/DBANNER_INCLUDE=${join(appRoot, 'scripts', 'restart-banner.nsh')}`,
       `/DSTATUS_DLL=${join(output, 'ui', 'window-frame.dll')}`,
+      `/DPRODUCT_NAME=${productName}`,
       join(appRoot, 'tests', 'fixtures', 'restart-status-owner.nsi')],
     { ...childOptions, env: { ...childOptions.env, ...compiler.env } })
     if (sign) await sign({ path: owner, hash: 'sha256', isNest: false })

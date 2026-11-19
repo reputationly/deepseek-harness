@@ -52,7 +52,7 @@ static INT_PTR CALLBACK Dialog(HWND window, UINT message, WPARAM, LPARAM) {
 // The shell host is a member of a private job from its first instruction. Parent exit
 // terminates even a stuck window, without a child-to-installer IPC or acknowledgment.
 extern "C" __declspec(dllexport) HANDLE __cdecl InstallerStartRestartStatus(LPCWSTR installer, LPCWSTR theme,
-        int language, LPCWSTR text) noexcept {
+        int language, LPCWSTR title, LPCWSTR text) noexcept {
     try {
         HMODULE module{};
         if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
@@ -66,7 +66,7 @@ extern "C" __declspec(dllexport) HANDLE __cdecl InstallerStartRestartStatus(LPCW
         launch->directory = system;
         launch->program = std::wstring(system) + L"\\rundll32.exe";
         launch->command = L"\"" + launch->program + L"\" \"" + dll + L"\",ShowRestartStatus \"" +
-            installer + L"\" " + std::to_wstring(language) + L" " + theme + L" " + text;
+            installer + L"\" " + std::to_wstring(language) + L" " + theme + L" \"" + title + L"\" " + text;
         HANDLE owner = CreateJobObjectW(nullptr, nullptr);
         if (!owner) return nullptr;
         if (!DuplicateHandle(GetCurrentProcess(), owner, GetCurrentProcess(), &launch->job, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
@@ -100,12 +100,18 @@ extern "C" void CALLBACK ShowRestartStatusW(HWND, HINSTANCE instance, LPWSTR raw
     if (!end || end[1] != L' ') return;
     *end = 0;
     const wchar_t* installer = raw + 1;
-    wchar_t* theme{};
-    const long language = wcstol(end + 2, &theme, 10);
-    if (*theme != L' ') return;
-    wchar_t* text = wcschr(++theme, L' ');
-    if (!text) return;
-    *text++ = 0;
+    wchar_t* languageEnd{};
+    const long language = wcstol(end + 2, &languageEnd, 10);
+    if (languageEnd == end + 2 || *languageEnd != L' ') return;
+    wchar_t* theme = languageEnd + 1;
+    wchar_t* titleStart = wcschr(theme, L' ');
+    if (!titleStart || titleStart[1] != L'"') return;
+    *titleStart = 0;
+    wchar_t* title = titleStart + 2;
+    wchar_t* titleEnd = wcschr(title, L'"');
+    if (!titleEnd || titleEnd[1] != L' ') return;
+    *titleEnd = 0;
+    wchar_t* text = titleEnd + 2;
     const bool dark = wcscmp(theme, L"dark") == 0;
     wchar_t locale[LOCALE_NAME_MAX_LENGTH]{};
     LCIDToLocaleName(MAKELCID(language, SORT_DEFAULT), locale, ARRAYSIZE(locale), 0);
@@ -122,19 +128,19 @@ extern "C" void CALLBACK ShowRestartStatusW(HWND, HINSTANCE instance, LPWSTR raw
     layout.dialog.cy = 50;
     HWND window = CreateDialogIndirectParamW(instance, &layout.dialog, nullptr, restart_status::Dialog, 0);
     if (!window) return;
-    SetWindowTextW(window, L"DeepSeek Harness");
+    SetWindowTextW(window, title);
     const DWORD style = WS_CHILD | WS_VISIBLE;
     HWND image = CreateWindowW(L"STATIC", L"", style | SS_ICON, 0,0,0,0, window,
         reinterpret_cast<HMENU>(restart_banner::iconId), instance, nullptr);
-    HWND title = CreateWindowW(L"STATIC", L"", style, 0,0,0,0, window, reinterpret_cast<HMENU>(restart_banner::titleId), instance, nullptr);
+    HWND titleControl = CreateWindowW(L"STATIC", L"", style, 0,0,0,0, window, reinterpret_cast<HMENU>(restart_banner::titleId), instance, nullptr);
     HWND label = CreateWindowW(L"STATIC", text, style, 0,0,0,0, window, reinterpret_cast<HMENU>(restart_banner::bodyId), instance, nullptr);
-    if (!image || !title || !label) { DestroyWindow(window); return; }
+    if (!image || !titleControl || !label) { DestroyWindow(window); return; }
     HICON large{}, smallIcon{};
     ExtractIconExW(installer, 0, &large, &smallIcon, 1);
     SendMessageW(image, STM_SETICON, reinterpret_cast<WPARAM>(large), 0);
     SendMessageW(window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large));
     SendMessageW(window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallIcon));
-    InstallerStyleRestartBanner(window, text, locale, L"Microsoft YaHei UI", 14,
+    InstallerStyleRestartBanner(window, title, text, locale, L"Microsoft YaHei UI", 14,
         dark ? RGB(21,21,23) : RGB(255,255,255), dark ? RGB(255,255,255) : RGB(15,17,21));
     if (GetPropW(window, restart_banner::stateKey)) {
         ShowWindow(window, SW_SHOWNOACTIVATE);
