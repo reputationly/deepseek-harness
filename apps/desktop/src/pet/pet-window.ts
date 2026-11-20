@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { SCHEME } from '../ipc.ts'
 import { gazePayload } from './pet-gaze.ts'
 import { installPetSourceAdapter } from './pet-source-adapter.ts'
+import { preventPetWindowActivation } from './pet-window-activation.ts'
 import { petWindowHtml } from './pet-window-html.ts'
 import {
   PET_IPC,
@@ -170,6 +171,11 @@ export function installPetWindow(options: PetWindowOptions): () => void {
     created.webContents.on('render-process-gone', () => { if (window === created) { close(); release() } })
     created.on('moved', persistPosition)
     try {
+      if (process.platform === 'darwin') {
+        await preventPetWindowActivation(created).catch((error: unknown) => {
+          console.warn('desktop pet: clicks on the pet will activate the application', error)
+        })
+      }
       await created.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(petWindowHtml())}`)
       if (window !== created) throw new Error('desktop pet: window closed while loading')
       created.showInactive()
