@@ -19,6 +19,19 @@ export const PET_IPC = {
 export const PET_WINDOW_WIDTH = 320
 export const PET_WINDOW_HEIGHT = 560
 
+/**
+ * Window options that differ by platform. On macOS only a panel joins another application's full-screen Space, and
+ * leaving the process type alone keeps the Dock icon while the window shows on every Space.
+ */
+export function petWindowPlatformOptions(platform: NodeJS.Platform): {
+  window: { type?: 'panel' }
+  workspaces: { visibleOnFullScreen: true; skipTransformProcessType?: true }
+} {
+  return platform === 'darwin'
+    ? { window: { type: 'panel' }, workspaces: { visibleOnFullScreen: true, skipTransformProcessType: true } }
+    : { window: {}, workspaces: { visibleOnFullScreen: true } }
+}
+
 export interface PetNotifications {
   items: Array<{
     id: string
@@ -100,7 +113,7 @@ export function parsePetWindowState(value: unknown): PetWindowState | null {
   if (!(['builtin', 'custom'] as string[]).includes(pet.source)) return null
   if (
     !Number.isFinite(config.size) ||
-    config.size < 64 ||
+    config.size < 48 ||
     config.size > 224 ||
     typeof config.visible !== 'boolean'
   )

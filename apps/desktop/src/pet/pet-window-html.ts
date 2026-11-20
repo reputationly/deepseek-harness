@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { renderPetWindow } from './pet-renderer.ts'
-import { lookCell, PET_SPRITE_BOTTOM, PET_SPRITE_RIGHT } from './pet-gaze.ts'
+import { lookCell, PET_SPRITE_BOTTOM, PET_SPRITE_RIGHT, spritePixel } from './pet-gaze.ts'
 
 /**
  * Document of the pet window. The shell supplies the markup and script; the spritesheet arrives as a data URL, so
@@ -8,7 +8,7 @@ import { lookCell, PET_SPRITE_BOTTOM, PET_SPRITE_RIGHT } from './pet-gaze.ts'
  * @returns the HTML document.
  */
 export function petWindowHtml(): string {
-  const script = `const lookCell=${lookCell.toString()};(${renderPetWindow.toString()})()`
+  const script = `const lookCell=${lookCell.toString()};const spritePixel=${spritePixel.toString()};(${renderPetWindow.toString()})()`
   const hash = createHash('sha256').update(script).digest('base64')
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; script-src 'sha256-${hash}'; style-src 'unsafe-inline'"><style>
   :root{color-scheme:light dark;--bg:#f7f7f7;--text:#252525;--muted:#727272;--line:#0002} @media(prefers-color-scheme:dark){:root{--bg:#292929;--text:#eee;--muted:#aaa;--line:#fff3}}

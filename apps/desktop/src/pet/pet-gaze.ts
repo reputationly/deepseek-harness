@@ -40,3 +40,19 @@ export function gazePayload(
   if (!state || state.pet.version !== 2 || state.activity.pose !== 'idle') return null
   return gazeDelta(cursor, bounds, state.config.size)
 }
+
+/**
+ * Spritesheet pixel under a point of the displayed sprite, or null outside the cell. Cells are 192×208 source pixels
+ * and the sprite is `size` wide, so the pet window can ignore clicks on the transparent part of the current frame.
+ */
+export function spritePixel(
+  offsetX: number,
+  offsetY: number,
+  size: number,
+  cell: { row: number; col: number },
+): { x: number; y: number } | null {
+  const x = Math.floor((offsetX / size) * 192)
+  const y = Math.floor((offsetY / size) * 192)
+  if (!(x >= 0 && x < 192 && y >= 0 && y < 208)) return null
+  return { x: cell.col * 192 + x, y: cell.row * 208 + y }
+}

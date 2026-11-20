@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { gazeDelta, gazePayload, lookCell } from '../src/pet/pet-gaze.ts'
+import { gazeDelta, gazePayload, lookCell, spritePixel } from '../src/pet/pet-gaze.ts'
 import { createPetHostBridge } from '../src/pet/pet-host-bridge.ts'
-import { PET_IPC, constrainPetBounds, parsePetWindowState, validPetCommand, type PetWindowState } from '../src/pet/pet-window-policy.ts'
+import {
+  PET_IPC,
+  constrainPetBounds,
+  parsePetWindowState,
+  petWindowPlatformOptions,
+  validPetCommand,
+  type PetWindowState,
+} from '../src/pet/pet-window-policy.ts'
 
 const sprite = 'data:image/webp;base64,AAAA'
 
@@ -172,5 +179,43 @@ describe('createPetHostBridge', () => {
     stop()
     expect(actions).toEqual(['settings'])
     expect(ipc.listeners.has(PET_IPC.action)).toBe(false)
+  })
+})
+
+describe('sprite pixel', () => {
+  it('maps a point of the displayed sprite to the cell of the current frame', () => {
+    expect(spritePixel(0, 0, 192, { row: 0, col: 0 })).toEqual({ x: 0, y: 0 })
+    expect(spritePixel(191, 207, 192, { row: 3, col: 2 })).toEqual({ x: 2 * 192 + 191, y: 3 * 208 + 207 })
+  })
+
+  it('scales a sprite displayed at another size back to source pixels', () => {
+    expect(spritePixel(48, 52, 96, { row: 9, col: 7 })).toEqual({ x: 7 * 192 + 96, y: 9 * 208 + 104 })
+  })
+
+  it('reports nothing outside the cell', () => {
+    expect(spritePixel(-1, 10, 192, { row: 0, col: 0 })).toBeNull()
+    expect(spritePixel(192, 10, 192, { row: 0, col: 0 })).toBeNull()
+    expect(spritePixel(10, 208, 192, { row: 0, col: 0 })).toBeNull()
+    expect(spritePixel(Number.NaN, 10, 192, { row: 0, col: 0 })).toBeNull()
+  })
+})
+
+describe('pet window platform options', () => {
+  it('opens a panel that keeps the process type on macOS, so the pet joins full-screen Spaces', () => {
+    expect(petWindowPlatformOptions('darwin')).toEqual({
+      window: { type: 'panel' },
+      workspaces: { visibleOnFullScreen: true, skipTransformProcessType: true },
+    })
+  })
+
+  it('keeps an ordinary window elsewhere', () => {
+    expect(petWindowPlatformOptions('win32')).toEqual({ window: {}, workspaces: { visibleOnFullScreen: true } })
+    expect(petWindowPlatformOptions('linux')).toEqual({ window: {}, workspaces: { visibleOnFullScreen: true } })
+  })
+
+  it('accepts the smallest and rejects a smaller pet size', () => {
+    const sized = (size: number): Record<string, unknown> => snapshot({ config: { selected: 'suanli', visible: true, size, position: null } })
+    expect(parsePetWindowState(sized(48))?.config.size).toBe(48)
+    expect(parsePetWindowState(sized(47))).toBeNull()
   })
 })

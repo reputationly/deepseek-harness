@@ -11,7 +11,16 @@ import { SCHEME } from '../ipc.ts'
 import { gazePayload } from './pet-gaze.ts'
 import { installPetSourceAdapter } from './pet-source-adapter.ts'
 import { petWindowHtml } from './pet-window-html.ts'
-import { PET_IPC, PET_WINDOW_HEIGHT, PET_WINDOW_WIDTH, constrainPetBounds, parsePetWindowState, validPetCommand, type PetWindowState } from './pet-window-policy.ts'
+import {
+  PET_IPC,
+  PET_WINDOW_HEIGHT,
+  PET_WINDOW_WIDTH,
+  constrainPetBounds,
+  parsePetWindowState,
+  petWindowPlatformOptions,
+  validPetCommand,
+  type PetWindowState,
+} from './pet-window-policy.ts'
 
 /** What the pet window needs from the shell. */
 export interface PetWindowOptions {
@@ -131,8 +140,10 @@ export function installPetWindow(options: PetWindowOptions): () => void {
   }
 
   const open = async (): Promise<void> => {
+    const platform = petWindowPlatformOptions(process.platform)
     const created = new BrowserWindow({
       ...initialPosition(),
+      ...platform.window,
       width: PET_WINDOW_WIDTH,
       height: PET_WINDOW_HEIGHT,
       transparent: true,
@@ -150,7 +161,7 @@ export function installPetWindow(options: PetWindowOptions): () => void {
       webPreferences: { preload, contextIsolation: true, sandbox: true, nodeIntegration: false },
     })
     window = created
-    created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    created.setVisibleOnAllWorkspaces(true, platform.workspaces)
     created.setIgnoreMouseEvents(true, { forward: true })
     created.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     created.webContents.on('will-navigate', (navigation) => { navigation.preventDefault() })
