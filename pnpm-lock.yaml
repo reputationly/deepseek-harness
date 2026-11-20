@@ -559,8 +559,8 @@ importers:
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
       '@michengai/dsh-codex-pet':
-        specifier: https://raw.githubusercontent.com/reputationly/dsh-codex-pet/91be1c64414652b10094d5ec9263584c5928c692/michengai-dsh-codex-pet-1.1.1-suanli.2.tgz
-        version: https://raw.githubusercontent.com/reputationly/dsh-codex-pet/91be1c64414652b10094d5ec9263584c5928c692/michengai-dsh-codex-pet-1.1.1-suanli.2.tgz(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: https://raw.githubusercontent.com/reputationly/dsh-codex-pet/dd3cca954ac5d0a6ab70f6d70e365b789c7592d8/michengai-dsh-codex-pet-1.1.1-suanli.3.tgz
+        version: https://raw.githubusercontent.com/reputationly/dsh-codex-pet/dd3cca954ac5d0a6ab70f6d70e365b789c7592d8/michengai-dsh-codex-pet-1.1.1-suanli.3.tgz(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@michengai/dsh-im-connect':
         specifier: 1.0.46
         version: 1.0.46(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-agent@packages+core+agent)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-settings@packages+client+ui-settings)(@deepseek-ai/dsh-client-ui-slots@packages+client+ui-slots)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/schemastery@vendor+schemastery)(debug@4.4.3(supports-color@9.4.0))(react@18.3.1)(supports-color@9.4.0)
@@ -21035,9 +21035,9 @@ packages:
   '@mermaid-js/parser@1.2.1':
     resolution: {integrity: sha512-n12NohV3mrUyUL2o93IgG/ifeW9FTyeJn3zDxkhwa8MJ9Fxg3HQMlA3RiGmD/3UnJvheztkjjQAjA2T4LmUcpw==}
 
-  '@michengai/dsh-codex-pet@https://raw.githubusercontent.com/reputationly/dsh-codex-pet/91be1c64414652b10094d5ec9263584c5928c692/michengai-dsh-codex-pet-1.1.1-suanli.2.tgz':
-    resolution: {integrity: sha512-B6/uLlwmG6+EcVL2XWKgEscknYkQgdOVOlQy1sd6WR2DWncEfG5fAE9UO0EH8CuOg4+rYhndlcwjZQGjt01uJQ==, tarball: https://raw.githubusercontent.com/reputationly/dsh-codex-pet/91be1c64414652b10094d5ec9263584c5928c692/michengai-dsh-codex-pet-1.1.1-suanli.2.tgz}
-    version: 1.1.1-suanli.2
+  '@michengai/dsh-codex-pet@https://raw.githubusercontent.com/reputationly/dsh-codex-pet/dd3cca954ac5d0a6ab70f6d70e365b789c7592d8/michengai-dsh-codex-pet-1.1.1-suanli.3.tgz':
+    resolution: {integrity: sha512-9+PZNTRQeLjCAitq+J2DfzcuR6J3tHted+OQnC498/7qFBMVTRXSXDT/jMb7C8j/pH1c4QHvJobT3/xGO2uJjA==, tarball: https://raw.githubusercontent.com/reputationly/dsh-codex-pet/dd3cca954ac5d0a6ab70f6d70e365b789c7592d8/michengai-dsh-codex-pet-1.1.1-suanli.3.tgz}
+    version: 1.1.1-suanli.3
     engines: {dsh: '>=0.2.2-rc.1 <0.3.0-0', node: '>=22.19.0'}
     peerDependencies:
       '@deepseek-ai/dsh-client-ui-primitives': '>=0.2.2-rc.1 <0.3.0-0'
@@ -28890,7 +28890,7 @@ snapshots:
     dependencies:
       '@chevrotain/types': 11.1.2
 
-  '@michengai/dsh-codex-pet@https://raw.githubusercontent.com/reputationly/dsh-codex-pet/91be1c64414652b10094d5ec9263584c5928c692/michengai-dsh-codex-pet-1.1.1-suanli.2.tgz(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@michengai/dsh-codex-pet@https://raw.githubusercontent.com/reputationly/dsh-codex-pet/dd3cca954ac5d0a6ab70f6d70e365b789c7592d8/michengai-dsh-codex-pet-1.1.1-suanli.3.tgz(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@deepseek-ai/dsh-client-ui-primitives': link:packages/client/ui-primitives
     optionalDependencies:
