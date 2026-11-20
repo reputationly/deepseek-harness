@@ -186,11 +186,11 @@ describe('optional bundles', () => {
     expect(composed.find(row => row.id === 'forge-panel')?.disabled).toBe(true)
   })
 
-  it('ships all five lightweight bundles without selecting them in a default template', () => {
+  it('ships all five lightweight bundles and selects only session search in a default template', () => {
     const defaults = Object.values(PROFILE_TEMPLATES).flatMap(template => template.bundles)
     for (const name of lightweight) {
       expect(OPTIONAL_BUNDLES).toContain(name)
-      expect(defaults).not.toContain(name)
+      expect(defaults.includes(name)).toBe(name === '@deepseek-ai/dsh-experimental-session-search')
     }
   })
 

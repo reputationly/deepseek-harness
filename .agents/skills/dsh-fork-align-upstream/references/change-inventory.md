@@ -21,6 +21,7 @@
 | 三个对应 spec | `brand-gateway`、`brand-identity`、`keep-awake` |
 | `apps/desktop/src/pet/*.ts`、`apps/desktop/src/preload-pet.ts`、`tests/pet-window-policy.spec.ts` | 桌面宠物浮窗（透明置顶窗，消费宠物插件的 `window.dshPet`），改编自 MichengAI/dsh-codex-desktop（Apache-2.0）。上游文件里只有三处接缝：`src/main.ts` 的 `installPetWindow(...)`、`src/preload-app.ts` 的 `dshPetHost`、`tsdown.config.ts` 预加载列表与 `scripts/electron-builder-config.mjs` 打包文件列表里的 `preload-pet` |
 | 宠物插件 | `apps/cli/package.json` 依赖 `reputationly/dsh-codex-pet` 的发行包（`suanli` 分支 `npm pack` 的产物，把 `suanli` 合入 `release` 分支后由该仓库的 CI 打包，存放在 `dist` 分支，URL 按提交号固定；内置宠物只有蒜狸）。不能写成 `github:` 依赖：插件带 `prepack` 构建脚本，npm 会先装它的开发依赖再构建，依赖解析会卡住。桌面打包会在独立目录重新安装，URL 依赖在那里是传递依赖，pnpm 11 默认拒绝（`blockExoticSubdeps`）；所以打包时由 `apps/desktop/scripts/stage-external-packages.ts` 按根锁文件的 integrity 校验后把发行包放进桌面包集合，改用本地文件解析，接缝在 `scripts/package-target.ts` 的 `pack()`；`official-bundles` 的 Web 模板与可选列表各加一行 |
+| 默认启用的可选插件 | `official-bundles` 的 Web 模板在 IM 助理、宠物之外还选中语音输入（`dsh-experimental-voice-input-bundle`）和会话搜索（`dsh-experimental-session-search`），四个都留在可选列表里，可在插件管理里关闭；老用户的 profile 由桌面端各补选一次。上游的 `verify-default-product-isolation` 不允许模板选中可选或实验插件，这个门禁在 fork 里从加入 IM 助理起就不通过，fork 的 CI 不跑它 |
 | 资源 | `renderer/assets/key-step-*.png`、`resources/brand-mascot.png`、`welcome-brand.svg`、图标（mac/win/tray） |
 
 ### A2 品牌客户端 UI（目前改在上游包内部，40 文件）

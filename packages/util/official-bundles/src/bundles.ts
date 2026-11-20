@@ -19,6 +19,9 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
       '@michengai/dsh-im-connect',
       // The pet companion ships with the Suanli artwork and stays switchable from the plugin manager.
       '@michengai/dsh-codex-pet',
+      // Suanli selects voice input and session search by default; both stay switchable from the plugin manager.
+      '@deepseek-ai/dsh-experimental-voice-input-bundle',
+      '@deepseek-ai/dsh-experimental-session-search',
     ],
   },
   headless: {

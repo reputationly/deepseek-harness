@@ -154,13 +154,19 @@ describe('desktop external plugin profile', () => {
       .toBe('packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\nallowBuilds:\n  protobufjs: false\n')
   })
 
-  it('selects the IM assistant once in a profile an earlier release created', async () => {
+  it('selects each default optional bundle once in a profile an earlier release created', async () => {
     const { manager } = setup()
     await manager.applyRelease()
     const path = join(manager.paths.profile, 'package.json')
     const record = join(manager.paths.profile, 'desktop-default-bundles.json')
     const bundles = (): string[] => (JSON.parse(readFileSync(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }).dsh.profile.bundles
-    const shipped = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@michengai/dsh-im-connect']
+    const adopted = [
+      '@michengai/dsh-im-connect',
+      '@michengai/dsh-codex-pet',
+      '@deepseek-ai/dsh-experimental-voice-input-bundle',
+      '@deepseek-ai/dsh-experimental-session-search',
+    ]
+    const shipped = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', ...adopted]
     expect(bundles()).toEqual(shipped)
     // An earlier release left a customized list and no record.
     seedPlugin(manager)
@@ -169,8 +175,8 @@ describe('desktop external plugin profile', () => {
     writeFileSync(path, JSON.stringify(manifest))
     unlinkSync(record)
     await manager.applyRelease()
-    expect(bundles()).toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'plugin', '@michengai/dsh-im-connect'])
-    // Switching the assistant off is kept across launches.
+    expect(bundles()).toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'plugin', ...adopted])
+    // Switching them off is kept across launches.
     manifest.dsh.profile.bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'plugin']
     writeFileSync(path, JSON.stringify(manifest))
     await manager.applyRelease()
