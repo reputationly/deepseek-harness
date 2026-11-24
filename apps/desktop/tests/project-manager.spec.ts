@@ -75,6 +75,32 @@ describe('desktop external plugin profile', () => {
     expect(lstatSync(path).isDirectory()).toBe(true)
     expect(lstatSync(join(profile, 'node_modules/plugin')).isDirectory()).toBe(true)
   })
+  it('normalizes the bundle list an earlier release installed and keeps a deliberate choice', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'package.json')
+    const manifest = JSON.parse(readFileSync(path, 'utf8')) as {
+      dependencies: Record<string, string>
+      dsh: { profile: { bundles: string[] } }
+    }
+    const earlier = [...manifest.dsh.profile.bundles, '@deepseek-ai/dsh-experimental-plugin-market-bundle',
+      '@deepseek-ai/dsh-experimental-voice-input-bundle']
+    writeFileSync(path, `${JSON.stringify({ ...manifest, dsh: { profile: { bundles: earlier } } })}\n`)
+
+    await manager.applyRelease()
+
+    const rewritten = JSON.parse(readFileSync(path, 'utf8')) as { dependencies: Record<string, string>; dsh: { profile: { bundles: string[] } } }
+    expect(rewritten.dsh.profile.bundles).toEqual(manifest.dsh.profile.bundles)
+    expect(rewritten.dependencies).toEqual(manifest.dependencies)
+
+    // Re-enabling an optional bundle afterwards is a different list, so it survives the next launch.
+    const chosen = [...rewritten.dsh.profile.bundles, '@deepseek-ai/dsh-experimental-voice-input-bundle']
+    writeFileSync(path, `${JSON.stringify({ ...rewritten, dsh: { profile: { bundles: chosen } } })}\n`)
+    await manager.applyRelease()
+    const afterEnable = JSON.parse(readFileSync(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
+    expect(afterEnable.dsh.profile.bundles).toEqual(chosen)
+  })
+
   it('reuses plugin files without scanning manifests and can disable them', async () => {
     const { manager } = setup()
     await manager.applyRelease()

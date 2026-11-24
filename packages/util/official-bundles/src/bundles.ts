@@ -34,9 +34,23 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
  */
 export const INSTALLATION_OWNED_PROFILE_TUPLES: Readonly<Record<string, readonly (readonly string[])[]>> = {
   headless: [['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless']],
-  // Profiles created before the market, voice input, and WeChat bundles joined the Web composition.
+  // Profiles created while the Web composition also enabled the market, voice input, and WeChat bundles.
+  // Dictation stays off by default: its local speech model is not part of the release.
   web: [
     ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
+    [
+      '@deepseek-ai/dsh-base',
+      '@deepseek-ai/dsh-web-app',
+      '@deepseek-ai/dsh-experimental-plugin-market-bundle',
+      '@deepseek-ai/dsh-experimental-voice-input-bundle',
+    ],
+    [
+      '@deepseek-ai/dsh-base',
+      '@deepseek-ai/dsh-web-app',
+      '@deepseek-ai/dsh-experimental-plugin-market-bundle',
+      '@deepseek-ai/dsh-experimental-voice-input-bundle',
+      '@deepseek-ai/dsh-wechat-bundle',
+    ],
   ],
 }
 

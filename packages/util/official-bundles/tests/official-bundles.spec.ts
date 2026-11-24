@@ -1,7 +1,7 @@
 /** Shipped profile templates, and the offline catalog that does not depend on installed provider packages or registry requests. */
 
 import { describe, expect, it } from 'vitest'
-import { OFFICIAL_ON_DEMAND_CATALOG, ON_DEMAND_BUNDLES, PROFILE_TEMPLATES } from '../src/index.ts'
+import { INSTALLATION_OWNED_PROFILE_TUPLES, OFFICIAL_ON_DEMAND_CATALOG, ON_DEMAND_BUNDLES, PROFILE_TEMPLATES } from '../src/index.ts'
 
 describe('Official on-demand catalog', () => {
   it('offers exactly the two native subagent integrations with offline localized metadata', () => {
@@ -20,6 +20,18 @@ describe('Official on-demand catalog', () => {
 })
 
 describe('Shipped profile templates', () => {
+  it('normalize the bundle lists an earlier release wrote back to the current Web composition', () => {
+    const voice = '@deepseek-ai/dsh-experimental-voice-input-bundle'
+    expect(INSTALLATION_OWNED_PROFILE_TUPLES.web).toContainEqual([
+      '@deepseek-ai/dsh-base',
+      '@deepseek-ai/dsh-web-app',
+      '@deepseek-ai/dsh-experimental-plugin-market-bundle',
+      voice,
+    ])
+    // Dictation is offered, never enabled: its local speech model is not part of the release.
+    for (const template of Object.values(PROFILE_TEMPLATES)) expect(template.bundles).not.toContain(voice)
+  })
+
   it('stack each mode bundle on base except the standalone minimal SDK', () => {
     expect(PROFILE_TEMPLATES).toEqual({
       acp: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'] },

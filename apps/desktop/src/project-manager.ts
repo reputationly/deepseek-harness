@@ -24,7 +24,8 @@ import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { writeGatewayProfile } from './brand-gateway.ts'
-import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
+import { bundledPluginSpecs } from './bundled-plugins.ts'
+import { INSTALLATION_OWNED_PROFILE_TUPLES, PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
@@ -46,6 +47,28 @@ function workspaceFile(overrides: Readonly<Record<string, string>> = {}): string
     ? CORE_BUILD_PACKAGE
     : `${CORE_BUILD_PACKAGE}@${coreBuildSpec.replace('file:./', 'file:')}`
   return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ${JSON.stringify(coreBuildKey)}: true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
+}
+
+/**
+ * Replace a bundle list an earlier release installed with the current Web composition. The Desktop profile is not
+ * named after a shipped template, so the loader's own normalization never sees it; matching the exact earlier list
+ * keeps every deliberate choice, including a person re-enabling an optional bundle afterwards.
+ */
+function normalizeDesktopBundles(projectDir: string): void {
+  const path = join(projectDir, 'package.json')
+  if (!existsSync(path)) return
+  const manifest = JSON.parse(readFileSync(path, 'utf8')) as {
+    dsh?: { profile?: { bundles?: unknown } }
+  }
+  const bundles = manifest.dsh?.profile?.bundles
+  if (!Array.isArray(bundles)) return
+  const retired = (INSTALLATION_OWNED_PROFILE_TUPLES.web ?? []).map(tuple => [...tuple])
+  if (!retired.some(tuple => tuple.length === bundles.length
+    && tuple.every((bundle, index) => bundle === bundles[index]))) return
+  writeJson(path, {
+    ...manifest,
+    dsh: { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...WEB_PROFILE.bundles] } },
+  })
 }
 
 function migrateProfileSettings(projectDir: string): void {
@@ -86,6 +109,7 @@ export class DesktopProjectManager {
       readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
       createPluginProfile(this.paths.profile)
+      normalizeDesktopBundles(this.paths.profile)
       writeGatewayProfile(this.paths.profile)
       removeLinkProjections(this.paths.profile)
     })
@@ -139,7 +163,7 @@ export function createRuntimeProjectMetadata(projectDir: string, release: Deskto
     name: PROJECT_NAME,
     private: true,
     version: '0.0.0',
-    dependencies: desktopCorePackageOverrides(packageSet),
+    dependencies: { ...desktopCorePackageOverrides(packageSet), ...bundledPluginSpecs() },
     dsh: { profile: { bundles: [...WEB_PROFILE.bundles] } },
   }
   writeJson(join(projectDir, 'package.json'), manifest)
