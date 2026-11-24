@@ -11,7 +11,7 @@ import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-session'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { resolveKitModule } from './locate.ts'
+import { installedEngineManifest, resolveKitModule } from './locate.ts'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { OfficeKitError } from './errors.ts'
 import { OfficeKitGeneration, type OfficeSourceKey } from './identity.ts'
@@ -72,6 +72,11 @@ export interface Config {
   maxUncompressedBytes: number
   /** Absolute font roots; omission uses the kit's platform defaults. */
   fontDirectories?: string[]
+  /**
+   * Absolute directory whose direct entries are native engine packages, for a deployment that provisions the engine
+   * outside its Kit installation. Entries take precedence over the installed package of the same name.
+   */
+  engineDirectory?: string
   /** Ordered font-family preference groups; omission retains the kit defaults. */
   fontFallbacks?: string[][]
   /** Maximum physical font files indexed by each converter. */
@@ -103,6 +108,7 @@ export const Config: z<Partial<Config>, Config> = z.object({
   maxUncompressedBytes: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(250 * 1024 * 1024),
   fontDirectories: z.array(z.string().min(1)).extra('default', undefined),
   fontFallbacks: z.array(z.array(z.string().pattern(/\S/)).min(2)).extra('default', undefined),
+  engineDirectory: z.string().min(1).extra('default', undefined),
   maxFontFiles: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(20_000),
   maxFontFileBytes: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(256 * 1024 * 1024),
   maxLoadedFontBytes: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(512 * 1024 * 1024),
@@ -146,6 +152,7 @@ export class OfficeKit extends TypertRemoteService {
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'officeKit')
     if (config.fontDirectories?.some(path => !isAbsolute(path))) throw new Error('fontDirectories must contain absolute paths.')
+    if (config.engineDirectory !== undefined && !isAbsolute(config.engineDirectory)) throw new Error('engineDirectory must be an absolute path.')
     if (config.maxSourceBytes < config.maxInputBytes) throw new Error('maxSourceBytes must be at least maxInputBytes.')
     if (!isAbsolute(config.outputDirectory)) throw new Error('outputDirectory must be an absolute path.')
     const { fontDirectories, fontFallbacks, timeoutMs, maxInputBytes, maxOutputBytes, maxImageResolution,
@@ -352,7 +359,18 @@ export class OfficeKit extends TypertRemoteService {
     } catch (cause) {
       throw this.unavailableKit('LibreOffice Kit could not be loaded.', cause)
     }
-    return { createConverter, resolveEnginePackage: kit.resolveEnginePackage }
+    return { createConverter, resolveEnginePackage: this.engineResolver(kit.resolveEnginePackage) }
+  }
+
+  /**
+   * Resolve engines from the configured directory before the Kit installation's own packages. The configured directory
+   * belongs to the deployment that provisions the engine, so a package it lacks keeps the installed resolver and its
+   * `MODULE_NOT_FOUND` semantics, which lets Kit apply its own native-to-WASM fallback.
+   */
+  private engineResolver(installed: LoadedKit['resolveEnginePackage']): LoadedKit['resolveEnginePackage'] {
+    const directory = this.config.engineDirectory
+    if (directory === undefined) return installed
+    return name => installedEngineManifest(directory, name) ?? installed(name)
   }
 
   /** Classify a Kit failure as `unavailable`, logging each distinct message and cause once per provider lifetime. */

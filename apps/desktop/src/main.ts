@@ -78,8 +78,9 @@ import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
+import { ensureOfficeEngine, officeEngineDirectory, readOfficeEngineSpec } from './office-engine.ts'
 
-isolateBrandHome(process.env, app.isPackaged)
+const brandHome = isolateBrandHome(process.env, app.isPackaged)
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
@@ -375,6 +376,16 @@ async function main(): Promise<void> {
   const resources = runtimeResources()
   const paths = resolveDesktopPaths()
   const development = !app.isPackaged
+  // The packaged runtime ships no native engine: provision the release's locked package in the background,
+  // so a first launch neither waits for the download nor loses the feature when the download lands later.
+  const officeEngineSpec = development ? undefined : await readOfficeEngineSpec(process.resourcesPath)
+  const officeEngine = officeEngineSpec === undefined || brandHome === undefined
+    ? undefined
+    : { spec: officeEngineSpec, directory: officeEngineDirectory(brandHome.dshHome) }
+  if (officeEngine !== undefined) {
+    void ensureOfficeEngine({ ...officeEngine, log: (message) => { console.log(message) } })
+      .catch((error: unknown) => { console.error('desktop office engine: provisioning failed', error) })
+  }
   const primaryRuntime = development
     ? developmentPrimaryRuntime()
     : join(process.resourcesPath, 'runtime', 'primary-runtime')
@@ -524,7 +535,8 @@ async function main(): Promise<void> {
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
+      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion(),
+        ...officeEngine === undefined ? {} : { DSH_OFFICE_ENGINE_DIR: officeEngine.directory } }, onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) }, (record) => {
         operationJournal ??= new OperationJournal(join(app.getPath('userData'), 'plugin-operations'), {

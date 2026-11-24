@@ -55,6 +55,7 @@ Kit 缺失时提供方照常注册，例如未下载 Office sidecar 就启动的
 | `maxOutputStoreBytes` | `536870912` | 保留输出的最大总字节数。 |
 | `maxImageResolution` | `192` | PDF 导出中图像的 DPI；覆盖 kit 的默认值 `144`。`renderImages()` 改用每个请求的 `dpi`。 |
 | `fontFallbacks` | kit 默认值 | 有序字体族优先组；每组至少包含两个含非空白字符的名称。 |
+| `engineDirectory` | 已安装的 kit 包 | 由部署方在 kit 安装之外预置原生引擎包的绝对目录；其中同名条目优先于已安装包。 |
 
 [配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-office-kit)定义全部字体、归档和图像设置。`fontDirectories` 接受绝对目录；省略时使用 kit 的平台默认值。显式 `fontFallbacks` 替换 kit 的默认分组。已安装的请求字体仍优先使用，缺失字形仍可由其他系统字体提供。原生引擎可能在应用这些优先规则前选中已安装的度量兼容字体。
 
@@ -75,6 +76,8 @@ Kit 缺失时提供方照常注册，例如未下载 Office sidecar 就启动的
 <summary>实现内部细节 — 点击展开</summary>
 
 在 Kit 导入成功之前，每次需要转换器时，提供方都把返回自身 `import.meta.resolve('@deepseek-ai/libreoffice-kit')` 的查找函数传给 [`resolveKitModule`](src/locate.ts)，它返回 Kit 入口和以其为起点的引擎包解析器，或返回 `missing`。随后提供方动态导入该入口；提供方没有静态导入 Kit 的值。这使引擎查找以提供方实际使用的 Kit 安装为起点。
+
+配置 `engineDirectory` 后，提供方对每个引擎名先查该目录，目录中没有的名字仍使用已安装解析器，因此 Kit 从原生引擎回退 WASM 的行为不变。该目录由预置引擎包的部署方负责；提供方在每次创建转换器时读取它，自身从不下载或安装任何东西。
 
 引擎包解析器以 Kit 入口为起点创建；每个解析器互相独立。解析成功时返回引擎 `package.json` 的绝对路径。包不存在时保留 Node 原始的 `MODULE_NOT_FOUND`，允许 Kit 从原生引擎回退到 WASM。如果包目录存在（包括断开的符号链接），但清单无法解析，解析器抛出安装不完整错误，并将 Node 错误保存在 `cause` 中；此时应重新安装该包。其他解析错误和文件系统检查错误原样传播。Kit 负责验证返回的清单和必需资源。
 
@@ -114,7 +117,7 @@ Remote 文件读取在查询转换缓存前重新检查内容读取授权和源�
 
 - 转换保真度和已安装的原生/WASM 资产由 `@deepseek-ai/libreoffice-kit` 负责；此提供方不查找系统 LibreOffice，也不在运行时下载引擎。
 - `timeoutMs` 仅在 kit 开始转换时计时，不限制队列等待时间。
-- 提供方只定位自身解析到的 Kit 安装；不搜索其他位置，也不安装 Kit 或引擎。
+- 提供方只定位自身解析到的 Kit 安装以及配置的 `engineDirectory`；不搜索其他位置，也不安装 Kit 或引擎。
 - 渲染的图片以字节返回。转换和重算后的文件存放在提供方的输出目录中，不写入工作区；由调用方把每个文件复制到目标位置。
 - 映射原生路径时不验证解包副本是否存在。Kit 会拒绝缺失的清单或资源，而不会将其视为原生包缺失。
 

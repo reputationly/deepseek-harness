@@ -98,8 +98,11 @@ export async function downloadNodeRuntime(target: PrimaryRuntimeTarget, destinat
     else await extractTar({ file: archive, cwd: staging })
     const source = join(staging, filename.replace(/\.(?:zip|tar\.gz)$/u, ''))
     mkdirSync(join(destination, 'bin'), { recursive: true })
-    cpSync(join(source, ...(target === 'win-x64' ? ['node.exe'] : ['bin', 'node'])),
-      join(destination, 'bin', target === 'win-x64' ? 'node.exe' : 'node'))
+    const executable = join(destination, 'bin', target === 'win-x64' ? 'node.exe' : 'node')
+    cpSync(join(source, ...(target === 'win-x64' ? ['node.exe'] : ['bin', 'node'])), executable)
+    // The upstream interpreter carries debug symbols macOS never uses; stripping keeps its ad-hoc
+    // signature valid, and release signing replaces that signature before the payload ships.
+    if (target !== 'win-x64' && process.platform === 'darwin') execFileSync('strip', ['-x', executable])
     cpSync(join(source, 'LICENSE'), join(destination, 'LICENSE'))
   } finally {
     rmSync(staging, { recursive: true, force: true })

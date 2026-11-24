@@ -6,6 +6,9 @@ import { EXECUTABLE_NAME } from './desktop-brand.mjs'
 import { readDesktopRuntime, verifyDesktopRuntime } from '../src/runtime-tree.ts'
 import { verifyWindowsCode } from './windows-runtime-signature.mjs'
 import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
+import { ensureOfficeEngine, officeEngineDirectory, readOfficeEngineSpec } from '../src/office-engine.ts'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { resolveDesktopPackageTarget } from './package-target.ts'
 
 const paths = resolveDesktopTargetBuildPaths()
@@ -20,4 +23,18 @@ const executable = windows ? join(application, `${EXECUTABLE_NAME}.exe`) : join(
 const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
   resolveDesktopPackageTarget(target))
 if (windows && !values.unsigned) await verifyWindowsCode(application)
-await smokePreparedRuntime(join(resources, 'app.asar', 'dsh'), executable, join(resources, 'runtime'), descriptor)
+// The release ships no native engine: provision it exactly as the installed application does, so this smoke
+// proves the first-launch download and the conversion that depends on it.
+const runtimeRoot = join(resources, 'app.asar', 'dsh')
+const engineSpec = await readOfficeEngineSpec(resources)
+const engineHome = engineSpec === undefined ? undefined : await mkdtemp(join(tmpdir(), 'dsh-office-engine-smoke-'))
+try {
+  if (engineSpec !== undefined && engineHome !== undefined) {
+    const directory = officeEngineDirectory(engineHome)
+    await ensureOfficeEngine({ spec: engineSpec, directory, log: (message) => { console.log(message) } })
+    process.env.DSH_OFFICE_ENGINE_DIR = directory
+  }
+  await smokePreparedRuntime(runtimeRoot, executable, join(resources, 'runtime'), descriptor)
+} finally {
+  if (engineHome !== undefined) await rm(engineHome, { recursive: true, force: true })
+}

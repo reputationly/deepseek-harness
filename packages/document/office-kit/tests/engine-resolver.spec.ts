@@ -1,6 +1,9 @@
 /** The provider's actual Kit installation is the reference for engine package resolution. */
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { resolveKitModule } from '../src/locate.ts'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { installedEngineManifest, resolveKitModule } from '../src/locate.ts'
 import { expect, it } from 'vitest'
 
 it('matches the consumer Kit installation for native and WASM engine manifests', () => {
@@ -20,4 +23,16 @@ it('matches the consumer Kit installation for native and WASM engine manifests',
     const expected = outcome(name => fromKit.resolve(`${name}/package.json`), name)
     expect(outcome(resolveEnginePackage, name)).toBe(expected)
   }
+})
+
+it('locates a provisioned engine manifest inside its deployment directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-office-engine-dir-'))
+  try {
+    expect(installedEngineManifest(root, '@deepseek-ai/libreoffice-kit-wasm')).toBeUndefined()
+    const manifest = join(root, '@deepseek-ai/libreoffice-kit-wasm', 'package.json')
+    await mkdir(dirname(manifest), { recursive: true })
+    await writeFile(manifest, '{}\n')
+    expect(installedEngineManifest(root, '@deepseek-ai/libreoffice-kit-wasm')).toBe(manifest)
+    expect(installedEngineManifest(root, '@deepseek-ai/libreoffice-kit-darwin-arm64')).toBeUndefined()
+  } finally { await rm(root, { recursive: true, force: true }) }
 })

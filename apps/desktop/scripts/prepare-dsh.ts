@@ -19,6 +19,7 @@ import {
   readDesktopCorePackageSet,
   verifyDesktopCoreLockfile,
 } from '../src/core-package-set.ts'
+import { DESKTOP_BUNDLED_PLUGINS_DIR, stageBundledPlugins } from '../src/bundled-plugins.ts'
 import { smokePrimaryRuntime } from './prepare-primary-runtime.ts'
 import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 import { prepareRuntimeManifests } from './prepare-runtime-manifests.ts'
@@ -35,6 +36,8 @@ import {
 import { desktopTargetPlatform, resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
 import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
+import { runtimeNpmArchive } from '../../../scripts/build-exe-for-python-sdk-office.ts'
+import { OFFICE_ENGINE_FILE } from '../src/office-engine.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
@@ -120,12 +123,15 @@ async function main(): Promise<void> {
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:reset', async () => {
       rmSync(DSH_OUTPUT_ROOT, { recursive: true, force: true })
       rmSync(PNPM_BUILD_STATE, { recursive: true, force: true })
+      // A preparation that stops before writing the engine identity must not leave the previous one packaged.
+      rmSync(join(BUILD_PATHS.root, OFFICE_ENGINE_FILE), { force: true })
       mkdirSync(STORE_ROOT, { recursive: true })
     })
     const release = desktopRelease()
     const patches = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:stage-packages', async () => {
       copyFileSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGE_SET_FILE), join(BUILD_ROOT, DESKTOP_PACKAGE_SET_FILE))
       cpSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGES_DIR), join(BUILD_ROOT, DESKTOP_PACKAGES_DIR), { recursive: true })
+      stageBundledPlugins(join(APP_ROOT, DESKTOP_BUNDLED_PLUGINS_DIR), BUILD_ROOT)
       createRuntimeProjectMetadata(BUILD_ROOT, release)
       return prepareRuntimePatches(BUILD_ROOT, resolve(APP_ROOT, '..', '..'))
     })
@@ -179,6 +185,20 @@ async function main(): Promise<void> {
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:smoke', () => smokePreparedRuntime(DSH_OUTPUT_ROOT, NODE, RUNTIME_ROOT, descriptor))
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:verify-after-smoke', () => verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target))
     }
+    // The Office conversion smoke above proved the engine works in place; shipping it costs ~60 MB of installer,
+    // so the release keeps only the locked identity and the Desktop provisions the package on first launch.
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:office-engine-sidecar', async () => {
+      const engineDirectory = join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', `libreoffice-kit-${officeEngine}`)
+      const manifest = JSON.parse(readFileSync(join(engineDirectory, 'package.json'), 'utf8')) as { name: string; version: string }
+      const archive = await runtimeNpmArchive(manifest.name, manifest.version)
+      rmSync(engineDirectory, { recursive: true, force: true })
+      writeFileSync(join(BUILD_PATHS.root, OFFICE_ENGINE_FILE), `${JSON.stringify({
+        schemaVersion: 1, name: archive.name, version: archive.version, integrity: archive.integrity,
+      }, undefined, 2)}\n`)
+      const writeRuntime = target.platform === 'win32' ? writeDesktopRuntimeAsync : writeDesktopRuntime
+      return writeRuntime(DSH_OUTPUT_ROOT, release, packageSet.packages.map(entry => entry.name), target)
+    })
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:verify-after-sidecar', () => verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target))
   } catch (error) {
     rmSync(DSH_OUTPUT_ROOT, { recursive: true, force: true })
     throw error

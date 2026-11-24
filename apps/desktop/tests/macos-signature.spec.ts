@@ -61,7 +61,9 @@ describe('desktop macOS release signature', () => {
       'com.apple.security.cs.disable-library-validation', 'com.apple.security.device.audio-input']) {
       expect(entitlements).toContain(`<key>${key}</key>\n    <true/>`)
     }
-    expect(config.extraResources).toHaveLength(2)
+    // The engine identity joins the resources only after a preparation run wrote it, so assert the fixed members.
+    expect(config.extraResources.map(entry => entry.to)).toContain('runtime')
+    expect(config.extraResources.map(entry => entry.to)).toContain('icon.png')
     expect(config.extraResources[0]?.to).toBe('runtime')
     expect(portablePath(config.extraResources[0]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/runtime')
     const [dshFiles, dshNodeModules] = config.files.slice(-2)
@@ -86,7 +88,7 @@ describe('desktop macOS release signature', () => {
         signIgnore: ['/Contents/Resources/app\\.asar\\.unpacked/dsh(?:/|$)', '/Contents/Resources/runtime/primary-runtime(?:/|$)', '\\.pak$'],
       },
       dmg: {
-        format: 'ULFO',
+        format: 'UDBZ',
         sign: true,
         writeUpdateInfo: false,
       },
@@ -99,7 +101,7 @@ describe('desktop macOS release signature', () => {
     expect(typeof config.artifactBuildCompleted).toBe('function')
   })
 
-  it('accepts LZFSE DMGs through builder validation while rejecting unknown formats', async () => {
+  it('accepts bzip2 DMGs through builder validation while rejecting unknown formats', async () => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     for (const arch of ['arm64', 'x64']) {
       for (const unsigned of ['0', '1']) {
@@ -108,7 +110,7 @@ describe('desktop macOS release signature', () => {
           DSH_DESKTOP_TARGET_ARCH: arch,
           DSH_DESKTOP_UNSIGNED: unsigned,
         }, 'darwin', arch)
-        expect(config.dmg.format).toBe('ULFO')
+        expect(config.dmg.format).toBe('UDBZ')
         await expect(validateConfiguration(config, { isEnabled: false })).resolves.toBeUndefined()
       }
     }

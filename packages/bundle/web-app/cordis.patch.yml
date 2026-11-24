@@ -292,6 +292,8 @@
       name: '@deepseek-ai/dsh-office-kit'
       config:
         outputDirectory: !!js dshHomePath('office-kit', 'outputs')
+        # Desktop ships no native engine and provisions one here before the first conversion.
+        engineDirectory: !!js process.env.DSH_OFFICE_ENGINE_DIR
 
     # Every profile uses the packaged Office skills. Desktop supplies their Python
     # environment through the primary runtime named by DSH_PRIMARY_RUNTIME and

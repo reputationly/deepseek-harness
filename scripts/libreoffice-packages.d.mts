@@ -12,6 +12,12 @@ export function selectOfficeEngine(manifest: { optionalDependencies?: Record<str
  * Return absolute package directories inside the installed project, rejecting an incomplete closure.
  * @param staging - Symlink-free installed Node project.
  * @param target - Distribution platform and CPU.
+ * @param options - `requireEngine: false` accepts a project whose native engine the deployment provisions
+ * separately; the returned closure then omits that engine.
  * @returns Installed package directories.
  */
-export function officePackageDirectories(staging: string, target: { platform: string; arch: string }): Promise<string[]>
+export function officePackageDirectories(
+  staging: string,
+  target: { platform: string; arch: string },
+  options?: { requireEngine?: boolean },
+): Promise<string[]>

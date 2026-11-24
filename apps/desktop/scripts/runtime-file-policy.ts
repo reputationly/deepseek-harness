@@ -27,6 +27,10 @@ export function desktopRuntimeFileExclusion(
   if (name.startsWith('@deepseek-ai/libreoffice-kit-')) {
     if (name !== `@deepseek-ai/libreoffice-kit-${officeEngine}`) return 'LibreOffice other platform'
   }
+  if (name === '@deepseek-ai/libreoffice-kit' && entry.startsWith('frame-forwarding/prebuilds/')) {
+    const platform = packageParts[nameParts + 2]
+    if (platform !== undefined && platform !== `${target.platform}-${target.arch}`) return 'LibreOffice frame forwarding other platform'
+  }
   if (name === 'fs-ext' && /^build\/(?:Release|Debug)\/(?:obj(?:\/|$)|fs_ext\.(?:exp|lib|pdb|iobj|ipdb)$)/u.test(entry)) {
     return 'fs-ext compiler output'
   }

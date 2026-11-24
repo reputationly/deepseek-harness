@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.5/desktop-office-engine-sidecar/guide.md
+/:
+  en: 728f5d0d3825f626
+  zh: b1d40cfef3f11ed2
+/desktop-downloads-the-libreoffice-engine-on-first-launch:
+  en: 1d036b43ac3f1b7e
+  zh: 67ea87b10837fa21
+/desktop-downloads-the-libreoffice-engine-on-first-launch/change:
+  en: 366ee4c9aa35da21
+  zh: e9b08336b6951921
+/desktop-downloads-the-libreoffice-engine-on-first-launch/migration:
+  en: 5546a61ffc068649
+  zh: f144f5d9d3abda01

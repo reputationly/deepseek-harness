@@ -55,6 +55,7 @@ Browsers request PDFs through the `officeKit.render` Remote method with a Sessio
 | `maxOutputStoreBytes` | `536870912` | Maximum bytes across retained outputs. |
 | `maxImageResolution` | `192` | Image resolution in DPI of PDF exports; overrides the kit default of `144`. `renderImages()` uses each request's `dpi` instead. |
 | `fontFallbacks` | Kit defaults | Ordered font-family preference groups; each group requires at least two names containing non-whitespace characters. |
+| `engineDirectory` | Installed Kit packages | Absolute directory whose direct entries are native engine packages provisioned outside the Kit installation; its entries take precedence over the installed package of the same name. |
 
 The [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-office-kit) owns the full font, archive, and image settings. `fontDirectories` accepts absolute directories; omission uses the kit platform defaults. Explicit `fontFallbacks` replaces the kit's default groups. Installed requested fonts retain precedence, and other system fonts remain eligible for uncovered glyphs. Native engines can select installed metric-compatible fonts before these preferences.
 
@@ -75,6 +76,8 @@ The defaults retain 8 outputs/128 MiB and 64 source aliases, admit 32 readers an
 <summary>Implementation internals — click to expand</summary>
 
 Until a Kit import succeeds, each converter request passes a lookup that returns the provider's own `import.meta.resolve('@deepseek-ai/libreoffice-kit')` to [`resolveKitModule`](src/locate.ts), which returns the Kit entry with an engine-package resolver anchored there, or `missing`. The provider then dynamically imports that entry; it has no static Kit value import. This anchors engine lookup to the Kit installation used by the provider.
+
+When `engineDirectory` is configured, the provider asks it first for each engine name and keeps the installed resolver for names it lacks, so Kit still applies its own native-to-WASM fallback. The directory belongs to the deployment that provisions the package; the provider reads it on every converter creation and never downloads or installs anything itself.
 
 The engine-package resolver is created from the Kit entry; each resolver is independent. A successful call returns an absolute engine `package.json` path. An absent package preserves Node's original `MODULE_NOT_FOUND`, allowing Kit's native-to-WASM fallback. If a package directory exists, including a dangling symlink, but its manifest cannot resolve, the resolver throws an incomplete-installation error with the Node error as `cause`; reinstall that package. Other resolution and filesystem inspection errors propagate unchanged. Kit owns validation of the returned manifest and required assets.
 
@@ -114,7 +117,7 @@ None; this service does not construct or modify model requests.
 
 - Conversion fidelity and installed native/WASM assets belong to `@deepseek-ai/libreoffice-kit`; this provider neither searches for system LibreOffice nor downloads an engine at runtime.
 - Queue waiting time is not bounded by `timeoutMs`, which starts only when kit conversion begins.
-- The provider locates only the Kit installation it resolves itself; it does not search other locations or install Kit or engines.
+- The provider locates only the Kit installation it resolves itself plus a configured `engineDirectory`; it does not search other locations or install Kit or engines.
 - Rendered images are returned as bytes. Converted and recalculated files are stored in the provider's output directory, not in the workspace; the caller copies each file to its destination.
 - Mapping a native path does not verify that the unpacked copy exists. Kit rejects missing manifests or assets instead of treating them as an absent native package.
 

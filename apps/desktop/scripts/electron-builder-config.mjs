@@ -1,7 +1,7 @@
 import { readInstallerLocales, renderInstallerStrings } from './installer-locales.mjs'
 import { officePackageDirectories } from '../../../scripts/libreoffice-packages.mjs'
 import { X509Certificate } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -37,6 +37,12 @@ import {
   writeMacOSAppUpdateConfig,
 } from './macos-app-update-config.mjs'
 import { ARTIFACT_BASENAME, PACKAGE_NAME, PRODUCT_NAME, URL_SCHEME } from './desktop-brand.mjs'
+
+/** Product UI locales; Electron's own resources keep only these, dropping roughly 40 MB of unused locale bundles. */
+const APP_LOCALES = ['en', 'zh_CN', 'ja', 'es', 'fr', 'de', 'ru', 'pt']
+
+/** Release metadata naming the engine package this build provisions instead of shipping. */
+const OFFICE_ENGINE_FILE = 'office-engine.json'
 
 /**
  * Create electron-builder configuration from one release environment.
@@ -130,6 +136,7 @@ export function createElectronBuilderConfig(
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
     },
     productName: PRODUCT_NAME,
+    electronLanguages: APP_LOCALES,
     // The bundle binary and Windows executable take the ASCII slug so launcher scripts,
     // shortcuts, and logs never depend on the non-ASCII display name.
     executableName: ARTIFACT_BASENAME,
@@ -176,6 +183,10 @@ export function createElectronBuilderConfig(
     extraResources: [
       { from: buildPaths.runtime, to: 'runtime' },
       ...(brandUpdate === undefined ? [] : [{ from: brandUpdate, to: 'app-update.yml' }]),
+      // Release identity of the native engine this build provisions on first launch instead of shipping.
+      ...(existsSync(join(buildPaths.root, OFFICE_ENGINE_FILE))
+        ? [{ from: join(buildPaths.root, OFFICE_ENGINE_FILE), to: OFFICE_ENGINE_FILE }]
+        : []),
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
       // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.
       ...(packagesWindows ? [{ from: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)), to: 'tray.ico' }] : []),
@@ -185,7 +196,7 @@ export function createElectronBuilderConfig(
       category: 'public.app-category.developer-tools',
       // macOS matches the application locale against this bundle, not Electron Framework resources.
       extendInfo: {
-        CFBundleLocalizations: ['en', 'zh_CN', 'ja', 'es', 'fr', 'de', 'ru', 'pt'],
+        CFBundleLocalizations: APP_LOCALES,
         NSMicrophoneUsageDescription: `${PRODUCT_NAME} uses your microphone to transcribe speech into message drafts.`,
       },
       // Ad-hoc signing keeps the modified Electron executable runnable without a Developer ID.
@@ -200,12 +211,13 @@ export function createElectronBuilderConfig(
       target: unsigned ? ['dmg'] : ['dmg', 'zip'],
     },
     dmg: {
-      format: 'ULFO',
+      // bzip2 images are roughly 11% smaller than the LZFSE default at a slower build; installer size wins.
+      format: 'UDBZ',
       sign: !unsigned,
       writeUpdateInfo: false,
     },
     beforePack: async context => {
-      const office = await officePackageDirectories(buildPaths.dsh, { platform: resolvedPlatform, arch: resolvedArch })
+      const office = await officePackageDirectories(buildPaths.dsh, { platform: resolvedPlatform, arch: resolvedArch }, { requireEngine: false })
       const patterns = office.map(directory => `**/${relative(buildPaths.dsh, directory).split(sep).join('/')}/**/*`)
       const existing = context.packager.config.asarUnpack ?? []
       context.packager.config.asarUnpack = [...(typeof existing === 'string' ? [existing] : existing), ...patterns]

@@ -71,6 +71,18 @@ export function createEnginePackageResolver(kitEntry: string | URL): EnginePacka
   }
 }
 
+/**
+ * Locate an engine package installed outside the Kit installation, as a deployment that provisions the native engine
+ * separately does.
+ * @param directory - Absolute directory whose direct entries are engine packages.
+ * @param name - Engine package name Kit requested.
+ * @returns Absolute path of the package's `package.json`, or undefined when the directory has no such package.
+ */
+export function installedEngineManifest(directory: string, name: string): string | undefined {
+  const manifest = join(directory, name, 'package.json')
+  return lstatSync(manifest, { throwIfNoEntry: false }) === undefined ? undefined : manifest
+}
+
 type EntryLookup = { readonly kind: 'found'; readonly entry: string } | { readonly kind: 'missing'; readonly error: unknown }
 
 function lookupEntry(lookupKitEntry: KitEntryLookup): EntryLookup {

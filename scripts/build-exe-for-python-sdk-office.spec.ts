@@ -72,6 +72,17 @@ it('rejects an ancestor dependency outside the deployed closure', async () => {
     .rejects.toThrow('outside the deployed closure')
 })
 
+it.each([
+  ['darwin', 'arm64'], ['win32', 'x64'],
+] as const)('leaves out an engine a deployment provisions itself (%s/%s)', async (platform, arch) => {
+  const { staging, packageAt } = await fixture()
+  await packageAt('@deepseek-ai/libreoffice-kit', { optionalDependencies: { '@deepseek-ai/libreoffice-kit-wasm': '0.0.1' } })
+  const packages = await officePackageDirectories(staging, { platform, arch }, { requireEngine: false })
+  expect(packages.map(path => path.slice(staging.length + 1).replaceAll('\\', '/'))).toEqual([
+    'node_modules/@deepseek-ai/libreoffice-kit',
+  ])
+})
+
 it.each([true, false])('requires a staged WASM engine when declared=%s even when an ancestor has one', async (declared) => {
   const { root, staging, packageAt } = await fixture()
   await packageAt('@deepseek-ai/libreoffice-kit', declared ? { optionalDependencies: { '@deepseek-ai/libreoffice-kit-wasm': '0.0.1' } } : {})

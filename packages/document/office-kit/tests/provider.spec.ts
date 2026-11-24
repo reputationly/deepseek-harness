@@ -365,3 +365,35 @@ it('joins every converter disposal before reporting an engine cleanup failure', 
     expect(disposed).toBe(false)
   } finally { cleanupRelease.resolve(undefined); await closing }
 })
+
+it('resolves engines from the configured directory before the Kit installation and keeps the installed resolver otherwise', async () => {
+  const engines = await mkdtemp(join(tmpdir(), 'dsh-office-kit-engines-'))
+  onTestFinished(() => rm(engines, { recursive: true, force: true }))
+  const name = `@deepseek-ai/libreoffice-kit-${process.platform}-${process.arch}`
+  const manifest = join(engines, name, 'package.json')
+  await mkdir(dirname(manifest), { recursive: true })
+  await writeFile(manifest, '{"name":"provisioned"}\n')
+  const provider = await mount({ engineDirectory: engines })
+  await provider.convert(request)
+  const resolve = kit.create.mock.calls[0]?.[0]?.resolveEnginePackage
+  if (resolve === undefined) throw new Error('Expected an engine resolver')
+  expect(resolve(name)).toBe(manifest)
+  const outcome = (candidate: string): string => {
+    try { return resolve(candidate) } catch (error) {
+      if (error instanceof Error && 'code' in error) return String(error.code)
+      throw error
+    }
+  }
+  const wasm = '@deepseek-ai/libreoffice-kit-wasm'
+  let installed: string
+  try { installed = resolvedKit().resolveEnginePackage(wasm) } catch (error) {
+    if (error instanceof Error && 'code' in error) installed = String(error.code)
+    else throw error
+  }
+  expect(outcome(wasm)).toBe(installed)
+})
+
+it('rejects a relative engine directory before building any converter', async () => {
+  await expect(mount({ engineDirectory: 'engines' })).rejects.toThrow('engineDirectory must be an absolute path.')
+  expect(kit.create).not.toHaveBeenCalled()
+})

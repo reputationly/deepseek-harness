@@ -31,6 +31,7 @@ it('omits development artifacts while preserving executable modules, assets and 
     '@mixmark-io/domino/.yarn/versions/release.yml',
     '@deepseek-ai/libreoffice-kit-wasm/assets/soffice.data',
     '@deepseek-ai/libreoffice-kit-darwin-arm64/bin/dsoffice',
+    '@deepseek-ai/libreoffice-kit/frame-forwarding/prebuilds/darwin-arm64/frame-forwarding.node',
     '.modules.yaml', '.pnpm-workspace-state-v1.json', '.bin/tool', '.pnpm/cache',
   ]
   const retained = [
@@ -52,6 +53,7 @@ it('omits development artifacts while preserving executable modules, assets and 
     '@img/sharp-win32-x64/lib/libvips-42.dll',
     '@deepseek-ai/libreoffice-kit-win32-x64/bin/dsoffice.exe',
     '@deepseek-ai/libreoffice-kit-win32-x64/sources/core-source.json',
+    '@deepseek-ai/libreoffice-kit/frame-forwarding/prebuilds/win32-x64/frame-forwarding.node',
     '@deepseek-ai/libreoffice-kit-win32-x64/licenses/MPL-2.0.txt',
     '@deepseek-ai/dsh/lib/index.js', '@deepseek-ai/dsh/lib/bin.js',
     '@deepseek-ai/dsh-session/lib/index.js',
@@ -95,6 +97,9 @@ it('retains native prebuilds for the selected macOS architecture', () => {
   expect(desktopRuntimeFileExclusion('node-pty/prebuilds/darwin-arm64/pty.node', mac, 'darwin-arm64')).toBeUndefined()
   expect(desktopRuntimeFileExclusion('node-pty/prebuilds/darwin-x64/pty.node', mac, 'darwin-arm64')).toBeDefined()
   expect(desktopRuntimeFileExclusion('node-pty/prebuilds/win32-x64/conpty.node', mac, 'darwin-arm64')).toBeDefined()
+  expect(desktopRuntimeFileExclusion('@deepseek-ai/libreoffice-kit/frame-forwarding/prebuilds/darwin-arm64/frame-forwarding.node', mac, 'darwin-arm64')).toBeUndefined()
+  expect(desktopRuntimeFileExclusion('@deepseek-ai/libreoffice-kit/frame-forwarding/prebuilds/win32-x64/frame-forwarding.node', mac, 'darwin-arm64')).toBeDefined()
+  expect(desktopRuntimeFileExclusion('@deepseek-ai/libreoffice-kit-darwin-arm64/licenses/MPL-2.0.txt', mac, 'darwin-arm64')).toBeUndefined()
 })
 
 it.each([
