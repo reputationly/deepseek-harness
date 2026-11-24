@@ -49,7 +49,7 @@ Manually trigger `.github/workflows/suanli-assistant-release.yml` with these inp
 | `version` | Leave empty to generate automatically |
 | `keep` | Version directories retained per platform; default 2 |
 
-The flow is `prepare → build(matrix) → publish`: calculate one version; package and upload an artifact per platform; then upload packages, update pointers and clean up in `publish` after every platform succeeds.
+The flow is `prepare → build(matrix) → publish`: calculate one version; package and upload an artifact per platform (`mac-arm64`, `mac-x64`, `win-x64`, all three building in parallel); then upload packages, update pointers and clean up in `publish` after every platform succeeds. Each platform's artifact is downloaded into its own directory because both macOS targets publish a feed named `nightly-mac.yml`.
 
 If a platform fails, no platform is published. Advancing a pointer to a missing platform artifact would make client updates return 404.
 
@@ -64,6 +64,11 @@ suanli-assistant/
     latest.json                        # current version, size and sha256
     latest/suanli-assistant-*.dmg/.zip  # fixed filenames, replaced on release
     versions/<version>/...             # immutable rollback/differential files
+  darwin-x64/
+    nightly-mac.yml
+    latest.json
+    latest/suanli-assistant-*.dmg/.zip
+    versions/<version>/...
   win32-x64/
     nightly.yml
     latest.json
@@ -121,7 +126,7 @@ The first user at each edge node still makes a cold origin request; subsequent u
 The step uses `continue-on-error`: packages have already been uploaded, so a slow CDN should leave a warning in the run summary rather than mark the completed upload as failed. Inspect the request list without calling the API:
 
 ```
-node scripts/release/eo-cache.mjs --index artifacts/win32-x64-latest.json --dry-run
+node scripts/release/eo-cache.mjs --index artifacts/installer-win-x64/win32-x64-latest.json --dry-run
 ```
 
 <a id="client-update-discovery"></a>

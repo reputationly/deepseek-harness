@@ -49,6 +49,12 @@ jobs:
             script: package:mac:arm64:unsigned
             target: mac-arm64
             artifact: mac-arm64
+          # Intel macOS cross-builds on the same Apple Silicon runner; the packaged smoke runs the
+          # x64 application, so the runner needs Rosetta before packaging starts.
+          - os: macos-latest
+            script: package:mac:x64:unsigned
+            target: mac-x64
+            artifact: mac-x64
           - os: windows-latest
             script: package:win:x64:unsigned
             target: win-x64
@@ -89,6 +95,9 @@ jobs:
         run: corepack enable
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Ensure this runner executes x64 tooling
+        if: matrix.target == 'mac-x64'
+        run: arch -x86_64 /usr/bin/true || sudo softwareupdate --install-rosetta --agree-to-license
       - name: Write the Windows release settings
         if: matrix.target == 'win-x64'
         shell: pwsh
@@ -117,7 +126,7 @@ jobs:
           path: ${{ runner.temp }}/suanli-package-cache
           key: ${{ steps.download-cache.outputs.cache-primary-key }}
       - name: Prepare the update payload
-        if: matrix.target == 'mac-arm64'
+        if: startsWith(matrix.target, 'mac')
         env:
           R2_ACCOUNT_ID: unused
           R2_BUCKET: unused
@@ -137,7 +146,8 @@ jobs:
   publish:
     needs: [prepare, build]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Three targets upload in turn; the macOS disk images dominate the transfer time.
+    timeout-minutes: 90
     env:
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
@@ -151,14 +161,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # One directory per target: both macOS targets publish a feed named after the platform, so a
+      # merged directory would let either build's feed answer for the other.
       - uses: actions/download-artifact@v4
         with:
           pattern: installer-*
           path: artifacts
-          merge-multiple: true
       - name: Publish every target
         run: |
-          node scripts/release/aurora-publish.mjs             --artifacts artifacts             --version "${{ needs.prepare.outputs.version }}"             --keep "${{ inputs.keep }}"
+          for directory in artifacts/installer-*; do
+            echo "publishing $(basename "$directory")"
+            node scripts/release/aurora-publish.mjs             --artifacts "$directory"             --version "${{ needs.prepare.outputs.version }}"             --keep "${{ inputs.keep }}"
+          done
       # Artifacts are live at this point; a CDN hiccup must not mark the release failed, but it must
       # be visible: the run shows the warning and the log carries the reason. Only the pointers are
       # refreshed: the free plan's pre-warm quota is zero, so CreatePrefetchTask would always fail.
@@ -171,8 +185,9 @@ jobs:
           EO_ZONE_ID: ${{ secrets.EO_ZONE_ID }}
         run: |
           node scripts/release/eo-cache.mjs \
-            --index artifacts/darwin-arm64-latest.json \
-            --index artifacts/win32-x64-latest.json
+            --index artifacts/installer-mac-arm64/darwin-arm64-latest.json \
+            --index artifacts/installer-mac-x64/darwin-x64-latest.json \
+            --index artifacts/installer-win-x64/win32-x64-latest.json
       # 国内源站是自己维护的副本：这里敲一下让它立刻同步新版本，而不是等 15 分钟的定时器。
       # 没有配置这两个 secret 时整步跳过，发布照常成功。
       - name: Ask the domestic origin to pick up the new version
@@ -187,7 +202,7 @@ jobs:
       - name: Verify the published pointers
         run: |
           version="${{ needs.prepare.outputs.version }}"
-          for target in darwin-arm64:nightly-mac.yml win32-x64:nightly.yml; do
+          for target in darwin-arm64:nightly-mac.yml darwin-x64:nightly-mac.yml win32-x64:nightly.yml; do
             dir="${target%%:*}"; feed="${target##*:}"
             # The bucket is read through a CDN: a pointer published seconds ago can still answer
             # with the previous release until its own short lifetime runs out.

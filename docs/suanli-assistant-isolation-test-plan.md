@@ -20,7 +20,7 @@
 ## 2. 被测构建
 
 - 必须使用 `whitelabel` 分支上包含提交 `brand: keep the desktop shell's state apart from an installed dsh` 及之后的构建。更早的构建没有隔离，会写入 `~/.dsh` 并在 DeepSeek Harness 运行时秒退。
-- 推荐来源：GitHub Actions 手动工作流 **Release 蒜狸小助手** 的产物 `installer-mac-arm64`、`installer-win-x64`。
+- 推荐来源：GitHub Actions 手动工作流 **Release 蒜狸小助手** 的产物 `installer-mac-arm64`、`installer-mac-x64`、`installer-win-x64`。
 - 本地构建（macOS arm64）：在仓库根目录执行 `corepack enable && pnpm install --frozen-lockfile && pnpm run build:artifacts`，然后执行 `DSH_BRAND_UPDATE_BASE=<R2 公共地址> pnpm --dir apps/desktop run package:mac:arm64:unsigned`，产物在 `apps/desktop/.desktop-build/targets/mac-arm64/unsigned-artifacts/`。仓库固定 pnpm 11，Homebrew 自带的 pnpm 9 无法完成打包。
 - 本地构建不带 `--build-version` 时版本号是 `0.2.2-rc.1`，低于已发布的 `…ov.<时间戳>` 版本，更新检查会把旧版当作“新版本”；测更新功能请使用工作流构建。
 - 确认包身份：`npx --yes @electron/asar@3.4.1 extract-file "<应用>.app/Contents/Resources/app.asar" package.json && grep -E '"name"|dshDesktopUpdateChannel' package.json && rm package.json`，期望 `"name": "suanli-assistant"`、`"dshDesktopUpdateChannel": "nightly"`。

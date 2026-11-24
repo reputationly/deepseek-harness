@@ -49,7 +49,7 @@
 | `version` | 留空则自动生成 |
 | `keep` | 每个平台保留的版本目录数，默认 2 |
 
-流程为 `prepare → build(matrix) → publish`：先计算一个版本号，各平台打包并上传构建产物，全部成功后才在 `publish` 中上传安装包、更新入口并清理旧版本。
+流程为 `prepare → build(matrix) → publish`：先计算一个版本号，三个平台（`mac-arm64`、`mac-x64`、`win-x64`）并行打包并上传构建产物，全部成功后才在 `publish` 中上传安装包、更新入口并清理旧版本。每个平台的产物下载到各自目录，因为两个 macOS 目标的 feed 同名（`nightly-mac.yml`）。
 
 任一平台失败时，所有平台都不发布。若入口指向缺失的平台产物，客户端更新会返回 404。
 
@@ -64,6 +64,11 @@ suanli-assistant/
     latest.json                        # current version, size and sha256
     latest/suanli-assistant-*.dmg/.zip  # fixed filenames, replaced on release
     versions/<version>/...             # immutable rollback/differential files
+  darwin-x64/
+    nightly-mac.yml
+    latest.json
+    latest/suanli-assistant-*.dmg/.zip
+    versions/<version>/...
   win32-x64/
     nightly.yml
     latest.json
@@ -121,7 +126,7 @@ CDN 也需要匹配配置：
 该步骤使用 `continue-on-error`：安装包已经上传，CDN 缓慢应在运行摘要中留下警告，而不是把已完成的上传标为失败。可在不调用 API 的情况下查看请求列表：
 
 ```
-node scripts/release/eo-cache.mjs --index artifacts/win32-x64-latest.json --dry-run
+node scripts/release/eo-cache.mjs --index artifacts/installer-win-x64/win32-x64-latest.json --dry-run
 ```
 
 <a id="client-update-discovery"></a>
