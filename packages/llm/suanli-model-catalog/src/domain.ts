@@ -1,6 +1,6 @@
 /** Durable and in-memory stores of the last good media catalog generation. */
 import { z } from 'zod'
-import { defineDomain, domainTable, type KvTable } from '@deepseek-ai/dsh-storage-domain'
+import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { decodeCatalog } from './media.ts'
 import type { MediaCatalogRecord, MediaCatalogStore } from './media-sync.ts'
 
@@ -33,12 +33,28 @@ export const mediaCatalogDomain = defineDomain({
 /** One generation as the domain stores it. */
 export type StoredSnapshot = z.infer<typeof snapshotSchema>
 
+/** The two operations the catalog store needs from an opened table. */
+export interface SnapshotTable {
+  /**
+   * Read the stored generation.
+   * @param key - record key.
+   * @returns the record, or `undefined` when absent.
+   */
+  get(key: string): StoredSnapshot | undefined
+  /**
+   * Store one generation durably.
+   * @param key - record key.
+   * @param value - the whole record.
+   */
+  put(key: string, value: StoredSnapshot): Promise<void>
+}
+
 /**
  * Store the catalog in an opened domain table.
  * @param table - the opened `snapshot` table of {@link mediaCatalogDomain}.
  * @returns the store the sync reads and writes.
  */
-export function domainCatalogStore(table: KvTable<string, StoredSnapshot>): MediaCatalogStore {
+export function domainCatalogStore(table: SnapshotTable): MediaCatalogStore {
   return {
     read: () => decodeRecord(table.get(SNAPSHOT_KEY)),
     write: async (record) => {
