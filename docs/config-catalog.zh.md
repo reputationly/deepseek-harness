@@ -245,7 +245,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-gateway-status`
 
 - `inject`: `credentials` · `typert`
-- `source`: [`packages/api/gateway-status/src/index.ts:34`](../packages/api/gateway-status/src/index.ts)
+- `source`: [`packages/api/gateway-status/src/index.ts:32`](../packages/api/gateway-status/src/index.ts)
 
 ```ts config-catalog
 /** Gateway health policy: the endpoint to ask and the credential that authorizes the question. */
@@ -435,7 +435,7 @@ export interface SearchLimits {
 ## `@deepseek-ai/dsh-assistant-feedback`
 
 - `inject`: `credentials` · `sessions` · `typert`
-- `source`: [`packages/feedback/assistant-feedback/src/index.ts:44`](../packages/feedback/assistant-feedback/src/index.ts)
+- `source`: [`packages/feedback/assistant-feedback/src/index.ts:35`](../packages/feedback/assistant-feedback/src/index.ts)
 
 ```ts config-catalog
 /** Where submissions go and how much conversation they may carry. */
@@ -3794,7 +3794,7 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 ## `@deepseek-ai/dsh-suanli-media-tasks`
 
 - `inject`: `credentials` · `typert`
-- `source`: [`packages/llm/suanli-media-tasks/src/index.ts:44`](../packages/llm/suanli-media-tasks/src/index.ts)
+- `source`: [`packages/llm/suanli-media-tasks/src/index.ts:37`](../packages/llm/suanli-media-tasks/src/index.ts)
 
 ```ts config-catalog
 /** Deployment facts one generation call needs. */
@@ -3823,7 +3823,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-suanli-model-catalog`
 
 - `inject`: `credentials` · `settings` · `typert`
-- `source`: [`packages/llm/suanli-model-catalog/src/index.ts:41`](../packages/llm/suanli-model-catalog/src/index.ts)
+- `source`: [`packages/llm/suanli-model-catalog/src/index.ts:46`](../packages/llm/suanli-model-catalog/src/index.ts)
 
 ```ts config-catalog
 /** Catalog source policy: which gateway answers, which key authorizes it, and who receives the result. */
