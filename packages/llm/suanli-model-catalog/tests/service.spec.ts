@@ -157,6 +157,29 @@ describe('SuanliModelCatalogService', () => {
     expect(memory.ctx.suanliModels.media().entries).toHaveLength(1)
   })
 
+  it('writes nothing and emits nothing when the model listing did not change', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    const mutations: unknown[] = []
+    const updates: unknown[] = []
+    ctx.provide('loader', { await: async () => undefined })
+    ctx.provide('credentials', { resolve: async () => ({ value: 'sk-test' }) })
+    // The settings entry already carries exactly what the gateway lists.
+    ctx.provide('settings', {
+      describe: () => [{ ns: 'llm-deepseek', value: { models: [{ id: 'deepseek-v4-1-flash' }] } }],
+      mutate: async (ns: string, ops: unknown) => { mutations.push({ ns, ops }) },
+    })
+    ctx.provide('typert', {})
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: 'deepseek-v4-1-flash', supported_endpoint_types: ['openai'] }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })))
+    await ctx.plugin(SuanliModelCatalogService, { baseURL: 'https://gw.example/v1', apiKeyEnv: 'AURORA_API_KEY', endpointTypes: ['openai'] })
+    ctx.on('llm/models-updated', (provider) => { updates.push(provider) })
+    await ctx.suanliModels.refresh()
+    expect(mutations).toEqual([])
+    expect(updates).toEqual([])
+  })
+
   it('derives capability classes from the same entries', async () => {
     const { ctx } = await boot({
       answer: async () => catalog([
