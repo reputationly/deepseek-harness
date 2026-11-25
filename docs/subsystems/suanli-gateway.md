@@ -18,6 +18,10 @@ A refresh reads `GET <modelsPath>` (default `/v1/models`), keeps the endpoint ty
 
 The gateway answers generation through OpenAI-compatible task endpoints: images under `/v1/images/generations`, video and music under `/v1/videos`. A submission answers either with a finished artifact — the image endpoint blocks until the image exists — or with a task id to poll; `status` and `wait` normalize the gateway's words to `running`, `succeeded`, or `failed`, read `progress` and the artifact URL, and a wait that reaches its deadline reports `timed-out` while leaving the task running. Only an explicit `cancel` asks the gateway to stop it, and the gateway may refuse with `409` once a task is past the point where it can stop. `download` fetches the artifact a task reported, and `saveArtifact` does the same for a URL a caller already holds, which is how a synchronous image answer reaches disk.
 
+## The 创作 workbench
+
+The 「创作」 workbench that ships as an installed plugin reaches the gateway through this service rather than through a configuration of its own: it reads `media()` for the models and modes it renders, calls `endpoint()` for the gateway root and the credential reference, and resolves that reference per submission through the host credential service. It therefore has no gateway field, no key, and no channel table of its own, and a deployment that changes its gateway or its account changes the workbench with it.
+
 ## Authority and limits
 
 The gateway owns which models exist, which plays each one serves, and how long a task takes; this product owns the merge, the class vocabulary, and the budgets. Nothing here decides a model's price, availability, or output quality, and a class the gateway does not declare stays absent rather than promising a capability the platform cannot serve.
