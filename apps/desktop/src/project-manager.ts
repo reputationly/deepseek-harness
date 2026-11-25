@@ -24,7 +24,6 @@ import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { writeGatewayProfile } from './brand-gateway.ts'
-import { bundledPluginSpecs } from './bundled-plugins.ts'
 import { INSTALLATION_OWNED_PROFILE_TUPLES, PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
@@ -163,7 +162,7 @@ export function createRuntimeProjectMetadata(projectDir: string, release: Deskto
     name: PROJECT_NAME,
     private: true,
     version: '0.0.0',
-    dependencies: { ...desktopCorePackageOverrides(packageSet), ...bundledPluginSpecs() },
+    dependencies: desktopCorePackageOverrides(packageSet),
     dsh: { profile: { bundles: [...WEB_PROFILE.bundles] } },
   }
   writeJson(join(projectDir, 'package.json'), manifest)
