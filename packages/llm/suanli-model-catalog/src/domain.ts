@@ -75,7 +75,10 @@ export function memoryCatalogStore(): MediaCatalogStore {
   let stored: MediaCatalogRecord | undefined
   return {
     read: () => stored,
-    write: async (record) => { stored = record },
+    write: (record) => {
+      stored = record
+      return Promise.resolve()
+    },
   }
 }
 
