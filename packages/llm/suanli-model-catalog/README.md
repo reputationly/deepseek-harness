@@ -43,7 +43,7 @@ The route's `models` field is volatile configuration, so a write reaches the run
 - `status` is `ready` for a catalog with at least one image or video entry, `empty` when a successful read carried none, `signed-out` without a credential, `unauthorized`, `kyc-required` (`403` whose body carries `kyc_required`), `rate-limited`, or `unreachable`; `loading` until the first read settles.
 - A failed, empty, or unreadable read keeps the entries, version, and fetch time of the last good generation and changes only the status.
 - Reads happen at startup (without delaying the Host), after `credentials/reference-updated` for this service's reference, and on `refresh()`; concurrent reads share one request.
-- The last good generation is stored in the `suanli-media-catalog` storage domain and read back before the first request, so a restart without a network still renders a catalog. Without the storage domain the catalog stays in memory for the process.
+- The last good generation is stored in the `suanli_media_catalog` storage domain and read back before the first request, so a restart without a network still renders a catalog. Without the storage domain the catalog stays in memory for the process.
 - `suanli-model-catalog/media-updated` is emitted after a committed change to the status or version.
 - A successful `/v1/models` result identical to the catalog in effect writes nothing: no settings write, no `llm/models-updated`.
 

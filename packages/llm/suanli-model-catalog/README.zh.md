@@ -47,7 +47,7 @@ kind: "package-reference"
 - `status`：目录中至少有一个图像或视频条目时为 `ready`；成功读取但一个都没有时为 `empty`；没有凭据时为 `signed-out`；其余为 `unauthorized`、`kyc-required`（响应体带 `kyc_required` 的 `403`）、`rate-limited` 或 `unreachable`；首次读取完成前为 `loading`。
 - 失败、空或无法解析的读取保留上一份成功目录的条目、版本与读取时间，只改变状态。
 - 读取发生在启动时（不阻塞 Host）、本服务凭据的 `credentials/reference-updated` 之后，以及 `refresh()` 被调用时；并发读取共用一个请求。
-- 最近一份成功目录存放在 `suanli-media-catalog` 存储域中，并在首次请求之前读回，因此断网重启仍能渲染目录。没有存储域时，目录只存在于本进程内存中。
+- 最近一份成功目录存放在 `suanli_media_catalog` 存储域中，并在首次请求之前读回，因此断网重启仍能渲染目录。没有存储域时，目录只存在于本进程内存中。
 - `suanli-model-catalog/media-updated` 在状态或版本提交之后发出。
 - `/v1/models` 结果与当前目录完全一致时不写入任何内容：不写设置，也不发 `llm/models-updated`。
 

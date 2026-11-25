@@ -10,7 +10,7 @@
 
 ## 媒体目录保留了什么
 
-`GET <capabilitiesPath>`（默认 `/v1/ov/capabilities`）与列表独立读取，任意一方失败都不改变另一方上报的内容。`media()` 返回最近一份成功目录——状态、版本、读取时间，以及每条的传输方式、任务类型、参数表、上限、交付时长与玩法——媒体工作台据此渲染图像与视频，其余操作由各自的使用方读取。读取发生在启动时（不阻塞 Host）、本服务凭据的 `credentials/reference-updated` 之后，以及 `refresh()` 被调用时；并发读取共用一个请求。状态为 `ready`；成功读取但没有图像或视频条目时为 `empty`；其余为 `signed-out`、`unauthorized`、响应体带 `kyc_required` 的 `403` 对应 `kyc-required`、`rate-limited`、`unreachable`；首次读取完成前为 `loading`。失败、空或无法解析的读取保留上一份目录的条目、版本与读取时间。最近一份成功目录存放在 `suanli-media-catalog` 存储域中，并在首次请求之前读回；没有该存储域时只存在于内存中。状态或版本的提交会发出 `suanli-model-catalog/media-updated`。
+`GET <capabilitiesPath>`（默认 `/v1/ov/capabilities`）与列表独立读取，任意一方失败都不改变另一方上报的内容。`media()` 返回最近一份成功目录——状态、版本、读取时间，以及每条的传输方式、任务类型、参数表、上限、交付时长与玩法——媒体工作台据此渲染图像与视频，其余操作由各自的使用方读取。读取发生在启动时（不阻塞 Host）、本服务凭据的 `credentials/reference-updated` 之后，以及 `refresh()` 被调用时；并发读取共用一个请求。状态为 `ready`；成功读取但没有图像或视频条目时为 `empty`；其余为 `signed-out`、`unauthorized`、响应体带 `kyc_required` 的 `403` 对应 `kyc-required`、`rate-limited`、`unreachable`；首次读取完成前为 `loading`。失败、空或无法解析的读取保留上一份目录的条目、版本与读取时间。最近一份成功目录存放在 `suanli_media_catalog` 存储域中，并在首次请求之前读回；没有该存储域时只存在于内存中。状态或版本的提交会发出 `suanli-model-catalog/media-updated`。
 
 `capabilities()` 把最近一份成功目录的条目归入本产品的能力类：对话、文生图与图生图、文生视频、首尾帧、参考生视频、音乐与语音。一个声明了多种玩法的条目属于它命名的每一个类，所以一个同时带 `t2i` 与 `i2i` 的图像条目会填满两个图像类；词表之外的组合归入 `other` 而不是消失。`endpoint()` 回答必须自行调用同一网关的使用方，因此不再有第二行配置去配置一个已经通过本服务到达的网关。
 

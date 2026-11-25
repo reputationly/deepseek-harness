@@ -23,7 +23,8 @@ const snapshotSchema = z.object({
  * open, because the catalog is derived data the next refresh replaces.
  */
 export const mediaCatalogDomain = defineDomain({
-  name: 'suanli-media-catalog',
+  // 域名必须匹配存储域的 UNIT_NAME_RE（`^[a-z][a-z0-9_]*$`），因此用下划线而不是连字符。
+  name: 'suanli_media_catalog',
   version: 1,
   invalidRecords: 'backup-and-skip',
   tables: { snapshot: domainTable(snapshotSchema) },
