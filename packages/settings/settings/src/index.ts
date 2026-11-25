@@ -1,8 +1,8 @@
 /** Config-schema projection and form edits over Cordis profile patches. */
 import { existsSync } from 'node:fs'
-import { readFile, rename } from 'node:fs/promises'
+import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parse } from 'yaml'
+import { parse, stringify } from 'yaml'
 import { Context, FiberState, Service, resolveConfig, type Fiber } from '@deepseek-ai/cordis'
 import type z from '@deepseek-ai/schemastery'
 import { interpolate, type Entry } from '@deepseek-ai/cordis-plugin-loader'
@@ -232,12 +232,16 @@ export class SettingsForms extends Service {
     const ctx = ownerContext
     ctx.effect(() => () => { this.closed = true })
     ctx.on('app-boot/config-reload', () => { this.invalidate() })
-    void ctx.root.loader.await().then(() => this.importLegacyDocument()).catch((error: unknown) => { ctx.logger.error(error) })
+    void ctx.root.loader.await().then(async () => {
+      await this.importLegacyDocument()
+      await this.redactLegacyCopy()
+    }).catch((error: unknown) => { ctx.logger.error(error) })
   }
 
   /** Move the sections of the removed `settings.yaml` into the active profile once the Loader has settled every entry.
-   * The document is renamed before the first write, so a partial import never repeats; a section the running
-   * composition rejects is logged and remains only in the renamed file. */
+   * The document is renamed before the first write, so a partial import never repeats. Sections the running
+   * composition rejects stay in the renamed file, without the values their live Config schema marks
+   * `role('secret')`; a document that imports whole leaves no renamed file behind. */
   private async importLegacyDocument(): Promise<void> {
     const profile = this.ownerContext.profileContext
     const path = join(profile.home, 'settings.yaml')
@@ -245,6 +249,8 @@ export class SettingsForms extends Service {
     const imported = `${path}.imported`
     await rename(path, imported)
     const sections = parse(await readFile(imported, 'utf8')) as Record<string, object> | null
+    const rejected: Record<string, unknown> = {}
+    let unidentifiable = false
     for (const [section, values] of Object.entries(sections ?? {})) {
       const ns = LEGACY_SECTION_ENTRIES[section] ?? section
       try {
@@ -252,9 +258,57 @@ export class SettingsForms extends Service {
       } catch (error) {
         this.ownerContext.logger.warn('settings: section %s of %s was not imported into entry %s', section, imported, ns)
         this.ownerContext.logger.warn(error)
+        const withoutSecrets = this.legacySectionWithoutSecrets(ns, values)
+        if (withoutSecrets === undefined) unidentifiable = true
+        rejected[section] = withoutSecrets ?? values
       }
     }
-    this.ownerContext.logger.info('settings: imported %s into profile %s', imported, profile.name)
+    if (Object.keys(rejected).length === 0) {
+      await rm(imported, { force: true })
+      this.ownerContext.logger.info('settings: imported %s into profile %s', path, profile.name)
+      return
+    }
+    // A partial import never repeats, so the copy exists only to hand a rejected section back to an operator.
+    await writeFile(imported, stringify(rejected))
+    if (unidentifiable) {
+      this.ownerContext.logger.warn('settings: %s keeps a section whose entry no longer exists; its secret fields cannot be identified and were left as they are', imported)
+    }
+    this.ownerContext.logger.info('settings: imported the other sections of %s into profile %s', path, profile.name)
+  }
+
+  /** Remove the values a section's live Config schema declares secret, so a recovered copy holds no credential.
+   * @param ns - entry id the legacy section targets.
+   * @param values - the section as parsed from the legacy document.
+   * @returns the section without `role('secret')` values, or `undefined` when no live entry carries that id. */
+  private legacySectionWithoutSecrets(ns: string, values: object): object | undefined {
+    const entry = this.ownerContext.configEditor.entries().find(row => row.options.id === ns)
+    const schema = entry === undefined ? undefined : this.schema(entry)
+    if (schema === undefined) return undefined
+    const { value } = redactSecrets(schema as z<never>, values)
+    return typeof value === 'object' && value !== null ? value : {}
+  }
+
+  /** Clear the secret values an earlier release left in a `settings.yaml.imported` copy.
+   * The file is rewritten only when a value is actually removed, so a started Host does not touch it again. */
+  private async redactLegacyCopy(): Promise<void> {
+    const path = join(this.ownerContext.profileContext.home, 'settings.yaml.imported')
+    if (!existsSync(path)) return
+    const sections = parse(await readFile(path, 'utf8')) as Record<string, object> | null
+    if (sections === null || typeof sections !== 'object' || Array.isArray(sections)) return
+    let changed = false
+    const redacted: Record<string, unknown> = {}
+    for (const [section, values] of Object.entries(sections)) {
+      const withoutSecrets = this.legacySectionWithoutSecrets(LEGACY_SECTION_ENTRIES[section] ?? section, values)
+      if (withoutSecrets === undefined) {
+        redacted[section] = values
+        continue
+      }
+      if (JSON.stringify(withoutSecrets) !== JSON.stringify(values)) changed = true
+      redacted[section] = withoutSecrets
+    }
+    if (!changed) return
+    await writeFile(path, stringify(redacted))
+    this.ownerContext.logger.info('settings: removed stored secrets from %s', path)
   }
 
   /** Register the calling plugin instance's page policy without changing its Config.
