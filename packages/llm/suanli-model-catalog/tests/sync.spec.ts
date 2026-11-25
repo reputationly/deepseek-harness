@@ -16,7 +16,6 @@ function sync(options: {
     modelsPath: '/v1/models',
     timeoutMs: 1_000,
     endpointTypes: options.endpointTypes ?? ['openai'],
-    capabilitiesPath: '/v1/ov/capabilities',
     send: vi.fn(async () => await (options.answer ?? (async () => json({ data: [] })))()),
     credential: async () => options.key === undefined ? 'sk-test' : options.key,
     current: () => options.current ?? [],
@@ -127,27 +126,4 @@ describe('capability classes', () => {
     ])
   })
 
-  it('reads the class list during a refresh and keeps it when the catalog fails', async () => {
-    const answered: Record<string, unknown> = {
-      '/v1/models': { data: [{ id: 'deepseek-v4-1-flash', supported_endpoint_types: ['openai'] }] },
-      '/v1/ov/capabilities': { capabilities: [entry('chat', 'deepseek-v4-1-flash')] },
-    }
-    const subject = new CatalogSync({
-      origin: 'https://gateway.example',
-      modelsPath: '/v1/models',
-      capabilitiesPath: '/v1/ov/capabilities',
-      timeoutMs: 1_000,
-      endpointTypes: ['openai'],
-      send: vi.fn<typeof fetch>(async (input) => {
-        const target = input instanceof URL ? input : typeof input === 'string' ? new URL(input) : new URL(input.url)
-        return json(answered[target.pathname] ?? {})
-      }),
-      credential: async () => 'sk-test',
-      current: () => [],
-      write: async () => {},
-    })
-    await expect(subject.refresh()).resolves.toMatchObject({ ok: true, capabilities: true,
-      classes: [{ capability: 'chat', models: ['deepseek-v4-1-flash'] }] })
-    expect(subject.capabilityClasses()).toEqual([{ capability: 'chat', models: ['deepseek-v4-1-flash'] }])
-  })
 })

@@ -375,7 +375,7 @@ it('clears stored secrets an earlier release left in a settings.yaml.imported co
   // A section whose entry no longer exists keeps its values: nothing declares which of them is secret.
   expect(settled).toContain('count: 3')
   await restored.fiber.dispose()
-  const again = await start()
+  await start()
   expect(readFileSync(copy, 'utf8')).toBe(settled)
 })
 

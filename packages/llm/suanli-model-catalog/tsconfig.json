@@ -11,6 +11,7 @@
     { "path": "../../credentials/credentials" },
     { "path": "../../settings/settings" },
     { "path": "../../llm/llm" },
-    { "path": "../../typert/protocol" }
+    { "path": "../../typert/protocol" },
+    { "path": "../../storage/storage-domain" }
   ]
 }
