@@ -565,8 +565,8 @@ importers:
         specifier: 1.0.46
         version: 1.0.46(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-agent@packages+core+agent)(@deepseek-ai/dsh-client-locale@packages+client+locale)(@deepseek-ai/dsh-client-ui-primitives@packages+client+ui-primitives)(@deepseek-ai/dsh-client-ui-settings@packages+client+ui-settings)(@deepseek-ai/dsh-client-ui-slots@packages+client+ui-slots)(@deepseek-ai/dsh-host-webserver@packages+host+webserver)(@deepseek-ai/schemastery@vendor+schemastery)(debug@4.4.3(supports-color@9.4.0))(react@18.3.1)(supports-color@9.4.0)
       '@q253595422/dsh-imagegen-video':
-        specifier: https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/d6f96cafc1f2bfe1c8fd4d43dd57c32bedfb770d/q253595422-dsh-imagegen-video-1.35.0-suanli.2.tgz
-        version: https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/d6f96cafc1f2bfe1c8fd4d43dd57c32bedfb770d/q253595422-dsh-imagegen-video-1.35.0-suanli.2.tgz(@deepseek-ai/schemastery@vendor+schemastery)
+        specifier: https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/12097f75f2709fc320ca2a0609221b342fa9e3c3/q253595422-dsh-imagegen-video-1.35.0-suanli.2.1.tgz
+        version: https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/12097f75f2709fc320ca2a0609221b342fa9e3c3/q253595422-dsh-imagegen-video-1.35.0-suanli.2.1.tgz(@deepseek-ai/schemastery@vendor+schemastery)
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -21670,9 +21670,9 @@ packages:
       yauzl:
         optional: true
 
-  '@q253595422/dsh-imagegen-video@https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/d6f96cafc1f2bfe1c8fd4d43dd57c32bedfb770d/q253595422-dsh-imagegen-video-1.35.0-suanli.2.tgz':
-    resolution: {integrity: sha512-KvXjz4+w/3oXIUIedriJQoXnBpNhXBIxjFI7bu2tj1QYJw022N+uuUCmgokwnGU9EO9jQbNW9ntwJ83eJuPiEA==, tarball: https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/d6f96cafc1f2bfe1c8fd4d43dd57c32bedfb770d/q253595422-dsh-imagegen-video-1.35.0-suanli.2.tgz}
-    version: 1.35.0-suanli.2
+  '@q253595422/dsh-imagegen-video@https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/12097f75f2709fc320ca2a0609221b342fa9e3c3/q253595422-dsh-imagegen-video-1.35.0-suanli.2.1.tgz':
+    resolution: {integrity: sha512-QBLdlIXJY3dOrG5zT/kVKbRk4PdGvSx8e36Kdqr8CrUWUSfU+wZzzgQqUMqnafsq1afoT1VmnigeBAo4nY35Yg==, tarball: https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/12097f75f2709fc320ca2a0609221b342fa9e3c3/q253595422-dsh-imagegen-video-1.35.0-suanli.2.1.tgz}
+    version: 1.35.0-suanli.2.1
     engines: {node: '>=20'}
     peerDependencies:
       '@deepseek-ai/schemastery': ^3.18.4
@@ -29390,7 +29390,7 @@ snapshots:
     optionalDependencies:
       yauzl: 3.4.0
 
-  '@q253595422/dsh-imagegen-video@https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/d6f96cafc1f2bfe1c8fd4d43dd57c32bedfb770d/q253595422-dsh-imagegen-video-1.35.0-suanli.2.tgz(@deepseek-ai/schemastery@vendor+schemastery)':
+  '@q253595422/dsh-imagegen-video@https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/12097f75f2709fc320ca2a0609221b342fa9e3c3/q253595422-dsh-imagegen-video-1.35.0-suanli.2.1.tgz(@deepseek-ai/schemastery@vendor+schemastery)':
     dependencies:
       '@deepseek-ai/schemastery': link:vendor/schemastery
 
