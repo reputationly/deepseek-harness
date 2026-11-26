@@ -223,6 +223,17 @@ describe('generate_video', () => {
     expect(submit).toHaveBeenCalledTimes(1)
   })
 
+  it('stops waiting at once when the call stops mid-poll', async () => {
+    const controller = new AbortController()
+    const { wait, run } = await boot()
+    wait.mockImplementationOnce(async () => {
+      setTimeout(() => { controller.abort({ kind: 'disposed' }) }, 10)
+      return await new Promise(() => {})
+    })
+    const args = { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true }
+    expect((await run('generate_video', args, controller.signal)).isError).toBe(true)
+  })
+
   it('never attaches another chat to this chat\'s task', async () => {
     const { submit, wait, run } = await boot()
     const args = { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true }

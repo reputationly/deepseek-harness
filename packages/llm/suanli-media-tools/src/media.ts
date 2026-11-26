@@ -262,6 +262,25 @@ async function generate(
 }
 
 /**
+ * Settle with a poll, or reject as soon as the call stops so shutdown never waits out the poll.
+ * @param poll - one status poll.
+ * @param signal - call cancellation.
+ * @returns the poll result.
+ */
+async function untilAborted<T>(poll: Promise<T>, signal: AbortSignal): Promise<T> {
+  let onAbort = (): void => {}
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => { reject(signal.reason instanceof Error ? signal.reason : new Error('The call stopped.')) }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+  try {
+    return await Promise.race([poll, aborted])
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
+/**
  * Whether the call stopped because the Host is shutting down rather than because the user stopped it.
  * @param signal - aborted call signal.
  * @returns true for a Host shutdown, which leaves the task rendering and resumable.
@@ -302,7 +321,7 @@ async function waitFor(
       signal.throwIfAborted()
       const left = deadline - Date.now()
       if (left <= 0) throw failure(what, 'timed-out', undefined)
-      const waited = await ctx.suanliMedia.wait(taskId, operation, Math.min(POLL_MS, left))
+      const waited = await untilAborted(ctx.suanliMedia.wait(taskId, operation, Math.min(POLL_MS, left)), signal)
       signal.throwIfAborted()
       if (!waited.ok) {
         if (waited.reason === 'timed-out') continue
