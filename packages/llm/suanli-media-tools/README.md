@@ -32,10 +32,10 @@ A user who writes "生成一张小猫玩耍的图片" in a task conversation exp
 - A skipped or cancelled card submits nothing. A custom answer that is still unsupported is asked once more; a second unsupported answer fails the call.
 - Reference images are workspace paths to PNG, JPEG, WebP, or GIF files, at most the entry's reference limit.
 - Video parameters are aspect ratio, resolution, duration, and sound. A question lists at most six values; a long numeric set such as 1–20 seconds is described by its range (`最长 20`), and any supported value can be typed.
-- The video mode follows the inputs: reference images use the `reference` mode, a first (and optional last) frame uses `first-last-frame` (`i2v` for one frame, `flf2v` for two), and no image uses `text-to-video`. The selected video model is used when it offers that mode; otherwise the first catalog model that offers it is used.
+- The video mode follows the inputs: reference images use the `reference` mode, a first (and optional last) frame uses `first-last-frame` (`i2v` for one frame, `flf2v` for two), a source clip (`source_video`, MP4 or WebM up to 50 MB, no images) uses `video-extension` and travels as `metadata.source_video`, where only 768P is offered and the duration is the total length, and no image uses `text-to-video`. The selected video model is used when it offers that mode; otherwise the first catalog model that offers it is used.
 - Music asks whether the piece is instrumental (纯音乐 / 带人声) unless the call says so; lyrics go along only for a song and only when the entry takes `lyrics`.
 - Video and music wait up to 20 and 10 minutes. Stopping the call cancels the gateway task.
-- Artifacts are downloaded into a private staging directory and published under `generated/` with an exclusive create, then checked again; a `generated/` replaced by a link while the gateway was rendering receives nothing outside the workspace.
+- Artifacts are downloaded into a private staging directory and published under `generated/` with an exclusive create; the bytes are written only after the new file is proven to sit in the real workspace `generated/` directory, so a `generated/` replaced by a link at any moment receives no bytes outside the workspace (at most an empty file).
 
 ## Result
 
@@ -61,7 +61,6 @@ The schema is prefix-stable. Registration changes only when a model of a role ap
 
 - **Speech only through `/v1/audio/speech`** — `generate_speech` is offered only while the catalog lists a `maas-speech` entry, and synthesis is one synchronous call that a stop does not cancel at the gateway.
 - **Review is advisory and partial** — with automatic review on, the selected vision model judges whether images and videos match the request and the card shows its verdict; it never regenerates by itself. Music and videos over 20 MiB are not reviewed, and a failed review call leaves the result unreviewed.
-- **No video extension** — the task transport sends images only, so the `video-extension` mode, which needs a source video, is not offered from chat.
 - **Resume needs the same call** — a video or song still rendering when the Host exits is kept in the `suanli_media_pending` storage domain for a day; the next call from the same chat with the same workspace, model, prompt, inputs, and parameters resumes that task instead of submitting again, but nothing fetches it unprompted.
 - **No progress percentage** — the call blocks until the file exists (about 36 s for a 2K image, minutes for a video), and the card shows an indeterminate progress state.
 - **Outside a Session** — a call without an Agent saves into the process working directory instead of a Session workspace.

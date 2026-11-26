@@ -35,6 +35,7 @@ const video = (model: string, modes: unknown[]) => ({
 })
 const FL = video('minimax-h3-2k', [mode('text-to-video', 't2v', 0), mode('first-last-frame', 'flf2v', 2, 'i2v')])
 const REF = video('minimax-h3-ref-2k', [mode('reference', 'r2va', 9)])
+const EXT = video('minimax-h3-ext', [mode('video-extension', 'continuation', 0)])
 const SPEECH = {
   id: 'generate_speech:minimax-speech', operation: 'generate_speech', model: 'minimax-speech',
   displayName: { zh: 'Speech', en: 'Speech' }, description: { zh: '', en: '' }, transport: { kind: 'audio_speech' },
@@ -85,7 +86,7 @@ async function boot(options: {
       { role: 'video', candidates: [{ model: FL.model, label: 'MiniMax H3' }, { model: REF.model, label: 'MiniMax H3 Ref' }], selected: null, fallback: FL.model },
       { role: 'music', candidates: [{ model: MUSIC.model, label: 'Music 3.0' }], selected: null, fallback: MUSIC.model },
     ],
-    media: () => ({ status: 'ready', version: '1', fetchedAt: 1, entries: [FL, REF, MUSIC, SPEECH] }),
+    media: () => ({ status: 'ready', version: '1', fetchedAt: 1, entries: [FL, REF, EXT, MUSIC, SPEECH] }),
   } as never)
   ctx.provide('suanliMedia', {
     submit, wait, cancel,
@@ -166,6 +167,37 @@ describe('generate_video', () => {
     })
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ model: 'minimax-h3-ref-2k', taskType: 'r2va' }))
     expect(submit.mock.calls[0]?.[0].referenceImages).toHaveLength(3)
+  })
+
+  it('continues a workspace clip on the model that offers continuation', async () => {
+    const { submit, run, cwd } = await boot()
+    await writeFile(join(cwd, 'clip.mp4'), MP4)
+    await run('generate_video', {
+      prompt: '接着跑', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 10, with_audio: true, source_video: 'clip.mp4',
+    })
+    const request = submit.mock.calls[0]?.[0] as { model?: string; taskType?: string; sourceVideo?: string } | undefined
+    expect(request).toMatchObject({ model: 'minimax-h3-ext', taskType: 'continuation', params: { resolution: '768P' } })
+    expect(request?.sourceVideo).toMatch(/^data:video\/mp4;base64,/u)
+  })
+
+  it('offers only 768P for a continued clip', async () => {
+    const { ask, run, cwd } = await boot()
+    await writeFile(join(cwd, 'clip.mp4'), MP4)
+    await run('generate_video', {
+      prompt: '接着跑', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 10, with_audio: true, source_video: 'clip.mp4',
+    })
+    const question = ask.mock.calls[0]?.[0].questions[0]
+    expect(question?.question).toContain('当前不支持「2K」')
+    expect(question?.options?.map(option => option.label)).toEqual(['768P'])
+  })
+
+  it('refuses a continued clip that also carries images', async () => {
+    const { submit, run, cwd } = await boot()
+    await writeFile(join(cwd, 'clip.mp4'), MP4)
+    await writeFile(join(cwd, 'cat.png'), PNG)
+    const result = await run('generate_video', { prompt: '接着跑', source_video: 'clip.mp4', first_frame: 'cat.png' })
+    expect(textOf(result)).toBe('Error: A continued clip takes no images.')
+    expect(submit).not.toHaveBeenCalled()
   })
 
   it('cancels the gateway task when the call stops', async () => {

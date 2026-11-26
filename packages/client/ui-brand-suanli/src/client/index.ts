@@ -17,7 +17,7 @@ import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import { BrandMark, BrandName } from './Brand.tsx'
 import type { GatewayStatusFace } from './ConnectionPill.tsx'
 import { CatalogSyncRow, type CatalogSyncOutcome } from './CatalogSyncRow.tsx'
-import { GenerateImageCard } from './GenerateImageCard.tsx'
+import { GenerateImageCard, type OpenInCreative } from './GenerateImageCard.tsx'
 import { GenerateMediaCard, type MediaLoader } from './GenerateMediaCard.tsx'
 import { ModelRolesRow, type ModelRoleView, type ModelRolesView } from './ModelRolesRow.tsx'
 import { de, en, es, fr, ja, pt, ru, zh, type GatewayStatusKey } from './locales.ts'
@@ -75,8 +75,15 @@ export function apply(ctx: ClientContext): void {
     t: TranslateNS<'gatewayStatus'>
   }) => createElement(ModelRolesRow, { load: props.load, select: props.select, setAutoReview: props.setAutoReview, t: props.t })))
   // Images generated from chat render inline, with download, prompt copy, and regenerate.
+  // 「在创作中打开」 hands the images to the creative workbench when that plugin is loaded.
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
     name: 'tool.call.toolview', key: 'generate_image', locale: NS,
+    inject: (): { openInCreative: OpenInCreative } => ({
+      openInCreative: (input) => {
+        const creative = ctx.get('suanliCreative') as CreativeFace | undefined
+        return creative?.openImages(input) ?? false
+      },
+    }),
   }, GenerateImageCard))
   // Videos and music play inline once the user asks; the bytes come from the call's own Session workspace.
   for (const key of ['generate_video', 'generate_music', 'generate_speech']) {
@@ -150,6 +157,11 @@ async function readRoles(remote: ClientContext['remote']['suanliModels']): Promi
  * @returns the namespace handle.
  * @throws When this deployment mounts no catalog row.
  */
+/** The part of the creative workbench's Client service the image card calls. */
+interface CreativeFace {
+  openImages: OpenInCreative
+}
+
 function catalogService(ctx: ClientContext): ClientContext['remote']['suanliModels'] {
   const remote = ctx.get('remote.suanliModels') as ClientContext['remote']['suanliModels'] | undefined
   if (remote === undefined) throw new Error('the model catalog service is not mounted')

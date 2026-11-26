@@ -50,6 +50,7 @@ async function boot(options: {
   readonly stored?: StoredSnapshot
   readonly withStorage?: boolean
   readonly models?: readonly unknown[]
+  readonly pinned?: boolean
 }) {
   const ctx = new Context()
   contexts.push(ctx)
@@ -65,6 +66,7 @@ async function boot(options: {
   ctx.provide('settings', {
     describe: () => models === undefined ? [] : [{ ns: 'llm-deepseek', value: { models } }],
     mutate: async (ns: string, ops: readonly { value: readonly unknown[] }[]) => {
+      if (options.pinned === true) throw new Error(`Configuration for "${ns}" is overridden by a home patch`)
       mutations.push({ ns, ops })
       models = ops[0]?.value
     },
@@ -75,8 +77,14 @@ async function boot(options: {
   vi.stubGlobal('fetch', send)
   const updates: unknown[] = []
   ctx.on('llm/models-updated', (provider) => { updates.push(provider) })
+  // Entries a listener reads when the catalog announces a change.
+  const announced: number[] = []
+  ctx.on('suanli-model-catalog/media-updated', () => {
+    const service = ctx.get('suanliModels') as { media: () => { entries: readonly unknown[] } } | undefined
+    announced.push(service?.media().entries.length ?? -1)
+  })
   await ctx.plugin(SuanliModelCatalogService, { baseURL: 'https://gw.example/v1', apiKeyEnv: 'AURORA_API_KEY' })
-  return { ctx, storage, send, mutations, updates }
+  return { ctx, storage, send, mutations, updates, announced }
 }
 
 /** One stored generation carrying the fixture image entry. */
@@ -112,6 +120,20 @@ describe('SuanliModelCatalogService', () => {
     })
     await vi.waitFor(() => { expect(ctx.suanliModels.media().version).toBe('stored') })
     expect(ctx.suanliModels.media().entries).toHaveLength(1)
+  })
+
+  it('announces the media catalog when the profile pins the chat models', async () => {
+    const { ctx, announced } = await boot({ pinned: true })
+    await vi.waitFor(() => { expect(announced).toEqual([3]) })
+    expect(ctx.suanliModels.media().status).toBe('ready')
+  })
+
+  it('announces a stored generation that a listener can already read', async () => {
+    const { announced } = await boot({
+      stored: { version: 'stored', fetchedAt: 3, payload: JSON.stringify({ version: 'stored', capabilities: [STORED_ENTRY] }) },
+      answer: () => new Promise<Response>(() => {}),
+    })
+    await vi.waitFor(() => { expect(announced).toEqual([1]) })
   })
 
   it('keeps the entries when a later read fails and reports why', async () => {

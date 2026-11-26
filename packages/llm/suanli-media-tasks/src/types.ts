@@ -32,6 +32,8 @@ export interface MediaSubmitRequest {
   readonly taskType?: string
   /** Reference inputs; the catalog's `maxReferenceImages` bounds how many a class accepts. */
   readonly referenceImages?: readonly string[]
+  /** Data URL of the clip a `video-extension` task continues. */
+  readonly sourceVideo?: string
   /** Extra gateway parameters, forwarded verbatim. */
   readonly params?: Readonly<Record<string, string | number | boolean>>
 }

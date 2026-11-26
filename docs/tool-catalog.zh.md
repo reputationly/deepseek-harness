@@ -648,7 +648,7 @@
 
 ### `generate_video`
 
-根据文字描述生成视频片段，可选用工作区里的首帧（及尾帧）或参考图。用户给出宽高比、分辨率、时长和声音时传入用户原话（例如「竖屏」「2K」、10、true），没给就省略。缺少或不支持的参数由工具向用户询问，不要先问。渲染需要数分钟，只调用一次。
+根据文字描述生成视频片段，可选用工作区里的首帧（及尾帧）或参考图，也可以续写工作区里的视频。用户给出宽高比、分辨率、时长和声音时传入用户原话（例如「竖屏」「2K」、10、true），没给就省略。缺少或不支持的参数由工具向用户询问，不要先问。渲染需要数分钟，只调用一次。
 
 ```json
 {
@@ -688,6 +688,10 @@
       "items": {
         "type": "string"
       }
+    },
+    "source_video": {
+      "type": "string",
+      "description": "Workspace path of a clip to continue; duration_seconds is then the total length. Not combined with images."
     }
   },
   "required": [

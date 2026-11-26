@@ -1,5 +1,5 @@
 /** Inline card for one generate_image call: progress, the generated images, and follow-up actions. */
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import {
   Button, IconCheckOutlineRegular, IconCopyOutlineRegular, IconDownloadOutlineRegular, IconRefreshOutlineRegular,
   TextShimmer, useClipboardCopy,
@@ -9,8 +9,22 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { imageResultOf, type ImageResult } from './image-result.ts'
 import css from './GenerateImageCard.module.css'
 
+
 /** Props the keyed toolview entry receives. */
-export type GenerateImageCardProps = ToolCallViewProps & PropsRenderFactories & { t: TranslateNS<'gatewayStatus'> }
+/** Images handed to the creative workbench's gallery. */
+export interface CreativeImages {
+  prompt: string
+  model: string
+  images: Array<{ b64: string; mime: string }>
+}
+
+/** @returns false when the creative workbench is not loaded or is switched off. */
+export type OpenInCreative = (input: CreativeImages) => boolean
+
+export type GenerateImageCardProps = ToolCallViewProps & PropsRenderFactories & {
+  t: TranslateNS<'gatewayStatus'>
+  openInCreative: OpenInCreative
+}
 
 /**
  * Render the call while it runs, its images once it settles, or its text when it failed.
@@ -41,7 +55,7 @@ export function GenerateImageCard(props: GenerateImageCardProps) {
  * @returns the images with their actions.
  */
 function GeneratedImages({ result, props }: { result: ImageResult; props: GenerateImageCardProps }) {
-  const { t, loadImage, inputActions, renderFactorySlot } = props
+  const { t, loadImage, inputActions, renderFactorySlot, openInCreative: open } = props
   const copy = useClipboardCopy(result.prompt)
   const stored = result.images.flatMap(image => (
     image.attachment === undefined ? [] : [{ attachment: image.attachment, label: baseName(image.path) }]
@@ -56,6 +70,13 @@ function GeneratedImages({ result, props }: { result: ImageResult; props: Genera
       }
     })()
   }, [stored, loadImage])
+  const [creativeMissing, setCreativeMissing] = useState(false)
+  const openInCreative = useCallback(() => {
+    void (async () => {
+      const images = await Promise.all(stored.map(async image => await dataOf(await loadImage(image.attachment))))
+      setCreativeMissing(!open({ prompt: result.prompt, model: result.modelLabel, images }))
+    })()
+  }, [stored, loadImage, open, result.prompt, result.modelLabel])
   const facts = [result.modelLabel, ...result.parameters.map(item => item.value)].join(' · ')
   const regenerate = useCallback(() => {
     inputActions.setDraft(t('image.regenerate-request', { prompt: result.prompt, settings: facts }))
@@ -76,8 +97,23 @@ function GeneratedImages({ result, props }: { result: ImageResult; props: Genera
         {copy.copied ? t('image.copied') : t('image.copy-prompt')}
       </Button>
       <Button size="sm" icon={<IconRefreshOutlineRegular />} onClick={regenerate}>{t('image.regenerate')}</Button>
+      {stored.length > 0 && <Button size="sm" onClick={openInCreative}>{t('image.open-in-creative')}</Button>}
     </div>
+    {creativeMissing && <p className={css.detail} role="status">{t('image.creative-unavailable')}</p>}
   </div>
+}
+
+/**
+ * Base64 payload of a loaded image URL.
+ * @param url - data or object URL the image loader returned.
+ * @returns the payload and its media type.
+ */
+async function dataOf(url: string): Promise<{ b64: string; mime: string }> {
+  const blob = await (await fetch(url)).blob()
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let binary = ''
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+  return { b64: btoa(binary), mime: blob.type === '' ? 'image/png' : blob.type }
 }
 
 /**

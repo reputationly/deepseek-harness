@@ -1,6 +1,7 @@
 /** Steps every generation tool shares: the parameter card, the workspace, and saving artifacts. */
 
-import { mkdir, mkdtemp, readFile, realpath, rm, unlink, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { lstat, mkdir, mkdtemp, open, readFile, readlink, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -142,8 +143,8 @@ export interface SavedArtifact {
 
 /**
  * Download an artifact into a private staging directory, then publish it under `generated/`.
- * The final file is created exclusively and checked after creation, so a `generated/` replaced
- * while the gateway was rendering cannot receive the bytes outside the workspace.
+ * The final file is created exclusively and receives bytes only once it is proven inside the workspace,
+ * so a `generated/` replaced while the gateway was rendering never receives them.
  * @param ctx - plugin context.
  * @param what - which generation, for errors.
  * @param url - artifact URL.
@@ -177,17 +178,49 @@ export async function publishArtifact(
     const saved = await fill(join(staging, 'artifact'))
     if (!saved.ok) throw failure(what, saved.reason, saved.detail)
     const data = new Uint8Array(await readFile(saved.path))
-    const directory = await outputDirectory(cwd)
+    await outputDirectory(cwd)
+    const directory = join(await realpath(cwd), 'generated')
     const path = join(directory, `${stamp()}-${Math.random().toString(36).slice(2, 8)}${extensionOf(data)}`)
-    await writeFile(path, data, { flag: 'wx' })
-    if (!await inside(cwd, path)) {
-      await unlink(path).catch(() => {})
-      throw new Error('The workspace generated/ directory points outside the workspace.')
-    }
+    await writeInside(directory, path, data)
     return { path, data }
   } finally {
     await rm(staging, { recursive: true, force: true })
   }
+}
+
+/**
+ * Create the file exclusively and write the bytes only after proving the new file is the one at
+ * `path` under a real `generated/` directory, so a directory swapped for a link never receives them.
+ * @param directory - `generated/` under the real workspace path.
+ * @param path - the new file.
+ * @param data - bytes to write.
+ * @throws When the created file is not the one inside the workspace; nothing is written then.
+ */
+async function writeInside(directory: string, path: string, data: Uint8Array): Promise<void> {
+  const handle = await open(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o644)
+  try {
+    const created = await handle.stat()
+    const parent = await lstat(directory)
+    const entry = await lstat(path).catch(() => undefined)
+    const same = parent.isDirectory() && entry !== undefined && entry.isFile()
+      && entry.dev === created.dev && entry.ino === created.ino && created.nlink === 1
+    if (!same || !await opensAt(handle.fd, path)) throw new Error('The workspace generated/ directory points outside the workspace.')
+    await handle.writeFile(data)
+  } finally {
+    await handle.close()
+  }
+}
+
+/**
+ * Where the kernel says an open file lives, which no later swap of a parent can fake.
+ * @param fd - the open file.
+ * @param path - where it must be.
+ * @returns false when the file is elsewhere; true where the platform cannot tell (no `/proc`).
+ */
+async function opensAt(fd: number, path: string): Promise<boolean> {
+  if (process.platform !== 'linux') return true
+  const actual = await readlink(`/proc/self/fd/${String(fd)}`).catch(() => undefined)
+  return actual === undefined || actual === path
 }
 
 /**

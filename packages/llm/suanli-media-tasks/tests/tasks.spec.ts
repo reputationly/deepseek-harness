@@ -56,6 +56,12 @@ describe('submit', () => {
     expect(calls[0]?.body).toMatchObject({ image: 'a.png', images: ['a.png', 'b.png'] })
   })
 
+  it('sends the clip a continuation extends as metadata.source_video', async () => {
+    const { subject, calls } = client({ answer: () => json({ task_id: 'task-3', status: 'QUEUED' }) })
+    await subject.submit({ operation: 'generate_video', model: 'ext', prompt: 'p', taskType: 'continuation', sourceVideo: 'data:video/mp4;base64,AA==' }, signal)
+    expect(calls[0]?.body).toMatchObject({ metadata: { task_type: 'continuation', source_video: 'data:video/mp4;base64,AA==' } })
+  })
+
   it('accepts a synchronous image answer as a finished artifact', async () => {
     const { subject, calls } = client({ answer: () => json({ data: [{ url: 'https://cdn.example/a.png' }] }) })
     await expect(subject.submit({ operation: 'generate_image', model: 'minimax-h3-image', prompt: '猫' }, signal))
