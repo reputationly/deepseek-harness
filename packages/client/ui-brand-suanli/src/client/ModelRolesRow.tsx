@@ -122,8 +122,10 @@ export function ModelRolesRow({ load, select, setAutoReview, t }: ModelRolesRowP
               <p className={css.name}>{t('roles.review')}</p>
               <p className={css.detail}>{t('roles.review-description')}</p>
             </div>
-            <Switch checked={view.autoReview} disabled={busy} label={t('roles.review')}
-              onChange={(next) => { void run(async () => await setAutoReview(next)) }} />
+            <div className={css.toggle}>
+              <Switch checked={view.autoReview} disabled={busy} label={t('roles.review')}
+                onChange={(next) => { void run(async () => await setAutoReview(next)) }} />
+            </div>
           </div>
         </>}
     </div>
