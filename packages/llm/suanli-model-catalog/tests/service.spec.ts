@@ -292,6 +292,12 @@ describe('SuanliModelCatalogService edges', () => {
     const empty = await bootWith({ answer: async () => json(hilo({ image: [], video: [], audio: [] })) })
     await vi.waitFor(() => { expect(empty.ctx.suanliModels.media().status).toBe('empty') })
     await expect(empty.ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: true, capabilities: true })
+    let listed = true
+    const none = await bootWith({ answer: async () => json(listed ? hilo({}) : hilo({ text: [], image: [], video: [], audio: [] })) })
+    await vi.waitFor(() => { expect(none.ctx.suanliModels.media().status).toBe('ready') })
+    await expect(none.ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: true })
+    listed = false
+    await expect(none.ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: false, reason: 'empty-listing' })
     const signedOut = await bootWith({ resolve: async () => undefined })
     await vi.waitFor(() => { expect(signedOut.ctx.suanliModels.media().status).toBe('signed-out') })
     await expect(signedOut.ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: true, capabilities: true })

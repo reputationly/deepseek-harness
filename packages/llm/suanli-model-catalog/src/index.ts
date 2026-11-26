@@ -129,6 +129,8 @@ export class SuanliModelCatalogService extends TypertRemoteService {
    */
   @Remote
   async refresh(): Promise<CatalogSyncResult> {
+    // A read that commits a generation replaces this; a read with no models leaves it.
+    this.lastModels = { ok: false, reason: 'empty-listing', kept: this.current().length }
     const media = await this.refreshMedia()
     if (media.status === 'unreachable' || media.status === 'rate-limited' || media.status === 'loading') {
       return { ok: false, reason: 'unreachable', kept: this.current().length }
