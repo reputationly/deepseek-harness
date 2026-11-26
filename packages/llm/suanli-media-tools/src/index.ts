@@ -7,8 +7,8 @@
  * @module @deepseek-ai/dsh-suanli-media-tools
  */
 
-import { mkdir, readFile, rename } from 'node:fs/promises'
-import { extname, isAbsolute, join, resolve } from 'node:path'
+import { mkdir, readFile, realpath, rename } from 'node:fs/promises'
+import { extname, join, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { CapabilityEntry } from '@deepseek-ai/dsh-suanli-model-catalog/types'
@@ -17,6 +17,7 @@ import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-suanli-model-catalog'
 import type {} from '@deepseek-ai/dsh-suanli-media-tasks'
 import type {} from '@deepseek-ai/dsh-user-questions'
@@ -33,12 +34,14 @@ export interface Config {}
 export const Config: z<Config> = z.object({})
 
 export const name = 'suanli-media-tools'
-export const inject = ['tools', 'suanliModels', 'suanliMedia', 'userQuestions', 'workingDirectory']
+export const inject = ['tools', 'fs', 'suanliModels', 'suanliMedia', 'userQuestions', 'workingDirectory']
 
 /** Longest wait for one image. */
 const IMAGE_WAIT_MS = 180_000
 /** Most images one call produces. */
 const MAX_COUNT = 4
+/** Largest reference image read from the workspace. */
+const MAX_REFERENCE_BYTES = 20 * 1024 * 1024
 
 const description = 'Generate images from a text description, optionally guided by reference images. '
   + 'Pass the user\'s own words for aspect ratio and resolution when they give them (for example "竖屏", "4K"); '
@@ -193,7 +196,7 @@ async function generateImage(ctx: Context, args: ImageArgs, exec: ToolExecution)
   const modelLabel = state.candidates.find(candidate => candidate.model === model)?.label ?? model
   const count = Math.min(MAX_COUNT, Math.max(1, Math.floor(args.count ?? 1)))
   const cwd = await workspaceOf(ctx, exec)
-  const references = await referencesOf(entry, args.reference_images ?? [], cwd)
+  const references = await referencesOf(ctx, entry, args.reference_images ?? [], cwd, exec.signal)
 
   const parameters = await resolveParameters(ctx, entry, args, exec)
   const base = { prompt: args.prompt, model, modelLabel }
@@ -203,6 +206,7 @@ async function generateImage(ctx: Context, args: ImageArgs, exec: ToolExecution)
   for (let index = 0; index < count; index++) {
     exec.signal.throwIfAborted()
     const url = await submitOne(ctx, { model, prompt: args.prompt, references, parameters })
+    exec.signal.throwIfAborted()
     images.push(await saveOne(ctx, url, cwd))
   }
   return {
@@ -258,15 +262,21 @@ async function resolveParameters(
  * @param open - parameters to ask about.
  * @param agent - the calling agent.
  * @param signal - call cancellation.
- * @returns the answers, or `undefined` when the user dismissed the card.
+ * @returns the answers, or `undefined` when the user skipped or closed the card.
+ * @throws When the question service fails for another reason, including call cancellation.
  */
 async function ask(ctx: Context, open: readonly OpenParameter[], agent: Agent | undefined, signal: AbortSignal) {
-  const result = await ctx.userQuestions.ask({
-    questions: open.map(questionOf),
-    ...agent !== undefined ? { agent } : {},
-    signal,
-  })
-  return result.answers.length === 0 ? undefined : result.answers
+  try {
+    const result = await ctx.userQuestions.ask({
+      questions: open.map(questionOf),
+      ...agent !== undefined ? { agent } : {},
+      signal,
+    })
+    return result.answers.length === 0 ? undefined : result.answers
+  } catch (error) {
+    if (error instanceof Error && (error as { code?: unknown }).code === 'ASK_CANCELLED') return undefined
+    throw error
+  }
 }
 
 /**
@@ -301,11 +311,14 @@ async function submitOne(
  * @param url - artifact URL.
  * @param cwd - session workspace.
  * @returns the saved image.
- * @throws When the artifact could not be written.
+ * @throws When `generated/` leaves the workspace, or the artifact could not be written.
  */
 async function saveOne(ctx: Context, url: string, cwd: string): Promise<Saved> {
   const directory = join(cwd, 'generated')
   await mkdir(directory, { recursive: true })
+  if (!(await realpath(directory)).startsWith((await realpath(cwd)) + sep)) {
+    throw new Error('The workspace generated/ directory points outside the workspace.')
+  }
   const stem = join(directory, `${stamp()}-${Math.random().toString(36).slice(2, 8)}`)
   const saved = await ctx.suanliMedia.saveArtifact(url, `${stem}.png`)
   if (!saved.ok) throw failure(saved.reason, saved.detail)
@@ -342,14 +355,18 @@ async function admit(
 }
 
 /**
- * Read the reference images the call names.
+ * Read the reference images the call names through the session's filesystem policy.
+ * @param ctx - plugin context.
  * @param entry - catalog entry of the chosen model.
  * @param paths - workspace paths.
  * @param cwd - session workspace.
+ * @param signal - call cancellation.
  * @returns data URLs in call order.
  * @throws When the model takes fewer references, or a file is not an image.
  */
-async function referencesOf(entry: CapabilityEntry, paths: readonly string[], cwd: string): Promise<string[]> {
+async function referencesOf(
+  ctx: Context, entry: CapabilityEntry, paths: readonly string[], cwd: string, signal: AbortSignal,
+): Promise<string[]> {
   if (paths.length === 0) return []
   const most = entry.limits.maxReferenceImages
   if (paths.length > most) {
@@ -359,7 +376,8 @@ async function referencesOf(entry: CapabilityEntry, paths: readonly string[], cw
   }
   const urls: string[] = []
   for (const path of paths) {
-    const data = new Uint8Array(await readFile(isAbsolute(path) ? path : resolve(cwd, path)))
+    const target = await ctx.fs.resolve(path, { cwd, signal })
+    const data = await ctx.fs.readBytes(target, signal, MAX_REFERENCE_BYTES)
     const mediaType = sniff(data)
     if (mediaType === undefined) throw new Error(`"${path}" is not a PNG, JPEG, WebP, or GIF image.`)
     urls.push(`data:${mediaType};base64,${Buffer.from(data).toString('base64')}`)

@@ -1,6 +1,6 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -64,6 +64,10 @@ async function boot(options: { answer?: (request: AskUserQuestionRequest) => Ask
   } as never)
   ctx.provide('userQuestions', { ask } as never)
   ctx.provide('workingDirectory', { ensure: async () => cwd } as never)
+  ctx.provide('fs', {
+    resolve: async (path: string, opts: { cwd: string }) => ({ path: resolve(opts.cwd, path) }),
+    readBytes: async (target: { path: string }) => new Uint8Array(await readFile(target.path)),
+  } as never)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   const fiber = await ctx.plugin(plugin)

@@ -277,7 +277,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-suanli-media-tools',
     dir: 'suanli-media-tools',
     source: 'packages/llm/suanli-media-tools/src/index.ts',
-    requires: ['ctx.tools', 'ctx.suanliModels', 'ctx.suanliMedia', 'ctx.userQuestions', 'ctx.workingDirectory'],
+    requires: ['ctx.tools', 'ctx.fs', 'ctx.suanliModels', 'ctx.suanliMedia', 'ctx.userQuestions', 'ctx.workingDirectory'],
     writes: ['tool/call', 'tool/result', 'user-questions/request'],
     async mount(ctx) {
       // Schema harvest never reads a catalog, asks a question, or submits a task; the tool registers
@@ -285,6 +285,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       const image = { role: 'image', candidates: [{ model: 'catalog-image', label: 'catalog-image' }], selected: null, fallback: 'catalog-image' }
       ctx.provide('suanliModels', { roles: () => [image], media: () => ({ status: 'ready', entries: [] }) } as never)
       ctx.provide('suanliMedia', {} as never)
+      if (ctx.get('fs') === undefined) ctx.provide('fs', {} as never)
       if (ctx.get('userQuestions') === undefined) ctx.provide('userQuestions', {} as never)
       await ctx.plugin(SuanliMediaTools)
     },

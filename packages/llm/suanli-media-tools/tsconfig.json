@@ -30,6 +30,9 @@
       "path": "../../session/working-directory"
     },
     {
+      "path": "../../fs/fs"
+    },
+    {
       "path": "../suanli-media-tasks"
     },
     {
