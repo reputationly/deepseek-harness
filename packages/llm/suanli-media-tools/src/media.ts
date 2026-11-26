@@ -321,7 +321,7 @@ async function planVideo(
     }
     const taskType = mode === undefined ? undefined
       : images.length === 1 && mode.taskTypeIfSingleImage !== undefined ? mode.taskTypeIfSingleImage : mode.taskType
-    const hasMode = entry.paramSchema?.properties?.['image_mode'] !== undefined
+    const hasMode = entry.paramSchema?.properties['image_mode'] !== undefined
     return {
       entry,
       modelLabel: labelOf(ctx, 'video', entry),
@@ -344,7 +344,7 @@ function planMusic(ctx: Context, entries: readonly CapabilityEntry[], preferred:
   const entry = entries.find(item => item.model === preferred) ?? entries[0]
   if (entry === undefined) throw new Error('No music model is available in the gateway catalog.')
   const lyrics = args.lyrics?.trim() ?? ''
-  const takesLyrics = entry.paramSchema?.properties?.['lyrics'] !== undefined
+  const takesLyrics = entry.paramSchema?.properties['lyrics'] !== undefined
   return {
     entry,
     modelLabel: labelOf(ctx, 'music', entry),

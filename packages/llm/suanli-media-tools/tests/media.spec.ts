@@ -139,10 +139,9 @@ describe('generate_video', () => {
     const { submit, run, cwd } = await boot()
     await writeFile(join(cwd, 'cat.png'), PNG)
     await run('generate_video', { prompt: '猫跳起来', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true, first_frame: 'cat.png' })
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
-      model: 'minimax-h3-2k', taskType: 'i2v', referenceImages: [expect.stringMatching(/^data:image\/png;base64,/u)],
-      params: expect.objectContaining({ image_mode: 'first-last-frame' }),
-    }))
+    const request = submit.mock.calls[0]?.[0] as { referenceImages?: readonly string[] } | undefined
+    expect(request).toMatchObject({ model: 'minimax-h3-2k', taskType: 'i2v', params: { image_mode: 'first-last-frame' } })
+    expect(request?.referenceImages?.[0]).toMatch(/^data:image\/png;base64,/u)
   })
 
   it('moves reference images to the model that offers a reference mode', async () => {
