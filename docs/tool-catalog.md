@@ -20,7 +20,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-mcp-resources` | `list_mcp_resource_templates`, `list_mcp_resources`, `read_mcp_resource` | `ctx.tools`, `ctx.mcpResources` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-experimental-browser-use-stagehand-native` | `stagehand_act`, `stagehand_extract`, `stagehand_navigate`, `stagehand_observe`, `stagehand_screenshot`, `stagehand_tabs` | `ctx.browserUse`, `ctx.agents`, `ctx.tools`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-action-cards` | `propose_action` | `ctx.tools`, `ctx.agents`, `ctx.sessionProjections`, `ctx.remoteAccess` | `tool/call`, `tool/result`, `plugin:action-cards/decision`, `user/message` | - | Declared only to an Agent that loaded the skill of a registered card kind; the kind packages register their actions, and the Personalized recommendations bundle supplies the shipped kinds. |
-| `@deepseek-ai/dsh-suanli-media-tools` | `generate_image` | `ctx.tools`, `ctx.fs`, `ctx.suanliModels`, `ctx.suanliMedia`, `ctx.userQuestions`, `ctx.workingDirectory` | `tool/call`, `tool/result`, `user-questions/request` | - | - |
+| `@deepseek-ai/dsh-suanli-media-tools` | `generate_image`, `generate_music`, `generate_video` | `ctx.tools`, `ctx.fs`, `ctx.suanliModels`, `ctx.suanliMedia`, `ctx.userQuestions`, `ctx.workingDirectory` | `tool/call`, `tool/result`, `user-questions/request` | - | - |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after an answer or timeout`, `late user/message` | - | ask_user_question keeps the original blocking behavior by default; set `mode: timed` to opt into a foreground timeout and pending result while the question remains answerable. In timed mode, `timeout: -1` keeps that call blocking indefinitely. |
 | `@deepseek-ai/dsh-tool-executor-ptc` | `run_code` | `ctx.workingDirectory (Agent executions)`, `ctx.tools`, `ctx.ptcRuntime`, `ctx.systemPrompt` | `tool/call`, `one tool/ptc-dispatch-start + tool/ptc-dispatch pair per bridged sub-call`, `tool/result` | - | The PTC executor exposes only run_code to the model and declares other visible capabilities in a generated SDK in the runtime’s language. Program bindings enter the shared guarded tool pipeline in submission order; concurrency-safe bodies overlap up to maxParallelSubCalls, and nested results remain linked to the outer program. The resolved timeout and maxSubCallsPerMinute set the total call allowance; exceeding it terminates the program. |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agents`, `ctx.userQuestions (execution time, opportunistic)` | `tool/call`, `plan/mode inactive on an approved review`, `tool/result` | - | exit_plan_mode stays in the model-facing schema while planning is inactive so transitions add no tool-catalog churn on top of the plan-policy change. Its execute path rejects calls outside plan mode; in plan mode it presents the plan over the user-questions seam (approve / keep planning with feedback), and approval logs plan mode inactive at the step boundary. |
@@ -578,6 +578,87 @@ Generate images from a text description, optionally guided by reference images. 
     "count": {
       "type": "integer",
       "description": "How many images, 1 to 4. Defaults to 1."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+Source: [`packages/llm/suanli-media-tools/src/index.ts`](../packages/llm/suanli-media-tools/src/index.ts)
+
+### `generate_music`
+
+Generate a piece of music from a description of its style and mood, optionally with lyrics. Pass instrumental only when the user said whether the piece has vocals; the tool asks otherwise, so do not ask first.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "Style, mood, instruments, and tempo, in the user's language."
+    },
+    "lyrics": {
+      "type": "string",
+      "description": "Lyrics the user wrote or asked for; omit for an instrumental piece."
+    },
+    "instrumental": {
+      "type": "boolean",
+      "description": "true for no vocals, false for a song, when the user said so. Omit otherwise."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+Source: [`packages/llm/suanli-media-tools/src/index.ts`](../packages/llm/suanli-media-tools/src/index.ts)
+
+### `generate_video`
+
+Generate a video clip from a text description, optionally from a first (and last) frame or from reference images in the workspace. Pass the user's own words for aspect ratio, resolution, duration, and sound when they give them (for example "竖屏", "2K", 10, true); leave them out otherwise. The tool asks the user for anything missing or unsupported, so do not ask first. Rendering takes minutes; call it once.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "What the clip shows and how it moves, in the user's language."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "description": "Aspect ratio in the user's words, such as \"9:16\" or \"竖屏\". Omit when the user gave none."
+    },
+    "resolution": {
+      "type": "string",
+      "description": "Resolution in the user's words, such as \"2K\". Omit when the user gave none."
+    },
+    "duration_seconds": {
+      "type": "number",
+      "description": "Length in seconds the user asked for. Omit when the user gave none."
+    },
+    "with_audio": {
+      "type": "boolean",
+      "description": "Whether the clip has sound, when the user said so. Omit otherwise."
+    },
+    "first_frame": {
+      "type": "string",
+      "description": "Workspace path of the image the clip starts from."
+    },
+    "last_frame": {
+      "type": "string",
+      "description": "Workspace path of the image the clip ends on; needs first_frame."
+    },
+    "reference_images": {
+      "type": "array",
+      "description": "Workspace paths of images whose subjects or style the clip should follow; not combined with frames.",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [

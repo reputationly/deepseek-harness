@@ -281,9 +281,11 @@ const TOOL_PACKAGES: ToolPackage[] = [
     writes: ['tool/call', 'tool/result', 'user-questions/request'],
     async mount(ctx) {
       // Schema harvest never reads a catalog, asks a question, or submits a task; the tool registers
-      // only while the image role has a candidate.
-      const image = { role: 'image', candidates: [{ model: 'catalog-image', label: 'catalog-image' }], selected: null, fallback: 'catalog-image' }
-      ctx.provide('suanliModels', { roles: () => [image], media: () => ({ status: 'ready', entries: [] }) } as never)
+      // only while its role has a candidate.
+      const roles = ['image', 'video', 'music'].map(role => ({
+        role, candidates: [{ model: `catalog-${role}`, label: `catalog-${role}` }], selected: null, fallback: `catalog-${role}`,
+      }))
+      ctx.provide('suanliModels', { roles: () => roles, media: () => ({ status: 'ready', entries: [] }) } as never)
       ctx.provide('suanliMedia', {} as never)
       if (ctx.get('fs') === undefined) ctx.provide('fs', {} as never)
       if (ctx.get('userQuestions') === undefined) ctx.provide('userQuestions', {} as never)
