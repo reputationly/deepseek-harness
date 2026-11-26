@@ -19,6 +19,8 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
       '@michengai/dsh-im-connect',
       // The pet companion ships with the Suanli artwork and stays switchable from the plugin manager.
       '@michengai/dsh-codex-pet',
+      // The 创作 workbench reads the gateway's media catalog and stays switchable from the plugin manager.
+      '@q253595422/dsh-imagegen-video',
       // Suanli selects voice input and session search by default; both stay switchable from the plugin manager.
       '@deepseek-ai/dsh-experimental-voice-input-bundle',
       '@deepseek-ai/dsh-experimental-session-search',
@@ -83,6 +85,7 @@ export const OPTIONAL_BUNDLES: readonly string[] = [
   '@deepseek-ai/dsh-deepseek-chat-import',
   '@michengai/dsh-im-connect',
   '@michengai/dsh-codex-pet',
+  '@q253595422/dsh-imagegen-video',
 ]
 
 /** Public DSH release members available through the ordinary on-demand bundle installer. */

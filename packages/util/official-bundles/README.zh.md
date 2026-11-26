@@ -32,7 +32,7 @@ kind: "package-library"
 
 ### 可选与已退役组合包
 
-`OPTIONAL_BUNDLES` 列出安装随附、供用户开启或关闭的组合包。每一项都必须是 `dsh` 应用的运行时依赖，并声明 `dsh.bundle.patch`、图标和 `./locale/*.json` 显示元信息；通常没有模板选中它们。本分支的 Web 模板特意选中微信助手 `@michengai/dsh-im-connect`（固定到具体发行版本）、宠物 `@michengai/dsh-codex-pet`（固定到 `reputationly/dsh-codex-pet` 分支的发行 tarball，只带蒜狸素材）以及实验性的语音输入与会话搜索组合包，同时在插件管理器中把这四个都保留为可选；Desktop 在早期版本创建的 profile 里各补选一次，用户关掉之后不会再被打开。[`verify-default-product-isolation`](../../../scripts/verify-default-product-isolation.ts)检查这一限定的产品例外。[插件管理器](../../boot/plugin-manager/README.zh.md#use-this-package)把这些组合包报告为 `optional`。`RETIRED_BUNDLES` 列出安装不再携带的组合包；app-boot 在加载 profile 时将它们从该 profile 的组合包列表中移除。
+`OPTIONAL_BUNDLES` 列出安装随附、供用户开启或关闭的组合包。每一项都必须是 `dsh` 应用的运行时依赖，并声明 `dsh.bundle.patch`、图标和 `./locale/*.json` 显示元信息；通常没有模板选中它们。本分支的 Web 模板特意选中微信助手 `@michengai/dsh-im-connect`（固定到具体发行版本）、宠物 `@michengai/dsh-codex-pet`（固定到 `reputationly/dsh-codex-pet` 分支的发行 tarball，只带蒜狸素材）、创作工作台 `@q253595422/dsh-imagegen-video`（固定到 `reputationly/dsh-imagegen-video` 分支的发行 tarball，只调用蒜狸网关）以及实验性的语音输入与会话搜索组合包，同时在插件管理器中把这五个都保留为可选；Desktop 在早期版本创建的 profile 里各补选一次，用户关掉之后不会再被打开。[`verify-default-product-isolation`](../../../scripts/verify-default-product-isolation.ts)检查这一限定的产品例外。[插件管理器](../../boot/plugin-manager/README.zh.md#use-this-package)把这些组合包报告为 `optional`。`RETIRED_BUNDLES` 列出安装不再携带的组合包；app-boot 在加载 profile 时将它们从该 profile 的组合包列表中移除。
 
 <a id="plugin-manager-lists"></a>
 ### 插件管理器列表
