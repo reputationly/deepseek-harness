@@ -16,7 +16,6 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-suanli-model-catalog'
 import type {} from '@deepseek-ai/dsh-suanli-media-tasks'
-import { readFile } from 'node:fs/promises'
 import { speechTool } from './speech.ts'
 import { review } from './review.ts'
 import { failure, outputDirectory, resolveParameters, saveArtifact, workspaceOf } from './common.ts'
@@ -209,16 +208,16 @@ async function generateImage(ctx: Context, args: ImageArgs, exec: ToolExecution)
 
   await outputDirectory(cwd)
   const images: Saved[] = []
+  const files: { data: Uint8Array; mediaType: string }[] = []
   for (let index = 0; index < count; index++) {
     exec.signal.throwIfAborted()
     const url = await submitOne(ctx, { model, prompt: args.prompt, references, parameters })
     exec.signal.throwIfAborted()
-    images.push(await saveOne(ctx, url, cwd))
+    const { saved, data } = await saveOne(ctx, url, cwd)
+    images.push(saved)
+    files.push({ data, mediaType: sniff(data) ?? 'image/png' })
   }
-  const reviewed = await review(ctx, args.prompt, await Promise.all(images.map(async (image) => {
-    const data = new Uint8Array(await readFile(image.path))
-    return { data, mediaType: sniff(data) ?? 'image/png' }
-  })))
+  const reviewed = await review(ctx, args.prompt, files)
   return {
     ...base,
     status: 'generated' as const,
@@ -259,16 +258,16 @@ async function submitOne(
  * @param ctx - plugin context.
  * @param url - artifact URL.
  * @param cwd - session workspace.
- * @returns the saved image.
+ * @returns the saved image and the bytes that were published.
  * @throws When the artifact could not be written.
  */
-async function saveOne(ctx: Context, url: string, cwd: string): Promise<Saved> {
+async function saveOne(ctx: Context, url: string, cwd: string): Promise<{ saved: Saved; data: Uint8Array }> {
   const { path, data } = await saveArtifact(ctx, 'Image', url, cwd, (bytes) => {
     const type = sniff(bytes)
     return type === undefined ? '.png' : EXTENSIONS[type]
   })
   const image: GeneratedImage = { path, ...await admit(ctx, data, sniff(data), path) }
-  return image.attachment === undefined ? { path } : { path, attachment: image.attachment as unknown as Attachment }
+  return { saved: image.attachment === undefined ? { path } : { path, attachment: image.attachment as unknown as Attachment }, data }
 }
 
 /**
