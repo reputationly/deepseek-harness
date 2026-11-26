@@ -2629,6 +2629,9 @@ importers:
       '@deepseek-ai/dsh-suanli-media-tasks':
         specifier: workspace:*
         version: link:../../llm/suanli-media-tasks
+      '@deepseek-ai/dsh-suanli-media-tools':
+        specifier: workspace:*
+        version: link:../../llm/suanli-media-tools
       '@deepseek-ai/dsh-suanli-model-catalog':
         specifier: workspace:*
         version: link:../../llm/suanli-model-catalog
@@ -13947,6 +13950,40 @@ importers:
       '@deepseek-ai/dsh-typert-registry':
         specifier: workspace:*
         version: link:../../typert/registry
+
+  packages/llm/suanli-media-tools:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:*
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-attachment':
+        specifier: workspace:*
+        version: link:../../attachment/attachment
+      '@deepseek-ai/dsh-suanli-media-tasks':
+        specifier: workspace:*
+        version: link:../suanli-media-tasks
+      '@deepseek-ai/dsh-suanli-model-catalog':
+        specifier: workspace:*
+        version: link:../suanli-model-catalog
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:*
+        version: link:../../core/tools
+      '@deepseek-ai/dsh-user-questions':
+        specifier: workspace:*
+        version: link:../../interaction/user-questions
+      '@deepseek-ai/dsh-util-values':
+        specifier: workspace:*
+        version: link:../../util/values
+      '@deepseek-ai/dsh-working-directory':
+        specifier: workspace:*
+        version: link:../../session/working-directory
 
   packages/llm/suanli-model-catalog:
     dependencies:

@@ -1,0 +1,89 @@
+/**
+ * Catalog parameter reading and the synonym table that maps user wording to catalog values.
+ * Normalization only renames; a value outside the catalog's set stays unsupported.
+ */
+
+import type { CapabilityEntry } from '@deepseek-ai/dsh-suanli-model-catalog/types'
+import type { ParameterCheck, ParameterSpec } from './types.ts'
+
+/** Aspect wording users say for a catalog value. */
+const ASPECT_WORDS: Readonly<Record<string, string>> = {
+  竖屏: '9:16', 竖版: '9:16', 竖图: '9:16', 横屏: '16:9', 横版: '16:9', 横图: '16:9',
+  方图: '1:1', 方形: '1:1', 正方形: '1:1', 自适应: 'adaptive', 自动: 'adaptive',
+}
+
+/** Words that only decorate a resolution, as in 超清4K. */
+const RESOLUTION_DECORATION = /超高清|超清|高清|分辨率|画质|\s/gu
+
+/** Which catalog keys hold one generation parameter. */
+export interface ParameterKind {
+  /** Keys a catalog may use for this parameter, in preference order. */
+  readonly keys: readonly string[]
+  /** Label when the catalog gives none. */
+  readonly label: string
+  /** Map one user wording to a comparable form. */
+  readonly normalize: (raw: string) => string
+}
+
+/**
+ * Bring one aspect wording to the `W:H` form the catalog uses.
+ * @param raw - user wording.
+ * @returns comparable form.
+ */
+export function normalizeAspect(raw: string): string {
+  const trimmed = raw.trim()
+  const word = ASPECT_WORDS[trimmed]
+  if (word !== undefined) return word
+  return trimmed.replace(/\s/gu, '').replace(/[：xX×*/]/gu, ':').toLowerCase()
+}
+
+/**
+ * Bring one resolution wording to the upper-case form the catalog uses.
+ * @param raw - user wording.
+ * @returns comparable form.
+ */
+export function normalizeResolution(raw: string): string {
+  return raw.replace(RESOLUTION_DECORATION, '').toUpperCase()
+}
+
+/** Aspect ratio of an image. */
+export const ASPECT: ParameterKind = { keys: ['aspect_ratio', 'ratio'], label: '宽高比', normalize: normalizeAspect }
+/** Resolution tier of an image. */
+export const RESOLUTION: ParameterKind = { keys: ['resolution', 'size'], label: '分辨率', normalize: normalizeResolution }
+
+/**
+ * Read one closed-set parameter from a catalog entry.
+ * @param entry - catalog entry of the chosen model.
+ * @param kind - which parameter.
+ * @returns the parameter, or `undefined` when the entry declares no such set.
+ */
+export function specOf(entry: CapabilityEntry, kind: ParameterKind): ParameterSpec | undefined {
+  const properties = entry.paramSchema?.properties ?? {}
+  for (const key of kind.keys) {
+    const property = properties[key]
+    const options = property?.enum
+    if (property === undefined || options === undefined || options.length === 0) continue
+    const fallback = property.default
+    return {
+      key,
+      label: property.title !== undefined && property.title !== '' ? property.title : kind.label,
+      options,
+      ...fallback !== undefined && options.includes(fallback) ? { default: fallback } : {},
+    }
+  }
+  return undefined
+}
+
+/**
+ * Compare one requested value with the set the entry accepts.
+ * @param spec - parameter the entry declares.
+ * @param kind - how user wording maps to catalog values.
+ * @param requested - the value the call carries, if any.
+ * @returns the catalog value, or why there is none.
+ */
+export function check(spec: ParameterSpec, kind: ParameterKind, requested: string | undefined): ParameterCheck {
+  if (requested === undefined || requested.trim() === '') return { kind: 'missing' }
+  const wanted = kind.normalize(requested)
+  const value = spec.options.find(option => kind.normalize(option) === wanted)
+  return value === undefined ? { kind: 'unsupported', requested: requested.trim() } : { kind: 'ok', value }
+}

@@ -102,6 +102,7 @@
     "@deepseek-ai/dsh-storage-domain": "workspace:*",
     "@deepseek-ai/dsh-storage-json": "workspace:*",
     "@deepseek-ai/dsh-suanli-media-tasks": "workspace:*",
+    "@deepseek-ai/dsh-suanli-media-tools": "workspace:*",
     "@deepseek-ai/dsh-suanli-model-catalog": "workspace:*",
     "@deepseek-ai/dsh-subagent": "workspace:*",
     "@deepseek-ai/dsh-subagent-fork-in-process": "workspace:*",

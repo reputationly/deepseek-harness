@@ -564,3 +564,9 @@
     - id: suanli-media-tasks
       name: '@deepseek-ai/dsh-suanli-media-tasks'
       disabled: true
+
+    # Chat generation tools over the catalog and the task service above; the desktop brand
+    # layer turns them on beside those two rows.
+    - id: suanli-media-tools
+      name: '@deepseek-ai/dsh-suanli-media-tools'
+      disabled: true

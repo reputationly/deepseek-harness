@@ -490,6 +490,7 @@
     { "path": "./packages/llm/llm-deepseek-api-key" },
     { "path": "./packages/llm/suanli-model-catalog" },
     { "path": "./packages/llm/suanli-media-tasks" },
+    { "path": "./packages/llm/suanli-media-tools" },
     { "path": "./packages/llm/llm-deepseek-account" },
     { "path": "./packages/llm/llm-pi-ai" },
     { "path": "./packages/shell/bash-local" },

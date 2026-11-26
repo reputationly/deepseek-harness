@@ -574,6 +574,7 @@
       "@deepseek-ai/dsh-storage-json": ["./packages/storage/storage-json/src"],
       "@deepseek-ai/dsh-storage-sqlite": ["./packages/storage/storage-sqlite/src"],
       "@deepseek-ai/dsh-suanli-media-tasks": ["./packages/llm/suanli-media-tasks/src"],
+      "@deepseek-ai/dsh-suanli-media-tools": ["./packages/llm/suanli-media-tools/src"],
       "@deepseek-ai/dsh-suanli-model-catalog": ["./packages/llm/suanli-model-catalog/src"],
       "@deepseek-ai/dsh-subagent": ["./packages/subagent/subagent/src"],
       "@deepseek-ai/dsh-subagent-acp": ["./packages/subagent/subagent-acp/src"],
