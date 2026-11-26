@@ -35,7 +35,7 @@ A user who writes "生成一张小猫玩耍的图片" in a task conversation exp
 - The video mode follows the inputs: reference images use the `reference` mode, a first (and optional last) frame uses `first-last-frame` (`i2v` for one frame, `flf2v` for two), and no image uses `text-to-video`. The selected video model is used when it offers that mode; otherwise the first catalog model that offers it is used.
 - Music asks whether the piece is instrumental (纯音乐 / 带人声) unless the call says so; lyrics go along only for a song and only when the entry takes `lyrics`.
 - Video and music wait up to 20 and 10 minutes. Stopping the call cancels the gateway task.
-- Artifacts are downloaded into a private staging directory and published under `generated/` with an exclusive create, then checked again; a `generated/` replaced by a link while the gateway was rendering receives nothing outside the workspace.
+- Artifacts are downloaded into a private staging directory and published under `generated/` with an exclusive create; the bytes are written only after the new file is proven to sit in the real workspace `generated/` directory, so a `generated/` replaced by a link at any moment receives no bytes outside the workspace (at most an empty file).
 
 ## Result
 
