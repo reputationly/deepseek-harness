@@ -6,11 +6,21 @@
 
 ## 目录采纳了什么
 
-一次刷新读取 `GET <modelsPath>`（默认 `/v1/models`），只留要求的端点类型（默认 `openai`，即对话端点），与本部署已知的条目合并——留下来的条目保留它们已有的 `contextWindow` 与 `inputModalities`，因为网关列表不带这些字段——再把结果写进路由的 volatile `models` 字段，选择器因此无须重启即可跟随平台。失败的、未授权的或空的列表永远不清空目录：路由继续提供原有内容，`refresh()` 上报 `no-credential`、`unauthorized`、`unreachable` 或 `empty-listing`。同一次刷新还读 `GET <capabilitiesPath>`（默认 `/v1/ov/capabilities`），把网关声明的能力归入本产品的能力类：对话、文生图与图生图、文生视频、首尾帧、参考生视频、音乐与语音。一个声明了多种玩法的条目属于它命名的每一个类，所以一个同时带 `t2i` 与 `i2i` 的图像条目会填满两个图像类；词表之外的组合归入 `other` 而不是消失。
+一次刷新读取 `GET <modelsPath>`（默认 `/v1/models`），只留要求的端点类型（默认 `openai`，即对话端点），与本部署已知的条目合并——留下来的条目保留它们已有的 `contextWindow` 与 `inputModalities`，因为网关列表不带这些字段——再把结果写进路由的 volatile `models` 字段，选择器因此无须重启即可跟随平台。失败的、未授权的或空的列表永远不清空目录：路由继续提供原有内容，`refresh()` 上报 `no-credential`、`unauthorized`、`unreachable` 或 `empty-listing`。
+
+## 媒体目录保留了什么
+
+`GET <capabilitiesPath>`（默认 `/v1/ov/capabilities`）与列表独立读取，任意一方失败都不改变另一方上报的内容。`media()` 返回最近一份成功目录——状态、版本、读取时间，以及每条的传输方式、任务类型、参数表、上限、交付时长与玩法——媒体工作台据此渲染图像与视频，其余操作由各自的使用方读取。读取发生在启动时（不阻塞 Host）、本服务凭据的 `credentials/reference-updated` 之后，以及 `refresh()` 被调用时；并发读取共用一个请求。状态为 `ready`；成功读取但没有图像或视频条目时为 `empty`；其余为 `signed-out`、`unauthorized`、响应体带 `kyc_required` 的 `403` 对应 `kyc-required`、`rate-limited`、`unreachable`；首次读取完成前为 `loading`。失败、空或无法解析的读取保留上一份目录的条目、版本与读取时间。最近一份成功目录存放在 `suanli_media_catalog` 存储域中，并在首次请求之前读回；没有该存储域时只存在于内存中。状态或版本的提交会发出 `suanli-model-catalog/media-updated`。
+
+`capabilities()` 把最近一份成功目录的条目归入本产品的能力类：对话、文生图与图生图、文生视频、首尾帧、参考生视频、音乐与语音。一个声明了多种玩法的条目属于它命名的每一个类，所以一个同时带 `t2i` 与 `i2i` 的图像条目会填满两个图像类；词表之外的组合归入 `other` 而不是消失。`endpoint()` 回答必须自行调用同一网关的使用方，因此不再有第二行配置去配置一个已经通过本服务到达的网关。
 
 ## 任务传输驱动了什么
 
 网关用 OpenAI 兼容的任务端点提供生成：图像在 `/v1/images/generations`，视频与音乐在 `/v1/videos`。提交要么直接返回产物——图像端点会阻塞到图真的生成完——要么返回任务 id 供轮询；`status` 与 `wait` 把网关的词归一化成 `running`、`succeeded`、`failed`，读取 `progress` 与产物地址，而到截止时间的等待上报 `timed-out` 并让任务继续跑。只有显式 `cancel` 才让网关停下任务，且任务越过可停止的时点后网关可能用 `409` 拒绝。`download` 拉取任务上报的产物，`saveArtifact` 对调用方已持有的地址做同样的事，同步出图就是这样落盘的。
+
+## 「创作」工作台
+
+以插件形式内置的「创作」工作台经由本服务到达网关，而不是自己带一份配置：它读 `media()` 拿到要渲染的模型与玩法，用 `endpoint()` 取网关根与凭据名，并在每次提交时通过宿主凭据服务重新解析该凭据。因此它没有自己的网关字段、密钥与渠道表，部署换了网关或换了账号，工作台随之改变。
 
 ## 权威与边界
 
@@ -94,7 +104,7 @@ Host service backing the generated `ctx.remote.suanliModels` namespace.
  * Refresh the catalog from the gateway and put it in effect.
  * @returns how the catalog changed, or why it stayed as it was.
  */
-@Remote refresh(): Promise<CatalogSyncResult>
+@Remote async refresh(): Promise<CatalogSyncResult>
 
 /**
  * Read the entries the route offers now, without contacting the gateway.
@@ -103,11 +113,43 @@ Host service backing the generated `ctx.remote.suanliModels` namespace.
 @Remote read(): readonly CatalogEntry[]
 
 /**
- * Read the capability classes the gateway declared at the last refresh.
- * @returns one member list per class, empty before a refresh reads the catalog.
+ * Read the capability classes the gateway declared at the last successful read.
+ * @returns one member list per class, empty before a read succeeds.
  */
 @Remote capabilities(): readonly ClassMembers[]
+
+/**
+ * Read the media catalog and why it is in the state it reports.
+ * @returns the status, version, fetch time, and every entry of the last successful read.
+ */
+@Remote media(): MediaCatalogSnapshot
+
+/**
+ * Read the gateway a consumer must call to reach the catalog's capabilities.
+ * @returns the gateway root and the credential reference holding its key.
+ */
+@Remote endpoint(): MediaGatewayEndpoint
 ```
 
 Source: [`packages/llm/suanli-model-catalog/src/index.ts`](../../packages/llm/suanli-model-catalog/src/index.ts)
+
+<a id="suanli-model-catalog-events"></a>
+
+### `suanli-model-catalog/*` events
+
+<a id="suanli-model-catalogmedia-updated--emit"></a>
+
+#### `suanli-model-catalog/media-updated` — emit
+
+The media catalog committed a change to its status or version.
+
+```ts cordis-catalog
+/**
+ * The media catalog committed a change to its status or version.
+ * @mode emit
+ */
+'suanli-model-catalog/media-updated'(): void
+```
+
+Source: [`packages/llm/suanli-model-catalog/src/types.ts`](../../packages/llm/suanli-model-catalog/src/types.ts)
 <!-- END GENERATED cordis-surface -->

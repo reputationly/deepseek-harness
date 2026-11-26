@@ -18,6 +18,16 @@ flowchart LR
   pkg_client_ui_plugin_recommendations["client-ui-plugin-recommendations"]
   pkg_deepseek_chat_import["deepseek-chat-import"]
   svc_deepseekChatImport["ctx.deepseekChatImport<br/>DeepSeek chat export import"]
+  pkg_suanli_model_catalog["suanli-model-catalog"]
+  svc_suanliModels["ctx.suanliModels<br/>Gateway model and media catalog"]
+  pkg_client_ui_brand_suanli["client-ui-brand-suanli"]
+  pkg_suanli_media_tasks["suanli-media-tasks"]
+  svc_suanliMedia["ctx.suanliMedia<br/>Gateway generation tasks"]
+  pkg_gateway_status["gateway-status"]
+  svc_gatewayStatus["ctx.gatewayStatus<br/>Gateway reachability light"]
+  pkg_client_ui_gateway_status["client-ui-gateway-status"]
+  pkg_assistant_feedback["assistant-feedback"]
+  svc_assistantFeedback["ctx.assistantFeedback<br/>Assistant feedback relay"]
   pkg_headless["headless"]
   svc_headlessStartup["ctx.headlessStartup<br/>Headless invocation options"]
   pkg_experimental_client_ui_cot_translation["experimental-client-ui-cot-translation"]
@@ -338,6 +348,7 @@ flowchart LR
   pkg_api_workspace_controller --> svc_workspaceController
   pkg_api_workspace_files --> svc_workspaceFiles
   pkg_app_boot --> svc_profileContext
+  pkg_assistant_feedback --> svc_assistantFeedback
   pkg_attachment --> svc_attachments
   pkg_attachment_local --> svc_attachments
   pkg_authorization --> svc_authorization
@@ -388,6 +399,7 @@ flowchart LR
   pkg_fs_local --> svc_fs
   pkg_fs_sandbox --> svc_fs
   pkg_fs_ssh --> svc_fs
+  pkg_gateway_status --> svc_gatewayStatus
   pkg_goal --> svc_goals
   pkg_headless --> svc_headlessStartup
   pkg_hmr --> svc_hmr
@@ -455,6 +467,8 @@ flowchart LR
   pkg_storage_domain --> svc_storageDomain
   pkg_storage_json --> svc_storage
   pkg_storage_sqlite --> svc_storage
+  pkg_suanli_media_tasks --> svc_suanliMedia
+  pkg_suanli_model_catalog --> svc_suanliModels
   pkg_subagent --> svc_subagents
   pkg_subagent_acp --> svc_subagents
   pkg_subagent_claude_code --> svc_subagents
@@ -530,6 +544,8 @@ flowchart LR
   svc_forge --> pkg_experimental_forge_session
   svc_forgeSession --> pkg_experimental_client_ui_forge
   svc_fs --> pkg_tool_fs
+  svc_gatewayStatus --> pkg_client_ui_brand_suanli
+  svc_gatewayStatus --> pkg_client_ui_gateway_status
   svc_headlessStartup --> pkg_headless
   svc_hmr --> pkg_app_boot
   svc_jobs --> pkg_api_job_controller
@@ -601,6 +617,7 @@ flowchart LR
   svc_ssh --> pkg_subprocess_ssh
   svc_storage --> pkg_storage_domain
   svc_storageDomain --> pkg_workspace
+  svc_suanliModels --> pkg_client_ui_brand_suanli
   svc_subagentModelSelection --> pkg_tool_subagent
   svc_subagents --> pkg_tool_ralph
   svc_subagents --> pkg_tool_subagent
@@ -659,6 +676,10 @@ flowchart LR
 | `ctx.actionCards` | `service` | [`action-cards`](../packages/experimental/action-cards) | - | [`creation-recommendations`](../packages/experimental/creation-recommendations), [`client-ui-action-cards`](../packages/experimental/client-ui-action-cards) | - | 负责卡片工具、卡片状态、用户操作和状态通知；各卡片种类注册自己的动作和处理器。 |
 | `ctx.pluginRecommendations` | `service` | [`plugin-recommendations`](../packages/experimental/plugin-recommendations) | - | [`client-ui-plugin-recommendations`](../packages/experimental/client-ui-plugin-recommendations) | - | 读取官方插件卡片的当前目录文本，并在用户点击后通过配置插件管理器启用该插件。 |
 | `ctx.deepseekChatImport` | `service` | [`deepseek-chat-import`](../packages/experimental/deepseek-chat-import) | - | - | - | 提供仅 owner 可用的上传路由，把 DeepSeek 会话导出的每个对话导入为一个会话，并提供浏览器先行检查的上传上限。 |
+| `ctx.suanliModels` | `service` | [`suanli-model-catalog`](../packages/llm/suanli-model-catalog) | - | [`client-ui-brand-suanli`](../packages/client/ui-brand-suanli) | - | 读取部署网关的模型列表与能力目录，写入选择器目录，并为重启后的工作台保留最近一份媒体目录。 |
+| `ctx.suanliMedia` | `service` | [`suanli-media-tasks`](../packages/llm/suanli-media-tasks) | - | - | - | 在网关上提交、轮询、取消并下载图像、视频与音乐任务，密钥留在 Host。 |
+| `ctx.gatewayStatus` | `service` | `gateway-status` | - | [`client-ui-gateway-status`](../packages/client/ui-gateway-status), [`client-ui-brand-suanli`](../packages/client/ui-brand-suanli) | - | 保存一次有界的网关探测及其所需凭据，连接指示灯因此不会每次渲染都打网络。 |
+| `ctx.assistantFeedback` | `service` | [`assistant-feedback`](../packages/feedback/assistant-feedback) | - | - | - | 把脱敏后的对话快照转发到部署的反馈接口，密钥与对话内容都留在 Host。 |
 | `ctx.headlessStartup` | `core` | [`headless`](../packages/bundle/headless) | - | [`headless`](../packages/bundle/headless) | - | 将解析后的任务和运行选项提供给无界面运行器及其 sandbox-policy 配置。 |
 | `ctx.cotTranslation` | `service` | [`experimental-client-ui-cot-translation`](../packages/experimental/client-ui-cot-translation) | - | - | - | 为展开的思考内容提供有界的 Session 翻译请求，不改变模型可见历史。 |
 | `ctx.translator` | `service` | [`experimental-translator`](../packages/experimental/translator) | - | [`experimental-client-ui-cot-translation`](../packages/experimental/client-ui-cot-translation) | - | 解析 Google 或 Bing 请求，并可选保留统一的实验性 Session 记录。 |

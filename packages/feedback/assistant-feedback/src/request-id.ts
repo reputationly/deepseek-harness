@@ -13,6 +13,7 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 
 /**
+ * Find the provider request id a rated message belongs to.
  * @param events - Session events to search.
  * @param messageId - rated assistant message.
  * @param named - id the caller already knows.

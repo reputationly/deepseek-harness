@@ -322,21 +322,61 @@ it('imports the removed settings.yaml into the profile once and keeps rejected s
   expect(parse(readFileSync(profile.patchPath, 'utf8'))).toContainEqual({ id: 'default-model', name: 'cordis:model', config: { provider: 'test', model: 'legacy' } })
   expect(restored.settings.describe({ redactSecrets: true }).find(row => row.ns === 'first')!.value).toEqual({ count: 2, list: [] })
   expect(existsSync(legacy)).toBe(false)
+  // The copy hands back the rejected sections alone; an imported section is already in the profile.
+  await vi.waitFor(() => { expect(readFileSync(`${legacy}.imported`, 'utf8')).not.toContain('legacy') })
   expect(readFileSync(`${legacy}.imported`, 'utf8')).toContain('rejected')
-  // An empty document is renamed without writes; a document that cannot be renamed is reported, not rethrown into boot.
+  // A document that imports whole leaves no copy behind.
   await restored.fiber.dispose()
   writeFileSync(legacy, '')
   const again = await start()
-  await vi.waitFor(() => { expect(readFileSync(`${legacy}.imported`, 'utf8')).toBe('') })
+  await vi.waitFor(() => { expect(existsSync(`${legacy}.imported`)).toBe(false) })
   await again.fiber.dispose()
   writeFileSync(legacy, 'default-model:\n  model: blocked\n')
-  rmSync(`${legacy}.imported`)
+  rmSync(`${legacy}.imported`, { force: true })
   mkdirSync(join(home, 'settings.yaml.imported', 'occupied'), { recursive: true })
   const blocked = await start()
   const failures = (): unknown[] => blocked.logger.buffer.filter(message => message.type === 'error').map((message): unknown => message.args[0])
   // The rename fails with EISDIR on POSIX and EPERM on Windows; the reported error names the rename either way.
   await vi.waitFor(() => { expect(failures().some(failure => failure instanceof Error && failure.message.includes('rename'))).toBe(true) })
   expect(blocked.agentDefaultModel.currentSelection().model).toBe('legacy')
+})
+
+it('removes the secret values of a rejected legacy section before keeping it', async () => {
+  const { ctx, home, start } = await fixture()
+  await ctx.fiber.dispose()
+  const legacy = join(home, 'settings.yaml')
+  writeFileSync(legacy, [
+    'first:',
+    '  ordinary: rejected',
+    '  token: private-key',
+    '  list:',
+    '    - name: kept',
+    '      token: private-item-key',
+    '',
+  ].join('\n'))
+  const restored = await start()
+  const kept = (): string => readFileSync(`${legacy}.imported`, 'utf8')
+  await vi.waitFor(() => { expect(kept()).not.toContain('private-key') })
+  await vi.waitFor(() => { expect(kept()).not.toContain('private-item-key') })
+  expect(kept()).toContain('rejected')
+  expect(kept()).toContain('kept')
+  expect(restored.settings.describe({ redactSecrets: true }).find(row => row.ns === 'first')!.value).toEqual({ count: 2, list: [] })
+})
+
+it('clears stored secrets an earlier release left in a settings.yaml.imported copy', async () => {
+  const { ctx, home, start } = await fixture()
+  await ctx.fiber.dispose()
+  const copy = join(home, 'settings.yaml.imported')
+  writeFileSync(copy, 'first:\n  ordinary: kept\n  token: old-private\nmissing:\n  count: 3\n')
+  const restored = await start()
+  await vi.waitFor(() => { expect(readFileSync(copy, 'utf8')).not.toContain('old-private') })
+  const settled = readFileSync(copy, 'utf8')
+  expect(settled).toContain('kept')
+  // A section whose entry no longer exists keeps its values: nothing declares which of them is secret.
+  expect(settled).toContain('count: 3')
+  await restored.fiber.dispose()
+  await start()
+  expect(readFileSync(copy, 'utf8')).toBe(settled)
 })
 
 it('describes an entry whose required field only the profile supplies, and reports a failed refresh instead of crashing', async () => {

@@ -3972,7 +3972,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Host service backing the generated `ctx.remote.suanliModels` namespace.',
     methods: [
       {
-        signature: '@Remote refresh(): Promise<CatalogSyncResult>',
+        signature: '@Remote async refresh(): Promise<CatalogSyncResult>',
         description: 'Refresh the catalog from the gateway and put it in effect.',
         parameters: [],
         returns: 'how the catalog changed, or why it stayed as it was.',
@@ -3985,9 +3985,21 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote capabilities(): readonly ClassMembers[]',
-        description: 'Read the capability classes the gateway declared at the last refresh.',
+        description: 'Read the capability classes the gateway declared at the last successful read.',
         parameters: [],
-        returns: 'one member list per class, empty before a refresh reads the catalog.',
+        returns: 'one member list per class, empty before a read succeeds.',
+      },
+      {
+        signature: '@Remote media(): MediaCatalogSnapshot',
+        description: 'Read the media catalog and why it is in the state it reports.',
+        parameters: [],
+        returns: 'the status, version, fetch time, and every entry of the last successful read.',
+      },
+      {
+        signature: '@Remote endpoint(): MediaGatewayEndpoint',
+        description: 'Read the gateway a consumer must call to reach the catalog\'s capabilities.',
+        parameters: [],
+        returns: 'the gateway root and the credential reference holding its key.',
       },
     ],
   },
@@ -5619,6 +5631,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [],
   },
   {
+    name: 'suanli-model-catalog/media-updated',
+    mode: 'emit',
+    signature: '\'suanli-model-catalog/media-updated\'(): void',
+    summary: 'The media catalog committed a change to its status or version.',
+    description: 'The media catalog committed a change to its status or version.',
+    parameters: [],
+  },
+  {
     name: 'subagent/end',
     mode: 'emit',
     signature: '\'subagent/end\'(this: Scoped<SubagentRuntime>, info: SubagentRunEndInfo): void',
@@ -6271,6 +6291,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CapabilityClass = \'chat\' | \'vision.image\' | \'vision.video\' | \'image.generate\' | \'image.edit\' | \'video.generate\' | \'video.first-last-frame\' | \'video.reference\' | \'music.generate\' | \'speech.generate\' | \'other\';',
   },
   {
+    name: 'CapabilityEntry',
+    declaration: 'export interface CapabilityEntry {\n    readonly id: string;\n    readonly operation: string;\n    readonly model: string;\n    readonly displayName: LocalizedLabel;\n    readonly description: LocalizedLabel;\n    readonly transport: {\n        readonly kind: string;\n    };\n    readonly taskTypes?: readonly string[];\n    readonly paramSchema?: CapabilityParameterSchema;\n    readonly limits: CapabilityLimits;\n    readonly deliveryDurations?: readonly number[];\n    readonly modes?: readonly CapabilityMode[];\n    readonly default: boolean;\n}',
+  },
+  {
+    name: 'CapabilityLimits',
+    declaration: 'export interface CapabilityLimits {\n    readonly maxReferenceImages: number;\n    readonly maxDurationSeconds: number;\n    readonly maxInputBytes: number;\n}',
+  },
+  {
+    name: 'CapabilityMode',
+    declaration: 'export interface CapabilityMode {\n    readonly id: string;\n    readonly label: LocalizedLabel;\n    readonly taskType: string;\n    readonly taskTypeIfSingleImage?: string;\n    readonly references: ModeReferences;\n    readonly requiresSourceVideo?: boolean;\n    readonly note?: LocalizedLabel;\n}',
+  },
+  {
+    name: 'CapabilityParameter',
+    declaration: 'export interface CapabilityParameter {\n    readonly type: string;\n    readonly title?: string;\n    readonly enum?: readonly string[];\n    readonly minimum?: number;\n    readonly maximum?: number;\n    readonly default?: string;\n}',
+  },
+  {
+    name: 'CapabilityParameterSchema',
+    declaration: 'export interface CapabilityParameterSchema {\n    readonly type: string;\n    readonly properties: Readonly<Record<string, CapabilityParameter>>;\n}',
+  },
+  {
     name: 'CatalogEntry',
     declaration: 'export interface CatalogEntry {\n    readonly id: string;\n    readonly contextWindow?: number;\n    readonly inputModalities?: readonly string[];\n}',
   },
@@ -6280,7 +6320,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CatalogSyncResult',
-    declaration: 'export type CatalogSyncResult = {\n    readonly ok: true;\n    readonly count: number;\n    readonly added: number;\n    readonly removed: number;\n    readonly changed: boolean;\n    readonly classes: readonly ClassMembers[];\n    readonly capabilities: boolean;\n} | {\n    readonly ok: false;\n    readonly reason: CatalogSyncFailure;\n    readonly kept: number;\n};',
+    declaration: 'export type CatalogSyncResult = (Extract<ModelSyncResult, {\n    ok: true;\n}> & {\n    readonly classes: readonly ClassMembers[];\n    readonly capabilities: boolean;\n}) | Extract<ModelSyncResult, {\n    ok: false;\n}>;',
   },
   {
     name: 'ChangeRequestCheck',
@@ -7647,6 +7687,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface LocalAtInput {\n    readonly date: string;\n    readonly time: string;\n    readonly time_zone: string;\n}',
   },
   {
+    name: 'LocalizedLabel',
+    declaration: 'export interface LocalizedLabel {\n    readonly zh: string;\n    readonly en: string;\n}',
+  },
+  {
     name: 'LocalizedText',
     declaration: 'export type LocalizedText = string | {\n    readonly en: string;\n    readonly [locale: string]: string;\n};',
   },
@@ -7835,6 +7879,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type MediaCancelResult = {\n    readonly ok: true;\n} | {\n    readonly ok: false;\n    readonly reason: MediaFailureReason;\n    readonly detail?: string;\n};',
   },
   {
+    name: 'MediaCatalogSnapshot',
+    declaration: 'export interface MediaCatalogSnapshot {\n    readonly status: MediaCatalogStatus;\n    readonly version: string | null;\n    readonly fetchedAt: number | null;\n    readonly entries: readonly CapabilityEntry[];\n}',
+  },
+  {
+    name: 'MediaCatalogStatus',
+    declaration: 'export type MediaCatalogStatus = \'loading\' | \'ready\' | \'empty\' | \'signed-out\' | \'unauthorized\' | \'kyc-required\' | \'rate-limited\' | \'unreachable\';',
+  },
+  {
     name: 'MediaDownloadResult',
     declaration: 'export type MediaDownloadResult = {\n    readonly ok: true;\n    readonly path: string;\n    readonly bytes: number;\n} | {\n    readonly ok: false;\n    readonly reason: MediaFailureReason;\n    readonly detail?: string;\n};',
   },
@@ -7843,8 +7895,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type MediaFailureReason = \'no-credential\' | \'unauthorized\' | \'not-found\' | \'rejected\' | \'unreachable\' | \'timed-out\' | \'cancelled\' | \'no-artifact\';',
   },
   {
+    name: 'MediaGatewayEndpoint',
+    declaration: 'export interface MediaGatewayEndpoint {\n    readonly baseURL: string;\n    readonly credential: string;\n}',
+  },
+  {
     name: 'MediaOperation',
     declaration: 'export type MediaOperation = \'generate_image\' | \'generate_video\' | \'generate_music\';',
+  },
+  {
+    name: 'MediaReferenceRule',
+    declaration: 'export interface MediaReferenceRule {\n    readonly min: number;\n    readonly max: number;\n}',
   },
   {
     name: 'MediaStatusResult',
@@ -8013,6 +8073,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelReasoningEffort',
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
+  },
+  {
+    name: 'ModelSyncResult',
+    declaration: 'export type ModelSyncResult = {\n    readonly ok: true;\n    readonly count: number;\n    readonly added: number;\n    readonly removed: number;\n    readonly changed: boolean;\n} | {\n    readonly ok: false;\n    readonly reason: CatalogSyncFailure;\n    readonly kept: number;\n};',
+  },
+  {
+    name: 'ModeReferences',
+    declaration: 'export interface ModeReferences {\n    readonly image: MediaReferenceRule;\n    readonly video: MediaReferenceRule;\n    readonly audio: MediaReferenceRule;\n}',
   },
   {
     name: 'ModEvents',

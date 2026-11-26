@@ -32,7 +32,7 @@ kind: "package-reference"
 
 此插件没有配置字段。表单只展示活动且可唯一定位的 profile 条目中的 volatile 字段。普通配置仍通过 Cordis 配置文件编辑。
 
-Settings 启动后、Loader 完成所有条目的加载时，早期版本留在 harness home 中的 `settings.yaml` 会被导入一次：每个 section 写入同名条目（`ui-developer-tools` → `ui-settings`、`ui-onboarding` → `ui-settings-general`、`shell` → 当前平台的 shell 执行器条目），文件在第一次写入前改名为 `settings.yaml.imported`，被当前组合拒绝的 section 会记录日志并只保留在改名后的文件中。
+Settings 启动后、Loader 完成所有条目的加载时，早期版本留在 harness home 中的 `settings.yaml` 会被导入一次：每个 section 写入同名条目（`ui-developer-tools` → `ui-settings`、`ui-onboarding` → `ui-settings-general`、`shell` → 当前平台的 shell 执行器条目），文件在第一次写入前先改名，使部分导入不会重复。被当前组合拒绝的 section 会记录日志并保留在 `settings.yaml.imported` 中，而其中被实时 Config schema 标记为 `role('secret')` 的值已被移除；整份导入成功的文档不会留下副本。对应条目已不存在的被拒 section 会保留其值，因为此时没有任何 schema 声明哪些字段是密钥，告警会指出该文件。每次启动还会清除既有 `settings.yaml.imported` 中早期版本留下的密钥值，只有确实删除了内容时才重写该文件。
 
 重置恢复 profile 覆盖层以下的值，包括 schema 默认值。Home patch 和命令行 overlay 优先级更高；表单写入若会被它们覆盖，则被拒绝。
 

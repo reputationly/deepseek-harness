@@ -325,7 +325,11 @@ function errorOf(payload: unknown): string | undefined {
   return typeof message === 'string' && message !== '' ? message : undefined
 }
 
-/** Transport of one operation, exposed for callers that render it. */
+/**
+ * Transport of one operation, exposed for callers that render it.
+ * @param operation - media operation to look up.
+ * @returns the transport the gateway serves that operation on.
+ */
 export function transportFor(operation: MediaOperation): MediaTransport {
   return transportOf(operation)
 }

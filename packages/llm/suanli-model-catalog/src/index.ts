@@ -6,6 +6,11 @@
  * the model picker offers. A refresh never clears the catalog — a failed or empty listing
  * keeps the entries already in effect and reports why.
  *
+ * The same service owns the gateway's capability catalog, which the media workbench renders: it is read
+ * on startup, on a credential change, and on request, its last good generation survives a restart, and
+ * `media()` reports why a read produced nothing. Consumers that call the gateway themselves read
+ * `endpoint()` rather than configuring the gateway a second time.
+ *
  * @module @deepseek-ai/dsh-suanli-model-catalog
  */
 
@@ -14,16 +19,21 @@ import z from '@deepseek-ai/schemastery'
 import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-storage-domain'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { ClassMembers } from './types.ts'
+import { classMembers } from './capabilities.ts'
+import { domainCatalogStore, mediaCatalogDomain, memoryCatalogStore } from './domain.ts'
+import { asGatewayCapability } from './media.ts'
+import { MediaCatalogSync, type MediaCatalogStore } from './media-sync.ts'
+import type {
+  CatalogEntry, CatalogSyncResult, ClassMembers, MediaCatalogSnapshot, MediaGatewayEndpoint,
+} from './types.ts'
 import { CatalogSync } from './sync.ts'
 import {
   DEFAULT_CATALOG_CAPABILITIES_PATH, DEFAULT_CATALOG_MODELS_PATH, DEFAULT_CATALOG_TIMEOUT_MS,
 } from './defaults.ts'
-import type { CatalogEntry, CatalogSyncResult } from './types.ts'
 
 export type * from './types.ts'
-
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -73,7 +83,16 @@ export class SuanliModelCatalogService extends TypertRemoteService {
   private readonly ref: CredentialRef
   private readonly namespace: string
   private readonly provider: string
+  private readonly origin: string
+  private readonly capabilitiesPath: string
+  private readonly timeoutMs: number
+  private readonly endpointFacts: MediaGatewayEndpoint
   private readonly sync: CatalogSync
+  private readonly send: typeof fetch = (input, init) => fetch(input, init)
+  /** Snapshot served before the durable store is open and the first read has settled. */
+  private readonly pending: MediaCatalogSnapshot = { status: 'loading', version: null, fetchedAt: null, entries: [] }
+  private mediaSync: MediaCatalogSync | undefined
+  private cache: { close(): Promise<void> } | undefined
 
   /**
    * @param ctx - Host context carrying the credential provider, settings, and Typert registry.
@@ -84,14 +103,16 @@ export class SuanliModelCatalogService extends TypertRemoteService {
     this.ref = credentialRef(config.apiKeyEnv)
     this.namespace = config.settingsNamespace ?? 'llm-deepseek'
     this.provider = config.provider ?? 'deepseek-official'
-    const origin = new URL(config.baseURL).origin
+    this.origin = new URL(config.baseURL).origin
+    this.capabilitiesPath = config.capabilitiesPath ?? DEFAULT_CATALOG_CAPABILITIES_PATH
+    this.timeoutMs = config.timeoutMs ?? DEFAULT_CATALOG_TIMEOUT_MS
+    this.endpointFacts = { baseURL: config.baseURL, credential: config.apiKeyEnv }
     this.sync = new CatalogSync({
-      origin,
+      origin: this.origin,
       modelsPath: config.modelsPath ?? DEFAULT_CATALOG_MODELS_PATH,
-      timeoutMs: config.timeoutMs ?? DEFAULT_CATALOG_TIMEOUT_MS,
+      timeoutMs: this.timeoutMs,
       endpointTypes: config.endpointTypes,
-      capabilitiesPath: config.capabilitiesPath ?? DEFAULT_CATALOG_CAPABILITIES_PATH,
-      send: (input, init) => fetch(input, init),
+      send: this.send,
       credential: async () => {
         const stored = await this.ctx.credentials.resolve(this.ref)
         return stored?.value
@@ -102,6 +123,17 @@ export class SuanliModelCatalogService extends TypertRemoteService {
         this.ctx.emit('llm/models-updated', this.provider)
       },
     })
+    ctx.effect(() => () => { void this.cache?.close() })
+    ctx.on('credentials/reference-updated', (ref) => {
+      if (ref !== this.ref) return
+      void this.refreshMedia().then(() => undefined, (error: unknown) => {
+        ctx.logger.warn('suanli model catalog: refresh after a credential change failed: %s', String(error))
+      })
+    })
+    // Boot does not wait for the gateway: the durable generation serves the first render.
+    void this.startMedia().catch((error: unknown) => {
+      ctx.logger.warn('suanli model catalog: media catalog startup failed: %s', String(error))
+    })
   }
 
   /**
@@ -109,8 +141,14 @@ export class SuanliModelCatalogService extends TypertRemoteService {
    * @returns how the catalog changed, or why it stayed as it was.
    */
   @Remote
-  refresh(): Promise<CatalogSyncResult> {
-    return this.sync.refresh()
+  async refresh(): Promise<CatalogSyncResult> {
+    const [models, media] = await Promise.all([this.sync.refresh(), this.refreshMedia()])
+    if (!models.ok) return models
+    return {
+      ...models,
+      classes: classMembers(media.entries.map(asGatewayCapability)),
+      capabilities: media.status === 'ready' || media.status === 'empty',
+    }
   }
 
   /**
@@ -123,12 +161,76 @@ export class SuanliModelCatalogService extends TypertRemoteService {
   }
 
   /**
-   * Read the capability classes the gateway declared at the last refresh.
-   * @returns one member list per class, empty before a refresh reads the catalog.
+   * Read the capability classes the gateway declared at the last successful read.
+   * @returns one member list per class, empty before a read succeeds.
    */
   @Remote
   capabilities(): readonly ClassMembers[] {
-    return this.sync.capabilityClasses()
+    return classMembers(this.media().entries.map(asGatewayCapability))
+  }
+
+  /**
+   * Read the media catalog and why it is in the state it reports.
+   * @returns the status, version, fetch time, and every entry of the last successful read.
+   */
+  @Remote
+  media(): MediaCatalogSnapshot {
+    return this.mediaSync?.current() ?? this.pending
+  }
+
+  /**
+   * Read the gateway a consumer must call to reach the catalog's capabilities.
+   * @returns the gateway root and the credential reference holding its key.
+   */
+  @Remote
+  endpoint(): MediaGatewayEndpoint {
+    return this.endpointFacts
+  }
+
+  /** Open the durable generation store, seed the catalog from it, and read the gateway once. */
+  private async startMedia(): Promise<void> {
+    const mediaSync = new MediaCatalogSync({
+      origin: this.origin,
+      capabilitiesPath: this.capabilitiesPath,
+      timeoutMs: this.timeoutMs,
+      send: this.send,
+      credential: async () => (await this.ctx.credentials.resolve(this.ref))?.value,
+      store: await this.openStore(),
+      now: () => Date.now(),
+      report: (message) => { this.ctx.logger.warn(message) },
+      changed: () => { this.ctx.emit('suanli-model-catalog/media-updated') },
+    })
+    mediaSync.hydrate()
+    this.mediaSync = mediaSync
+    await mediaSync.refresh()
+  }
+
+  /**
+   * Open the cache domain, or degrade to process memory.
+   * @returns the store the media catalog keeps its last good generation in.
+   */
+  private async openStore(): Promise<MediaCatalogStore> {
+    const facility = this.ctx.get('storageDomain')
+    if (facility === undefined) return memoryCatalogStore()
+    try {
+      const domain = await facility.open(mediaCatalogDomain)
+      this.cache = domain
+      return domainCatalogStore(domain.table('snapshot'))
+    } catch (error) {
+      this.ctx.logger.warn('suanli model catalog: media catalog cache is unavailable (%s); keeping the catalog in memory', String(error))
+      return memoryCatalogStore()
+    }
+  }
+
+  /** Refresh the media catalog, reporting a rejected read through the snapshot instead of the call. */
+  private async refreshMedia(): Promise<MediaCatalogSnapshot> {
+    if (this.mediaSync === undefined) return this.pending
+    try {
+      return await this.mediaSync.refresh()
+    } catch (error) {
+      this.ctx.logger.warn('suanli model catalog: media catalog read failed: %s', String(error))
+      return this.mediaSync.current()
+    }
   }
 
   /** Entries the receiving settings entry currently holds. */

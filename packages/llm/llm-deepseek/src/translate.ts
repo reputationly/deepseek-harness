@@ -105,6 +105,7 @@ function stopReason(raw: unknown): FinishReason {
 /** Translate decoded SSE data into the Harness stream protocol.
  * @param events - framed, decoded provider events in arrival order.
  * @param model - requested model id stored in durable replay state.
+ * @param providerRequestId - request id the provider reported, carried into usage.
  * @returns blocks, then final usage and a finish chunk on completion. A refusal yields final usage before throwing `CONTENT_REFUSED`.
  */
 export async function* translate(

@@ -29,7 +29,7 @@ const bundles = new Map(globSync('packages/*/*/package.json', { cwd: root }).map
 // Bundles published outside this repository resolve from the dsh installation that ships them.
 const installation = createRequire(resolve(root, 'apps/cli/package.json'))
 function installedBundle(name: string): { dir: string; manifest: Manifest } | undefined {
-  if (!name.startsWith('@michengai/')) return undefined
+  if (!name.startsWith('@michengai/') && !name.startsWith('@q253595422/')) return undefined
   const path = installation.resolve(`${name}/package.json`)
   return { dir: dirname(path), manifest: JSON.parse(readFileSync(path, 'utf8')) as Manifest }
 }

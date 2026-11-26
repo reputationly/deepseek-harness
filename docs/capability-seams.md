@@ -16,6 +16,16 @@ flowchart LR
   pkg_client_ui_plugin_recommendations["client-ui-plugin-recommendations"]
   pkg_deepseek_chat_import["deepseek-chat-import"]
   svc_deepseekChatImport["ctx.deepseekChatImport<br/>DeepSeek chat export import"]
+  pkg_suanli_model_catalog["suanli-model-catalog"]
+  svc_suanliModels["ctx.suanliModels<br/>Gateway model and media catalog"]
+  pkg_client_ui_brand_suanli["client-ui-brand-suanli"]
+  pkg_suanli_media_tasks["suanli-media-tasks"]
+  svc_suanliMedia["ctx.suanliMedia<br/>Gateway generation tasks"]
+  pkg_gateway_status["gateway-status"]
+  svc_gatewayStatus["ctx.gatewayStatus<br/>Gateway reachability light"]
+  pkg_client_ui_gateway_status["client-ui-gateway-status"]
+  pkg_assistant_feedback["assistant-feedback"]
+  svc_assistantFeedback["ctx.assistantFeedback<br/>Assistant feedback relay"]
   pkg_headless["headless"]
   svc_headlessStartup["ctx.headlessStartup<br/>Headless invocation options"]
   pkg_experimental_client_ui_cot_translation["experimental-client-ui-cot-translation"]
@@ -336,6 +346,7 @@ flowchart LR
   pkg_api_workspace_controller --> svc_workspaceController
   pkg_api_workspace_files --> svc_workspaceFiles
   pkg_app_boot --> svc_profileContext
+  pkg_assistant_feedback --> svc_assistantFeedback
   pkg_attachment --> svc_attachments
   pkg_attachment_local --> svc_attachments
   pkg_authorization --> svc_authorization
@@ -386,6 +397,7 @@ flowchart LR
   pkg_fs_local --> svc_fs
   pkg_fs_sandbox --> svc_fs
   pkg_fs_ssh --> svc_fs
+  pkg_gateway_status --> svc_gatewayStatus
   pkg_goal --> svc_goals
   pkg_headless --> svc_headlessStartup
   pkg_hmr --> svc_hmr
@@ -453,6 +465,8 @@ flowchart LR
   pkg_storage_domain --> svc_storageDomain
   pkg_storage_json --> svc_storage
   pkg_storage_sqlite --> svc_storage
+  pkg_suanli_media_tasks --> svc_suanliMedia
+  pkg_suanli_model_catalog --> svc_suanliModels
   pkg_subagent --> svc_subagents
   pkg_subagent_acp --> svc_subagents
   pkg_subagent_claude_code --> svc_subagents
@@ -528,6 +542,8 @@ flowchart LR
   svc_forge --> pkg_experimental_forge_session
   svc_forgeSession --> pkg_experimental_client_ui_forge
   svc_fs --> pkg_tool_fs
+  svc_gatewayStatus --> pkg_client_ui_brand_suanli
+  svc_gatewayStatus --> pkg_client_ui_gateway_status
   svc_headlessStartup --> pkg_headless
   svc_hmr --> pkg_app_boot
   svc_jobs --> pkg_api_job_controller
@@ -599,6 +615,7 @@ flowchart LR
   svc_ssh --> pkg_subprocess_ssh
   svc_storage --> pkg_storage_domain
   svc_storageDomain --> pkg_workspace
+  svc_suanliModels --> pkg_client_ui_brand_suanli
   svc_subagentModelSelection --> pkg_tool_subagent
   svc_subagents --> pkg_tool_ralph
   svc_subagents --> pkg_tool_subagent
@@ -657,6 +674,10 @@ flowchart LR
 | `ctx.actionCards` | `service` | [`action-cards`](../packages/experimental/action-cards) | - | [`creation-recommendations`](../packages/experimental/creation-recommendations), [`client-ui-action-cards`](../packages/experimental/client-ui-action-cards) | - | Owns the card tool, card state, user actions and status notices; card kinds register their actions and handlers. |
 | `ctx.pluginRecommendations` | `service` | [`plugin-recommendations`](../packages/experimental/plugin-recommendations) | - | [`client-ui-plugin-recommendations`](../packages/experimental/client-ui-plugin-recommendations) | - | Reads the current catalog text of an official plugin card and enables the plugin through the profile plugin manager after a click. |
 | `ctx.deepseekChatImport` | `service` | [`deepseek-chat-import`](../packages/experimental/deepseek-chat-import) | - | - | - | Serves the owner-only upload route that imports each conversation of a DeepSeek chat export as a Session, and the upload limits the browser checks first. |
+| `ctx.suanliModels` | `service` | [`suanli-model-catalog`](../packages/llm/suanli-model-catalog) | - | [`client-ui-brand-suanli`](../packages/client/ui-brand-suanli) | - | Reads the deployment gateway listing and capability catalog, writes the picker catalog, and keeps the media generation the workbench renders for a restart. |
+| `ctx.suanliMedia` | `service` | [`suanli-media-tasks`](../packages/llm/suanli-media-tasks) | - | - | - | Submits, polls, cancels and downloads image, video, and music tasks on the gateway, with the key kept on the Host. |
+| `ctx.gatewayStatus` | `service` | `gateway-status` | - | [`client-ui-gateway-status`](../packages/client/ui-gateway-status), [`client-ui-brand-suanli`](../packages/client/ui-brand-suanli) | - | Holds one bounded probe of the deployment gateway and the credential it needs, so a connection light never probes the network per render. |
+| `ctx.assistantFeedback` | `service` | [`assistant-feedback`](../packages/feedback/assistant-feedback) | - | - | - | Relays a redacted conversation snapshot to the deployment feedback endpoint, so the key and the transcript stay on the Host. |
 | `ctx.headlessStartup` | `core` | [`headless`](../packages/bundle/headless) | - | [`headless`](../packages/bundle/headless) | - | Supplies parsed task and run options to the headless runner and its sandbox-policy configuration. |
 | `ctx.cotTranslation` | `service` | [`experimental-client-ui-cot-translation`](../packages/experimental/client-ui-cot-translation) | - | - | - | Serves reasoning translations, reuses saved results, and joins ordinary Session activation for uncached inactive Sessions. |
 | `ctx.translator` | `service` | [`experimental-translator`](../packages/experimental/translator) | - | [`experimental-client-ui-cot-translation`](../packages/experimental/client-ui-cot-translation) | - | Resolves Google or Bing requests and retains shared experimental records through the active Session writer. |

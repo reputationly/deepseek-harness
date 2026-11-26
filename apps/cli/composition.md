@@ -188,10 +188,6 @@ flowchart LR
   cfg --> plugin_dsh_base_web_fetch_http
   plugin_dsh_base_tool_web["tool-web<br/>@deepseek-ai/dsh-tool-web"]
   cfg --> plugin_dsh_base_tool_web
-  plugin_dsh_base_tool_media["tool-media<br/>@deepseek-ai/dsh-tool-media"]
-  cfg --> plugin_dsh_base_tool_media
-  plugin_dsh_base_canvas["canvas<br/>@deepseek-ai/dsh-canvas"]
-  cfg --> plugin_dsh_base_canvas
   plugin_dsh_base_mcp_resources["mcp-resources<br/>@deepseek-ai/dsh-mcp-resources"]
   cfg --> plugin_dsh_base_mcp_resources
   plugin_dsh_base_tools["tools<br/>@deepseek-ai/dsh-tools"]
@@ -210,6 +206,10 @@ flowchart LR
   cfg --> plugin_dsh_base_llm_deepseek
   plugin_dsh_base_llm_deepseek_account["llm-deepseek-account<br/>@deepseek-ai/dsh-llm-deepseek-account"]
   cfg --> plugin_dsh_base_llm_deepseek_account
+  plugin_dsh_base_suanli_model_catalog["suanli-model-catalog<br/>@deepseek-ai/dsh-suanli-model-catalog"]
+  cfg --> plugin_dsh_base_suanli_model_catalog
+  plugin_dsh_base_suanli_media_tasks["suanli-media-tasks<br/>@deepseek-ai/dsh-suanli-media-tasks"]
+  cfg --> plugin_dsh_base_suanli_media_tasks
 ```
 
 | Plugin id | Package / module |
@@ -304,8 +304,6 @@ flowchart LR
 | `web-deepseek-api` | `@deepseek-ai/dsh-web-deepseek-api` |
 | `web-fetch-http` | `@deepseek-ai/dsh-web-fetch-http` |
 | `tool-web` | `@deepseek-ai/dsh-tool-web` |
-| `tool-media` | `@deepseek-ai/dsh-tool-media` |
-| `canvas` | `@deepseek-ai/dsh-canvas` |
 | `mcp-resources` | `@deepseek-ai/dsh-mcp-resources` |
 | `tools` | `@deepseek-ai/dsh-tools` |
 | `tool-executor-native` | `@deepseek-ai/dsh-tool-executor-native` |
@@ -315,6 +313,8 @@ flowchart LR
 | `fs-sandbox` | `@deepseek-ai/dsh-fs-sandbox` |
 | `llm-deepseek` | `@deepseek-ai/dsh-llm-deepseek-api-key` |
 | `llm-deepseek-account` | `@deepseek-ai/dsh-llm-deepseek-account` |
+| `suanli-model-catalog` | `@deepseek-ai/dsh-suanli-model-catalog` |
+| `suanli-media-tasks` | `@deepseek-ai/dsh-suanli-media-tasks` |
 
 Source config: [`packages/bundle/base/cordis.patch.yml`](../../packages/bundle/base/cordis.patch.yml).
 
