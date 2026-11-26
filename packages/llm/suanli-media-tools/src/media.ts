@@ -390,7 +390,7 @@ async function planVideo(
       : images.length === 1 && mode.taskTypeIfSingleImage !== undefined ? mode.taskTypeIfSingleImage : mode.taskType
     const hasMode = entry.paramSchema?.properties['image_mode'] !== undefined
     return {
-      entry,
+      entry: wanted === 'video-extension' ? only768(entry) : entry,
       modelLabel: labelOf(ctx, 'video', entry),
       ...taskType !== undefined ? { taskType } : {},
       references: await readImages(ctx, images, cwd, signal),
@@ -398,6 +398,30 @@ async function planVideo(
       extra: hasMode && mode !== undefined ? { image_mode: mode.id } : {},
     }
   }
+}
+
+/**
+ * Narrow the resolution choices of a continuation to the 768P the gateway accepts.
+ * @param entry - the continuation model.
+ * @returns the entry with only 768P resolutions offered.
+ * @throws When the model offers no 768P resolution.
+ */
+function only768(entry: CapabilityEntry): CapabilityEntry {
+  const schema = entry.paramSchema
+  if (schema === undefined) return entry
+  const properties = { ...schema.properties }
+  for (const key of RESOLUTION.keys) {
+    const property = properties[key]
+    if (property?.enum === undefined) continue
+    const values = property.enum.filter(value => value.toUpperCase().includes('768'))
+    if (values.length === 0) throw new Error('A continued clip is 768P only, and this model offers no 768P.')
+    properties[key] = {
+      ...property,
+      enum: values,
+      ...property.default !== undefined && !values.includes(property.default) ? { default: values[0] } : {},
+    }
+  }
+  return { ...entry, paramSchema: { ...schema, properties } }
 }
 
 /**
