@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Test driver: start the canned gateway, boot the chat-generation Loader composition, call
- * generate_image through the tool registry, and write what the model and the card would see to
+ * generate_image and generate_video through the tool registry, and write what the model and the card would see to
  * `./media-tools-report.json` for the package spec's inspect step.
  */
 import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
@@ -38,7 +38,16 @@ try {
     name: 'generate_image',
     arguments: { prompt: 'a kitten playing' },
   })
+  while (ctx.tools.get('generate_video') === undefined && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50))
+  const askedBeforeVideo = asked.length
+  const video = await executeToolFixture(ctx, {
+    signal: new AbortController().signal,
+    callId: ToolCallId('loader-video'),
+    name: 'generate_video',
+    arguments: { prompt: 'a sunset over the sea', aspect_ratio: '竖屏', resolution: '768P', duration_seconds: 5 },
+  })
   await writeFile('./media-tools-report.json', JSON.stringify({
+    video: { isError: video.isError, meta: video.meta, asked: asked.length - askedBeforeVideo },
     schemaProperties: Object.keys(schema?.parameters.properties ?? {}),
     isError: result.isError,
     text: result.content.filter(block => block.type === 'text').map(block => block.text).join(''),
