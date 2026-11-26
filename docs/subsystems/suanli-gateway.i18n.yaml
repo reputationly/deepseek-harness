@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/suanli-gateway.md
 /suanli-gateway-surfaces:
-  en: 2b3a23aa2796ede2
-  zh: ee0fc621c3ad6230
+  en: b70ec2ff77761e95
+  zh: 643f947173aa1e8a
 /suanli-gateway-surfaces/what-the-catalog-adopts:
-  en: 72d38c81ebaa3d47
-  zh: 6caa9a046bdfdbac
+  en: 6d4d99844ef22597
+  zh: 4d4febeaa8ec0b22
 /suanli-gateway-surfaces/what-the-media-catalog-keeps:
-  en: 3d0e78eaad4e9242
-  zh: 237724936792df15
+  en: 25bb88ae15858a98
+  zh: 47acfcb3a2413ee1
 /suanli-gateway-surfaces/what-the-task-transport-drives:
   en: 8f8595105f07a41c
   zh: 59e53d33a6cb7e95

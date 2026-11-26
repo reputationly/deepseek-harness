@@ -152,7 +152,7 @@ function entry(value: unknown): CapabilityEntry | undefined {
 
 /**
  * Decode the gateway capability payload.
- * @param payload - parsed body of `GET /v1/ov/capabilities`.
+ * @param payload - parsed body of a stored generation, which keeps entries under `capabilities`.
  * @returns the catalog, or `undefined` when the payload carries no capability list.
  */
 export function decodeCatalog(payload: unknown): DecodedCatalog | undefined {

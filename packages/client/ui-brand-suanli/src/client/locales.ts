@@ -10,6 +10,7 @@ export type GatewayStatusKey =
   | 'catalog.unauthorized' | 'catalog.unreachable' | 'catalog.empty'
   | 'catalog.failed' | 'catalog.count'
   | 'class.chat' | 'class.vision-image' | 'class.vision-video' | 'class.image-generate' | 'class.image-edit' | 'class.video-generate' | 'class.video-first-last-frame' | 'class.video-reference' | 'class.music-generate' | 'class.speech-generate' | 'class.other' | 'catalog.capability-title' | 'catalog.capability-missing'
+  | 'roles.title' | 'roles.description' | 'roles.loading' | 'roles.failed' | 'roles.chat' | 'roles.vision' | 'roles.image' | 'roles.video' | 'roles.music' | 'roles.speech' | 'roles.chat-hint' | 'roles.default' | 'roles.unavailable' | 'roles.review' | 'roles.review-description'
 
 /** English copy. */
 export const en: Record<GatewayStatusKey, string> = {
@@ -46,6 +47,21 @@ export const en: Record<GatewayStatusKey, string> = {
   'class.other': 'Other',
   'catalog.capability-title': 'Capabilities this gateway declares',
   'catalog.capability-missing': 'Not configured',
+  'roles.title': 'Models by role',
+  'roles.description': 'Every model is called with this gateway’s API key.',
+  'roles.loading': 'Loading…',
+  'roles.failed': 'Could not read the model roles',
+  'roles.chat': 'Chat',
+  'roles.vision': 'Multimodal understanding',
+  'roles.image': 'Image generation',
+  'roles.video': 'Video generation',
+  'roles.music': 'Music generation',
+  'roles.speech': 'Speech generation',
+  'roles.chat-hint': 'Switch in the message box',
+  'roles.default': 'Default ({model})',
+  'roles.unavailable': 'Not available yet',
+  'roles.review': 'Review generated media',
+  'roles.review-description': 'A multimodal model checks generated images and videos against the request.',
 }
 
 /** Chinese copy. */
@@ -83,6 +99,21 @@ export const zh: Record<GatewayStatusKey, string> = {
   'class.other': '其他',
   'catalog.capability-title': '网关声明的能力',
   'catalog.capability-missing': '未配置',
+  'roles.title': '各类模型',
+  'roles.description': '所有模型都用当前网关的 API Key 调用。',
+  'roles.loading': '读取中…',
+  'roles.failed': '读不到模型分类',
+  'roles.chat': '对话',
+  'roles.vision': '多模态识别',
+  'roles.image': '生图',
+  'roles.video': '生视频',
+  'roles.music': '生音乐',
+  'roles.speech': '生语音',
+  'roles.chat-hint': '在输入框切换',
+  'roles.default': '默认（{model}）',
+  'roles.unavailable': '暂未开放',
+  'roles.review': '生成后自动审核',
+  'roles.review-description': '由多模态识别模型检查生成的图片和视频是否符合要求。',
 }
 
 /** Japanese copy. */
@@ -120,6 +151,21 @@ export const ja: Record<GatewayStatusKey, string> = {
   'class.other': 'その他',
   'catalog.capability-title': 'このゲートウェイが宣言する能力',
   'catalog.capability-missing': '未設定',
+  'roles.title': '役割別のモデル',
+  'roles.description': 'すべてのモデルはこのゲートウェイの API キーで呼び出されます。',
+  'roles.loading': '読み込み中…',
+  'roles.failed': 'モデルの役割を読み込めません',
+  'roles.chat': 'チャット',
+  'roles.vision': 'マルチモーダル理解',
+  'roles.image': '画像生成',
+  'roles.video': '動画生成',
+  'roles.music': '音楽生成',
+  'roles.speech': '音声生成',
+  'roles.chat-hint': '入力欄で切り替え',
+  'roles.default': 'デフォルト（{model}）',
+  'roles.unavailable': '未提供',
+  'roles.review': '生成後に自動レビュー',
+  'roles.review-description': 'マルチモーダルモデルが生成された画像と動画を依頼内容と照合します。',
 }
 
 /** Spanish copy. */
@@ -157,6 +203,21 @@ export const es: Record<GatewayStatusKey, string> = {
   'class.other': 'Otro',
   'catalog.capability-title': 'Capacidades que declara esta pasarela',
   'catalog.capability-missing': 'Sin configurar',
+  'roles.title': 'Modelos por función',
+  'roles.description': 'Todos los modelos se llaman con la clave API de esta pasarela.',
+  'roles.loading': 'Cargando…',
+  'roles.failed': 'No se pudieron leer las funciones de los modelos',
+  'roles.chat': 'Chat',
+  'roles.vision': 'Comprensión multimodal',
+  'roles.image': 'Generación de imágenes',
+  'roles.video': 'Generación de vídeo',
+  'roles.music': 'Generación de música',
+  'roles.speech': 'Generación de voz',
+  'roles.chat-hint': 'Cámbialo en el cuadro de mensaje',
+  'roles.default': 'Predeterminado ({model})',
+  'roles.unavailable': 'Aún no disponible',
+  'roles.review': 'Revisar el contenido generado',
+  'roles.review-description': 'Un modelo multimodal comprueba que las imágenes y vídeos generados cumplen la petición.',
 }
 
 /** French copy. */
@@ -194,6 +255,21 @@ export const fr: Record<GatewayStatusKey, string> = {
   'class.other': 'Autre',
   'catalog.capability-title': 'Capacités déclarées par cette passerelle',
   'catalog.capability-missing': 'Non configuré',
+  'roles.title': 'Modèles par rôle',
+  'roles.description': 'Chaque modèle est appelé avec la clé API de cette passerelle.',
+  'roles.loading': 'Chargement…',
+  'roles.failed': 'Impossible de lire les rôles des modèles',
+  'roles.chat': 'Chat',
+  'roles.vision': 'Compréhension multimodale',
+  'roles.image': 'Génération d’images',
+  'roles.video': 'Génération de vidéos',
+  'roles.music': 'Génération de musique',
+  'roles.speech': 'Synthèse vocale',
+  'roles.chat-hint': 'À changer dans la zone de message',
+  'roles.default': 'Par défaut ({model})',
+  'roles.unavailable': 'Pas encore disponible',
+  'roles.review': 'Vérifier les médias générés',
+  'roles.review-description': 'Un modèle multimodal vérifie que les images et vidéos générées répondent à la demande.',
 }
 
 /** German copy. */
@@ -231,6 +307,21 @@ export const de: Record<GatewayStatusKey, string> = {
   'class.other': 'Sonstiges',
   'catalog.capability-title': 'Von diesem Gateway deklarierte Fähigkeiten',
   'catalog.capability-missing': 'Nicht konfiguriert',
+  'roles.title': 'Modelle nach Rolle',
+  'roles.description': 'Alle Modelle werden mit dem API-Schlüssel dieses Gateways aufgerufen.',
+  'roles.loading': 'Wird geladen…',
+  'roles.failed': 'Modellrollen konnten nicht gelesen werden',
+  'roles.chat': 'Chat',
+  'roles.vision': 'Multimodales Verständnis',
+  'roles.image': 'Bildgenerierung',
+  'roles.video': 'Videogenerierung',
+  'roles.music': 'Musikgenerierung',
+  'roles.speech': 'Sprachgenerierung',
+  'roles.chat-hint': 'Im Eingabefeld umschalten',
+  'roles.default': 'Standard ({model})',
+  'roles.unavailable': 'Noch nicht verfügbar',
+  'roles.review': 'Generierte Medien prüfen',
+  'roles.review-description': 'Ein multimodales Modell prüft generierte Bilder und Videos anhand der Anfrage.',
 }
 
 /** Russian copy. */
@@ -268,6 +359,21 @@ export const ru: Record<GatewayStatusKey, string> = {
   'class.other': 'Другое',
   'catalog.capability-title': 'Возможности, объявленные этим шлюзом',
   'catalog.capability-missing': 'Не настроено',
+  'roles.title': 'Модели по ролям',
+  'roles.description': 'Все модели вызываются с API-ключом этого шлюза.',
+  'roles.loading': 'Загрузка…',
+  'roles.failed': 'Не удалось прочитать роли моделей',
+  'roles.chat': 'Чат',
+  'roles.vision': 'Мультимодальное понимание',
+  'roles.image': 'Генерация изображений',
+  'roles.video': 'Генерация видео',
+  'roles.music': 'Генерация музыки',
+  'roles.speech': 'Синтез речи',
+  'roles.chat-hint': 'Переключается в поле ввода',
+  'roles.default': 'По умолчанию ({model})',
+  'roles.unavailable': 'Пока недоступно',
+  'roles.review': 'Проверять результат',
+  'roles.review-description': 'Мультимодальная модель проверяет, соответствуют ли изображения и видео запросу.',
 }
 
 /** Portuguese copy. */
@@ -305,4 +411,19 @@ export const pt: Record<GatewayStatusKey, string> = {
   'class.other': 'Outro',
   'catalog.capability-title': 'Capacidades declaradas por este gateway',
   'catalog.capability-missing': 'Não configurado',
+  'roles.title': 'Modelos por função',
+  'roles.description': 'Todos os modelos são chamados com a chave de API deste gateway.',
+  'roles.loading': 'Carregando…',
+  'roles.failed': 'Não foi possível ler as funções dos modelos',
+  'roles.chat': 'Chat',
+  'roles.vision': 'Compreensão multimodal',
+  'roles.image': 'Geração de imagens',
+  'roles.video': 'Geração de vídeo',
+  'roles.music': 'Geração de música',
+  'roles.speech': 'Geração de voz',
+  'roles.chat-hint': 'Troque na caixa de mensagem',
+  'roles.default': 'Padrão ({model})',
+  'roles.unavailable': 'Ainda não disponível',
+  'roles.review': 'Revisar mídia gerada',
+  'roles.review-description': 'Um modelo multimodal verifica se as imagens e vídeos gerados atendem ao pedido.',
 }

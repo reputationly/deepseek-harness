@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { decodeCatalog } from './media.ts'
+import type { HiloDefaults, HiloTextModel } from './types.ts'
 import type { MediaCatalogRecord, MediaCatalogStore } from './media-sync.ts'
 
 /** Key one domain unit holds its single catalog generation under. */
@@ -61,7 +62,7 @@ export function domainCatalogStore(table: SnapshotTable): MediaCatalogStore {
       await table.put(SNAPSHOT_KEY, {
         version: record.version,
         fetchedAt: record.fetchedAt,
-        payload: JSON.stringify({ version: record.version, capabilities: record.entries }),
+        payload: JSON.stringify({ version: record.version, capabilities: record.entries, text: record.text, defaults: record.defaults }),
       })
     },
   }
@@ -96,6 +97,41 @@ function decodeRecord(stored: StoredSnapshot | undefined): MediaCatalogRecord | 
     return undefined
   }
   const decoded = decodeCatalog(payload)
-  if (decoded === undefined || decoded.entries.length === 0) return undefined
-  return { version: stored.version, fetchedAt: stored.fetchedAt, entries: decoded.entries }
+  if (decoded === undefined) return undefined
+  const source = payload as { text?: unknown; defaults?: unknown }
+  const text = storedText(source.text)
+  if (decoded.entries.length === 0 && text.length === 0) return undefined
+  return { version: stored.version, fetchedAt: stored.fetchedAt, entries: decoded.entries, text, defaults: storedDefaults(source.defaults) }
+}
+
+/**
+ * Chat models of one stored generation; a generation stored before the text section was kept has none.
+ * @param value - the stored `text` field.
+ * @returns the chat models it still carries.
+ */
+function storedText(value: unknown): HiloTextModel[] {
+  if (!Array.isArray(value)) return []
+  return (value as unknown[]).flatMap((row) => {
+    if (typeof row !== 'object' || row === null) return []
+    const { model, label, supportsImage, supportsVideo, supportsAudio } = row as Record<string, unknown>
+    if (typeof model !== 'string' || model === '') return []
+    return [{
+      model,
+      label: typeof label === 'string' && label !== '' ? label : model,
+      supportsImage: supportsImage === true,
+      supportsVideo: supportsVideo === true,
+      supportsAudio: supportsAudio === true,
+    }]
+  })
+}
+
+/**
+ * Role defaults of one stored generation.
+ * @param value - the stored `defaults` field.
+ * @returns the defaults, `null` where none is stored.
+ */
+function storedDefaults(value: unknown): HiloDefaults {
+  const source = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}
+  const pick = (field: unknown): string | null => typeof field === 'string' && field !== '' ? field : null
+  return { chat: pick(source.chat), multimodal: pick(source.multimodal) }
 }

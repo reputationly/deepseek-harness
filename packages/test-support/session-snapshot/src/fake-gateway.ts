@@ -44,8 +44,26 @@ function catalog(): unknown {
   }
 }
 
+/** The same models as the gateway's Hilo model catalog publishes them. */
+function hiloCatalog(): unknown {
+  const select = (options: readonly string[]) => ({ type: 'select', default: options[0], options })
+  const video = { duration: select(['3', '4', '5', '6', '9', '12', '15']), resolution: select(['768P', '2K']), ratio: select(['9:16', '16:9']) }
+  return {
+    version: 'fake',
+    image: [{ id: 'fake-image', platformModel: 'fake-image', interfaceType: 'maas-image', params: { size: select(['1024x1024']) } }],
+    video: [
+      { id: 'fake-video', platformModel: 'fake-video', interfaceType: 'maas-video', params: { ...video, image_mode: select(['text-to-video']) } },
+      { id: 'fake-video-ref', platformModel: 'fake-video-ref', interfaceType: 'maas-video', maxRefs: 9, params: { ...video, image_mode: select(['reference']) } },
+    ],
+    audio: [{ id: 'fake-speech', platformModel: 'fake-speech', interfaceType: 'maas-speech' }],
+    text: [{ id: 'fake-chat', platformModel: 'fake-chat', supportsImage: true }],
+    defaults: { chat: 'fake-chat', multimodal: 'fake-chat' },
+  }
+}
+
 /** Answer one request from the canned gateway. */
 function respond(path: string): { status: number; type: string; body: string | Buffer } {
+  if (path === '/api/v1/models/catalog') return { status: 200, type: 'application/json', body: JSON.stringify(hiloCatalog()) }
   if (path === '/v1/ov/capabilities') return { status: 200, type: 'application/json', body: JSON.stringify(catalog()) }
   if (path === '/v1/images/generations' || path === '/v1/images/edits') {
     return { status: 200, type: 'application/json', body: JSON.stringify({ data: [{ url: `data:image/png;base64,${PNG}` }] }) }

@@ -20,7 +20,7 @@ const ENTRY = {
 function record(overrides: Partial<MediaCatalogRecord> = {}): MediaCatalogRecord {
   const decoded = decodeCatalog({ version: 'v1', capabilities: [ENTRY] })
   if (decoded === undefined) throw new Error('fixture catalog does not decode')
-  return { version: 'v1', fetchedAt: 7, entries: decoded.entries, ...overrides }
+  return { version: 'v1', fetchedAt: 7, entries: decoded.entries, text: [], defaults: { chat: null, multimodal: null }, ...overrides }
 }
 
 /** In-memory table stand-in for the opened domain table. */
@@ -70,5 +70,13 @@ describe('memoryCatalogStore', () => {
     expect(store.read()).toBeUndefined()
     await store.write(record({ version: 'v2' }))
     expect(store.read()?.version).toBe('v2')
+  })
+})
+
+describe('stored chat models', () => {
+  it('drops unusable stored chat rows and labels a row by its model', () => {
+    const payload = JSON.stringify({ version: 'v1', capabilities: [ENTRY], text: [null, { model: '' }, { model: 'm' }], defaults: {} })
+    const store = domainCatalogStore(table({ version: 'v1', fetchedAt: 1, payload }))
+    expect(store.read()?.text).toEqual([{ model: 'm', label: 'm', supportsImage: false, supportsVideo: false, supportsAudio: false }])
   })
 })

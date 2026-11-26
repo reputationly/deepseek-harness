@@ -3620,6 +3620,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     declaredBy: 'an entry in \'settings.section\' (client-ui-settings-models), so it exists while that entry is mounted',
     occupants: [
       'client-ui-brand-suanli (props: ModelsFooterOwnerProps & { refresh: () => Promise… id \'model-catalog-sync\'',
+      'client-ui-brand-suanli (props: ModelsFooterOwnerProps & { load: () => Promise<Mo… id \'model-roles\'',
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.models.footer\', () => ctx.slots.register(\n      { name: \'settings.models.footer\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
