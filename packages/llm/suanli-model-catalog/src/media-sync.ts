@@ -1,6 +1,7 @@
-/** Refresh of the gateway's media catalog: status mapping, coalescing, and durable reuse of the last good read. */
-import { decodeCatalog, mediaEntries } from './media.ts'
-import type { CapabilityEntry, MediaCatalogSnapshot, MediaCatalogStatus } from './types.ts'
+/** Refresh of the Hilo model catalog: status mapping, coalescing, and durable reuse of the last good read. */
+import { decodeHiloCatalog } from './hilo.ts'
+import { mediaEntries } from './media.ts'
+import type { CapabilityEntry, HiloDefaults, HiloTextModel, MediaCatalogSnapshot, MediaCatalogStatus } from './types.ts'
 
 /** One durable catalog generation. */
 export interface MediaCatalogRecord {
@@ -8,8 +9,12 @@ export interface MediaCatalogRecord {
   readonly version: string | null
   /** When this generation was read, in milliseconds. */
   readonly fetchedAt: number
-  /** Every entry of the generation. */
+  /** Every generation entry of the generation. */
   readonly entries: readonly CapabilityEntry[]
+  /** Chat models of the generation. */
+  readonly text: readonly HiloTextModel[]
+  /** Role defaults of the generation. */
+  readonly defaults: HiloDefaults
 }
 
 /** Durable storage of the last good catalog generation. */
@@ -30,14 +35,14 @@ export interface MediaCatalogStore {
 export interface MediaCatalogSyncInputs {
   /** Origin of the gateway this deployment routes through. */
   readonly origin: string
-  /** Path of the gateway capability catalog, such as `/v1/ov/capabilities`. */
-  readonly capabilitiesPath: string
+  /** Path of the Hilo model catalog, such as `/api/v1/models/catalog`. */
+  readonly catalogPath: string
   /** Request budget of one read. */
   readonly timeoutMs: number
   /** Transport used for the read; injectable so tests own their bytes. */
   readonly send: typeof fetch
   /**
-   * Resolve the gateway key.
+   * Resolve the gateway key; the catalog is read anonymously, the key only decides `signed-out`.
    * @returns the key, or `undefined` when this deployment stores none.
    */
   readonly credential: () => Promise<string | undefined>
@@ -52,6 +57,11 @@ export interface MediaCatalogSyncInputs {
   readonly report: (message: string) => void
   /** Called after a change to the status or version is committed. */
   readonly changed: () => void
+  /**
+   * Put the chat models of a committed generation in effect.
+   * @param record - the generation now in effect.
+   */
+  readonly committed: (record: MediaCatalogRecord) => Promise<void>
 }
 
 /**
@@ -62,6 +72,7 @@ export interface MediaCatalogSyncInputs {
  */
 export class MediaCatalogSync {
   private snapshot: MediaCatalogSnapshot
+  private chat: Pick<MediaCatalogRecord, 'text' | 'defaults'> = { text: [], defaults: { chat: null, multimodal: null } }
   private pending: Promise<MediaCatalogSnapshot> | undefined
 
   constructor(private readonly inputs: MediaCatalogSyncInputs) {
@@ -74,6 +85,7 @@ export class MediaCatalogSync {
     if (stored === undefined) return
     const previous = this.snapshot
     this.snapshot = { status: previous.status, version: stored.version, fetchedAt: stored.fetchedAt, entries: stored.entries }
+    this.chat = { text: stored.text, defaults: stored.defaults }
     if (previous.entries.length === 0) this.inputs.changed()
   }
 
@@ -83,6 +95,14 @@ export class MediaCatalogSync {
    */
   current(): MediaCatalogSnapshot {
     return this.snapshot
+  }
+
+  /**
+   * Chat models and role defaults in effect.
+   * @returns the text section and defaults of the last committed generation.
+   */
+  roles(): Pick<MediaCatalogRecord, 'text' | 'defaults'> {
+    return this.chat
   }
 
   /**
@@ -104,19 +124,15 @@ export class MediaCatalogSync {
 
   /** Read one generation and commit it when it is usable. */
   private async read(): Promise<MediaCatalogSnapshot> {
-    const key = await this.inputs.credential()
-    if (key === undefined || key === '') return this.settle('signed-out')
     let response: Response
     try {
-      response = await this.inputs.send(new URL(this.inputs.capabilitiesPath, this.inputs.origin).href, {
-        headers: { authorization: `Bearer ${key}`, 'x-api-key': key, accept: 'application/json' },
+      response = await this.inputs.send(new URL(this.inputs.catalogPath, this.inputs.origin).href, {
+        headers: { accept: 'application/json' },
         signal: AbortSignal.timeout(this.inputs.timeoutMs),
       })
     } catch {
       return this.settle('unreachable')
     }
-    if (response.status === 401) return this.settle('unauthorized')
-    if (response.status === 403) return this.settle(await this.requiresVerification(response) ? 'kyc-required' : 'unauthorized')
     if (response.status === 429) return this.settle('rate-limited')
     if (!response.ok) return this.settle('unreachable')
     let payload: unknown
@@ -125,37 +141,35 @@ export class MediaCatalogSync {
     } catch {
       return this.settle('unreachable')
     }
-    const decoded = decodeCatalog(payload)
+    const decoded = decodeHiloCatalog(payload)
     if (decoded === undefined) return this.settle('unreachable')
     if (decoded.dropped > 0) {
-      this.inputs.report(`media catalog: dropped ${String(decoded.dropped)} entr${decoded.dropped === 1 ? 'y' : 'ies'} without an id, operation, model, or transport`)
+      this.inputs.report(`model catalog: dropped ${String(decoded.dropped)} entr${decoded.dropped === 1 ? 'y' : 'ies'} without an id or platform model`)
     }
-    if (mediaEntries(decoded.entries).length === 0) return this.settle('empty')
     const previous = this.snapshot
-    const record: MediaCatalogRecord = { version: decoded.version, fetchedAt: this.inputs.now(), entries: decoded.entries }
-    if (record.version === null || record.version !== previous.version) {
+    if (decoded.unknownInterfaces.length > 0 && decoded.version !== previous.version) {
+      this.inputs.report(`model catalog: unknown interface types ${decoded.unknownInterfaces.join(', ')}; using each section's default`)
+    }
+    if (mediaEntries(decoded.entries).length === 0 && decoded.text.length === 0) return this.settle('empty')
+    const record: MediaCatalogRecord = {
+      version: decoded.version, fetchedAt: this.inputs.now(), entries: decoded.entries, text: decoded.text, defaults: decoded.defaults,
+    }
+    const fresh = record.version === null || record.version !== previous.version
+    if (fresh) {
       try {
         await this.inputs.store.write(record)
       } catch (error) {
-        this.inputs.report(`media catalog: could not store the read catalog (${String(error)})`)
+        this.inputs.report(`model catalog: could not store the read catalog (${String(error)})`)
       }
     }
-    this.snapshot = { status: 'ready', version: record.version, fetchedAt: record.fetchedAt, entries: record.entries }
-    if (previous.status !== 'ready' || previous.version !== record.version) this.inputs.changed()
+    const key = await this.inputs.credential()
+    const status: MediaCatalogStatus = key === undefined || key === ''
+      ? 'signed-out'
+      : mediaEntries(record.entries).length === 0 ? 'empty' : 'ready'
+    this.snapshot = { status, version: record.version, fetchedAt: record.fetchedAt, entries: record.entries }
+    this.chat = { text: record.text, defaults: record.defaults }
+    await this.inputs.committed(record)
+    if (previous.status !== status || previous.version !== record.version) this.inputs.changed()
     return this.snapshot
-  }
-
-  /**
-   * Whether a rejected read is the gateway's verification gate rather than a rejected key.
-   * @param response - the 403 answer, whose body is consumed here.
-   * @returns true when the body carries the gateway's `kyc_required` code.
-   */
-  private async requiresVerification(response: Response): Promise<boolean> {
-    try {
-      const body = await response.json() as { error?: { code?: unknown } }
-      return body.error?.code === 'kyc_required'
-    } catch {
-      return false
-    }
   }
 }

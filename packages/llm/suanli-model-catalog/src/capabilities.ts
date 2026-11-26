@@ -35,9 +35,7 @@ export function classify(entry: GatewayCapability): CapabilityClass[] {
     if (tasks.length === 0) return false
     return tasks.some(task => candidate.tasks?.includes(task) === true)
   })
-  if (matched.length > 0) return matched.map(candidate => candidate.capability)
-  const first = CLASSES.find(candidate => candidate.operation === entry.operation && candidate.tasks === undefined)
-  return first === undefined ? ['other'] : [first.capability]
+  return matched.length > 0 ? matched.map(candidate => candidate.capability) : ['other']
 }
 
 /**
@@ -59,43 +57,5 @@ export function classMembers(entries: readonly GatewayCapability[]): ClassMember
   return order.flatMap((capability) => {
     const models = groups.get(capability)
     return models === undefined ? [] : [{ capability, models }]
-  })
-}
-
-/** One entry as decoded from the gateway payload. */
-function entryOf(row: unknown): GatewayCapability | undefined {
-  if (typeof row !== 'object' || row === null) return undefined
-  const { operation, model, taskTypes, limits } = row as {
-    operation?: unknown
-    model?: unknown
-    taskTypes?: unknown
-    limits?: { maxReferenceImages?: unknown }
-  }
-  if (typeof operation !== 'string' || operation === '') return undefined
-  if (typeof model !== 'string' || model === '') return undefined
-  const tasks = Array.isArray(taskTypes)
-    ? taskTypes.filter((task: unknown): task is string => typeof task === 'string')
-    : []
-  const references = limits?.maxReferenceImages
-  return {
-    operation,
-    model,
-    taskTypes: tasks,
-    maxReferenceImages: typeof references === 'number' && Number.isSafeInteger(references) && references > 0 ? references : 0,
-  }
-}
-
-/**
- * Decode the gateway capability payload.
- * @param payload - parsed `GET /v1/ov/capabilities` body.
- * @returns the entries, or `undefined` when the payload carries no capability list.
- */
-export function parseCapabilities(payload: unknown): GatewayCapability[] | undefined {
-  if (typeof payload !== 'object' || payload === null) return undefined
-  const capabilities = (payload as { capabilities?: unknown }).capabilities
-  if (!Array.isArray(capabilities)) return undefined
-  return capabilities.flatMap((row) => {
-    const entry = entryOf(row)
-    return entry === undefined ? [] : [entry]
   })
 }

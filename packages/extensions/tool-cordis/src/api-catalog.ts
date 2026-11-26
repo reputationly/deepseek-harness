@@ -4001,6 +4001,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
         returns: 'the gateway root and the credential reference holding its key.',
       },
+      {
+        signature: '@Remote roles(): readonly ModelRoleState[]',
+        description: 'Read the models each role can use and which one it uses now.',
+        parameters: [],
+        returns: 'one state per role: chat, vision, image, video, music, speech.',
+      },
+      {
+        signature: '@Remote async selectRole(role: ModelRole, model: string | null): Promise<readonly ModelRoleState[]>',
+        description: 'Choose the model one role uses.',
+        parameters: [{ name: 'role', description: 'a role other than chat, whose choice the conversation\'s model picker owns.' }, { name: 'model', description: 'a candidate of the role, or `null` to return to the catalog default.' }],
+        returns: 'the roles after the change.',
+        throws: ['When the role is chat or the model is not a candidate of the role.'],
+      },
+      {
+        signature: '@Remote preferences(): MediaPreferences',
+        description: 'Read the generation preferences.',
+        parameters: [],
+        returns: 'whether generated media is reviewed.',
+      },
+      {
+        signature: '@Remote async setAutoReview(enabled: boolean): Promise<MediaPreferences>',
+        description: 'Turn the review of generated images and videos on or off.',
+        parameters: [{ name: 'enabled', description: 'whether to review.' }],
+        returns: 'the preferences after the change.',
+      },
     ],
   },
   {
@@ -5636,6 +5661,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     signature: '\'suanli-model-catalog/media-updated\'(): void',
     summary: 'The media catalog committed a change to its status or version.',
     description: 'The media catalog committed a change to its status or version.',
+    parameters: [],
+  },
+  {
+    name: 'suanli-model-catalog/roles-updated',
+    mode: 'emit',
+    signature: '\'suanli-model-catalog/roles-updated\'(): void',
+    summary: 'The role choices or generation preferences changed.',
+    description: 'The role choices or generation preferences changed.',
     parameters: [],
   },
   {
@@ -7903,6 +7936,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type MediaOperation = \'generate_image\' | \'generate_video\' | \'generate_music\';',
   },
   {
+    name: 'MediaPreferences',
+    declaration: 'export interface MediaPreferences {\n    readonly autoReview: boolean;\n}',
+  },
+  {
     name: 'MediaReferenceRule',
     declaration: 'export interface MediaReferenceRule {\n    readonly min: number;\n    readonly max: number;\n}',
   },
@@ -8073,6 +8110,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelReasoningEffort',
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
+  },
+  {
+    name: 'ModelRole',
+    declaration: 'export type ModelRole = \'chat\' | \'vision\' | \'image\' | \'video\' | \'music\' | \'speech\';',
+  },
+  {
+    name: 'ModelRoleCandidate',
+    declaration: 'export interface ModelRoleCandidate {\n    readonly model: string;\n    readonly label: string;\n}',
+  },
+  {
+    name: 'ModelRoleState',
+    declaration: 'export interface ModelRoleState {\n    readonly role: ModelRole;\n    readonly candidates: readonly ModelRoleCandidate[];\n    readonly selected: string | null;\n    readonly fallback: string | null;\n}',
   },
   {
     name: 'ModelSyncResult',

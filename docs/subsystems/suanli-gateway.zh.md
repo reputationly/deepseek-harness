@@ -2,17 +2,17 @@
 
 [English](suanli-gateway.md) | 中文
 
-本产品的每一次模型调用都经过同一个网关，因此有两个 Host 命名空间把网关自己的契约翻译成客户端与设置页要渲染的东西：[`@deepseek-ai/dsh-suanli-model-catalog`](../../packages/llm/suanli-model-catalog) 采用网关的模型列表与能力目录，[`@deepseek-ai/dsh-suanli-media-tasks`](../../packages/llm/suanli-media-tasks) 在图像与视频传输上驱动生成任务。两者都把网关 key 留在 Host；任何 key、任务 id 与产物地址都不经过模型请求。
+本产品的所有模型调用都经过同一个网关，因此由两个 Host 命名空间把网关自身的契约转换成客户端和设置页渲染的内容：[`@deepseek-ai/dsh-suanli-model-catalog`](../../packages/llm/suanli-model-catalog) 采用网关的 Hilo 模型目录，[`@deepseek-ai/dsh-suanli-media-tasks`](../../packages/llm/suanli-media-tasks) 在图像和视频传输上驱动生成任务。两者都在 Host 上持有网关 key；都不会把 key、任务 id 或产物 URL 放进模型请求。
 
 ## 目录采纳了什么
 
-一次刷新读取 `GET <modelsPath>`（默认 `/v1/models`），只留要求的端点类型（默认 `openai`，即对话端点），与本部署已知的条目合并——留下来的条目保留它们已有的 `contextWindow` 与 `inputModalities`，因为网关列表不带这些字段——再把结果写进路由的 volatile `models` 字段，选择器因此无须重启即可跟随平台。失败的、未授权的或空的列表永远不清空目录：路由继续提供原有内容，`refresh()` 上报 `no-credential`、`unauthorized`、`unreachable` 或 `empty-listing`。
+刷新不带 key 读取 Hilo 目录 `GET <catalogPath>`（默认 `/api/v1/models/catalog`），把其中 `text` 段与部署已知的条目合并——保留下来的条目沿用 `contextWindow`，`inputModalities` 按目录的 `supportsImage`、`supportsVideo` 和 `supportsAudio` 生成——再把结果写入路由的 volatile `models` 字段，选择器因此无需重启即可跟随平台。失败、无法解析或为空的读取从不清空目录：路由继续提供已有内容，`refresh()` 报告 `unreachable` 或 `empty-listing`。目录不按 key 裁剪；key 无权使用的模型在调用时失败。
 
 ## 媒体目录保留了什么
 
-`GET <capabilitiesPath>`（默认 `/v1/ov/capabilities`）与列表独立读取，任意一方失败都不改变另一方上报的内容。`media()` 返回最近一份成功目录——状态、版本、读取时间，以及每条的传输方式、任务类型、参数表、上限、交付时长与玩法——媒体工作台据此渲染图像与视频，其余操作由各自的使用方读取。读取发生在启动时（不阻塞 Host）、本服务凭据的 `credentials/reference-updated` 之后，以及 `refresh()` 被调用时；并发读取共用一个请求。状态为 `ready`；成功读取但没有图像或视频条目时为 `empty`；其余为 `signed-out`、`unauthorized`、响应体带 `kyc_required` 的 `403` 对应 `kyc-required`、`rate-limited`、`unreachable`；首次读取完成前为 `loading`。失败、空或无法解析的读取保留上一份目录的条目、版本与读取时间。最近一份成功目录存放在 `suanli_media_catalog` 存储域中，并在首次请求之前读回；没有该存储域时只存在于内存中。状态或版本的提交会发出 `suanli-model-catalog/media-updated`。
+同一次读取还提供生成条目：每个 `image`、`video`、`audio` 条目成为一个条目，其 `interfaceType` 决定操作——`maas-music` 是音乐，`maas-speech` 是语音，空值或未知值采用所在段的默认操作。`media()` 返回最近一次成功读取的目录——状态、版本、读取时间，以及每个条目的传输方式、参数表、上限和玩法——媒体工作台据此渲染图像和视频。读取发生在启动时（不拖慢 Host）、本服务凭据引用的 `credentials/reference-updated` 之后，以及 `refresh()` 时；并发读取共用一次请求。状态为 `ready`；成功读取但没有图像或视频条目时为 `empty`；另有 `signed-out`（目录照常显示）、`rate-limited`、`unreachable`，首次读取完成前为 `loading`；失败、为空或无法解析的读取保留之前的条目、版本和读取时间。最近一次成功读取的目录在 `version` 变化时写入 `suanli_media_catalog` 存储域，并在首次请求前读回；没有该存储域时只保留在内存中。状态或版本的变化提交后发出 `suanli-model-catalog/media-updated`。
 
-`capabilities()` 把最近一份成功目录的条目归入本产品的能力类：对话、文生图与图生图、文生视频、首尾帧、参考生视频、音乐与语音。一个声明了多种玩法的条目属于它命名的每一个类，所以一个同时带 `t2i` 与 `i2i` 的图像条目会填满两个图像类；词表之外的组合归入 `other` 而不是消失。`endpoint()` 回答必须自行调用同一网关的使用方，因此不再有第二行配置去配置一个已经通过本服务到达的网关。
+`capabilities()` 把最近一次成功读取的目录归入本产品的分类：对话、多模态识别、图像生成与编辑、视频生成、首尾帧、参考生视频、音乐和语音；词表之外的组合落入 `other`，而不是消失。`roles()` 给出六类角色——对话、多模态识别、生图、生视频、生音乐和生语音——各自使用的模型，取自用户保存在 `suanli_model_roles` 存储域中的选择或目录的默认值；`preferences()` 保存是否审核生成的图片和视频。`endpoint()` 回答必须调用同一网关的消费方，因此不需要第二行配置去指定消费方已经通过本服务到达的网关。
 
 ## 任务传输驱动了什么
 
@@ -129,6 +129,34 @@ Host service backing the generated `ctx.remote.suanliModels` namespace.
  * @returns the gateway root and the credential reference holding its key.
  */
 @Remote endpoint(): MediaGatewayEndpoint
+
+/**
+ * Read the models each role can use and which one it uses now.
+ * @returns one state per role: chat, vision, image, video, music, speech.
+ */
+@Remote roles(): readonly ModelRoleState[]
+
+/**
+ * Choose the model one role uses.
+ * @param role - a role other than chat, whose choice the conversation's model picker owns.
+ * @param model - a candidate of the role, or `null` to return to the catalog default.
+ * @returns the roles after the change.
+ * @throws When the role is chat or the model is not a candidate of the role.
+ */
+@Remote async selectRole(role: ModelRole, model: string | null): Promise<readonly ModelRoleState[]>
+
+/**
+ * Read the generation preferences.
+ * @returns whether generated media is reviewed.
+ */
+@Remote preferences(): MediaPreferences
+
+/**
+ * Turn the review of generated images and videos on or off.
+ * @param enabled - whether to review.
+ * @returns the preferences after the change.
+ */
+@Remote async setAutoReview(enabled: boolean): Promise<MediaPreferences>
 ```
 
 Source: [`packages/llm/suanli-model-catalog/src/index.ts`](../../packages/llm/suanli-model-catalog/src/index.ts)
@@ -149,6 +177,22 @@ The media catalog committed a change to its status or version.
  * @mode emit
  */
 'suanli-model-catalog/media-updated'(): void
+```
+
+Source: [`packages/llm/suanli-model-catalog/src/types.ts`](../../packages/llm/suanli-model-catalog/src/types.ts)
+
+<a id="suanli-model-catalogroles-updated--emit"></a>
+
+#### `suanli-model-catalog/roles-updated` — emit
+
+The role choices or generation preferences changed.
+
+```ts cordis-catalog
+/**
+ * The role choices or generation preferences changed.
+ * @mode emit
+ */
+'suanli-model-catalog/roles-updated'(): void
 ```
 
 Source: [`packages/llm/suanli-model-catalog/src/types.ts`](../../packages/llm/suanli-model-catalog/src/types.ts)

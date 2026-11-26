@@ -221,6 +221,57 @@ export interface MediaGatewayEndpoint {
   readonly credential: string
 }
 
+/** One chat model of the Hilo catalog's text section. */
+export interface HiloTextModel {
+  /** Platform model name a chat request names. */
+  readonly model: string
+  /** Name shown to the user. */
+  readonly label: string
+  /** Whether the model accepts image input. */
+  readonly supportsImage: boolean
+  /** Whether the model accepts video input. */
+  readonly supportsVideo: boolean
+  /** Whether the model accepts audio input. */
+  readonly supportsAudio: boolean
+}
+
+/** Role defaults the Hilo catalog declares; `null` when it declares none. */
+export interface HiloDefaults {
+  /** Default chat model. */
+  readonly chat: string | null
+  /** Default multimodal understanding model, which reviews generated media. */
+  readonly multimodal: string | null
+}
+
+/** Model roles the product separates: chat, multimodal understanding, and four kinds of generation. */
+export type ModelRole = 'chat' | 'vision' | 'image' | 'video' | 'music' | 'speech'
+
+/** One model a role can use. */
+export interface ModelRoleCandidate {
+  /** Platform model name. */
+  readonly model: string
+  /** Name shown to the user. */
+  readonly label: string
+}
+
+/** Models one role can use and which one it uses now. */
+export interface ModelRoleState {
+  /** The role. */
+  readonly role: ModelRole
+  /** Models of the catalog that can fill the role, in catalog order. */
+  readonly candidates: readonly ModelRoleCandidate[]
+  /** The user's choice, or `null` when the user chose none or the choice left the catalog. */
+  readonly selected: string | null
+  /** Model used without a choice: the catalog default, else the first candidate; `null` when there is none. */
+  readonly fallback: string | null
+}
+
+/** Generation preferences the user sets once. */
+export interface MediaPreferences {
+  /** Whether generated images and videos are reviewed against the request. */
+  readonly autoReview: boolean
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Events {
     /**
@@ -228,5 +279,10 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'suanli-model-catalog/media-updated'(): void
+    /**
+     * The role choices or generation preferences changed.
+     * @mode emit
+     */
+    'suanli-model-catalog/roles-updated'(): void
   }
 }

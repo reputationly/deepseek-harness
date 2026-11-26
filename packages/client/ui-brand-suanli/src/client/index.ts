@@ -15,6 +15,8 @@ import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import { BrandMark, BrandName } from './Brand.tsx'
 import type { GatewayStatusFace } from './ConnectionPill.tsx'
 import { CatalogSyncRow, type CatalogSyncOutcome } from './CatalogSyncRow.tsx'
+import { GenerateImageCard } from './GenerateImageCard.tsx'
+import { ModelRolesRow, type ModelRoleView, type ModelRolesView } from './ModelRolesRow.tsx'
 import { de, en, es, fr, ja, pt, ru, zh, type GatewayStatusKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -47,6 +49,32 @@ export function apply(ctx: ClientContext): void {
     }),
   }, (props: ModelsFooterOwnerProps & { refresh: () => Promise<CatalogSyncOutcome>; t: TranslateNS<'gatewayStatus'> }) =>
     createElement(CatalogSyncRow, { refresh: props.refresh, t: props.t })))
+  // One gateway key calls every role; the user only picks which catalog model fills each one.
+  ctx.slots.inject('settings.models.footer', () => ctx.slots.register({
+    name: 'settings.models.footer', id: 'model-roles', order: 40, locale: NS,
+    inject: () => ({
+      load: async (): Promise<ModelRolesView> => await readRoles(catalogService(ctx)),
+      select: async (role: ModelRoleView['role'], model: string | null): Promise<ModelRolesView> => {
+        const remote = catalogService(ctx)
+        valueOf(await remote.selectRole(role, model))
+        return await readRoles(remote)
+      },
+      setAutoReview: async (enabled: boolean): Promise<ModelRolesView> => {
+        const remote = catalogService(ctx)
+        valueOf(await remote.setAutoReview(enabled))
+        return await readRoles(remote)
+      },
+    }),
+  }, (props: ModelsFooterOwnerProps & {
+    load: () => Promise<ModelRolesView>
+    select: (role: ModelRoleView['role'], model: string | null) => Promise<ModelRolesView>
+    setAutoReview: (enabled: boolean) => Promise<ModelRolesView>
+    t: TranslateNS<'gatewayStatus'>
+  }) => createElement(ModelRolesRow, { load: props.load, select: props.select, setAutoReview: props.setAutoReview, t: props.t })))
+  // Images generated from chat render inline, with download, prompt copy, and regenerate.
+  ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+    name: 'tool.call.toolview', key: 'generate_image', locale: NS,
+  }, GenerateImageCard))
   ctx.slots.inject('sidebar.brand.mark', () =>
     ctx.slots.inject('sidebar.brand.name', function* () {
       yield ctx.slots.register({ name: 'sidebar.brand.mark' }, BrandMark)
@@ -78,6 +106,30 @@ async function refreshCatalog(
   return value.ok
     ? { ok: true, count: value.count, changed: value.changed, classes: value.classes }
     : { ok: false, reason: value.reason }
+}
+
+/**
+ * Unwrap one Host answer.
+ * @param answer - the transport envelope.
+ * @returns the value.
+ * @throws When the Host reported a failure.
+ */
+function valueOf<T>(
+  answer: { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: { readonly message: string } },
+): T {
+  if (!answer.ok) throw new Error(answer.error.message)
+  return answer.value
+}
+
+/**
+ * Read the roles and preferences the role rows render.
+ * @param remote - Host catalog namespace.
+ * @returns the roles with the review preference.
+ * @throws When the Host reported a failure.
+ */
+async function readRoles(remote: ClientContext['remote']['suanliModels']): Promise<ModelRolesView> {
+  const [roles, preferences] = await Promise.all([remote.roles(), remote.preferences()])
+  return { roles: valueOf(roles), autoReview: valueOf(preferences).autoReview }
 }
 
 /**

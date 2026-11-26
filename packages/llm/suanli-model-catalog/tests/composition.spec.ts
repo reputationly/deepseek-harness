@@ -3,8 +3,8 @@
  *
  * The unit specs stub `fetch`, so they cannot catch a wrong path join, a missing `/v1`, or a
  * header the gateway needs. This one runs a canned gateway on a loopback port and drives the real
- * service through it: the startup read, the classes derived from the same entries, and a restart
- * that serves the stored generation while the gateway is unreachable.
+ * service through it: the anonymous startup read of the Hilo catalog, the classes derived from the
+ * same entries, and a restart that serves the stored generation while the gateway is unreachable.
  */
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -12,6 +12,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SuanliModelCatalogService from '../src/index.ts'
 import type { StoredSnapshot } from '../src/domain.ts'
+import { hilo } from './hilo-fixture.ts'
 
 /** One canned gateway on a loopback port. */
 interface FakeGateway {
@@ -21,14 +22,8 @@ interface FakeGateway {
   close(): Promise<void>
 }
 
-/** The capability catalog this gateway publishes. */
-const CATALOG = {
-  version: 'fake',
-  capabilities: [
-    { id: 'generate_image:fake-image', operation: 'generate_image', model: 'fake-image', displayName: { zh: '假图', en: 'Fake image' }, transport: { kind: 'images' }, taskTypes: ['t2i'], limits: { maxReferenceImages: 0, maxDurationSeconds: 0, maxInputBytes: 0 }, default: true },
-    { id: 'generate_video:fake-video', operation: 'generate_video', model: 'fake-video', displayName: { zh: '假片', en: 'Fake video' }, transport: { kind: 'videos_task' }, taskTypes: ['t2v'], limits: { maxReferenceImages: 0, maxDurationSeconds: 15, maxInputBytes: 0 }, default: true },
-  ],
-}
+/** Paths the canned gateway was asked for. */
+const requested: string[] = []
 
 /**
  * Start a canned gateway.
@@ -37,9 +32,10 @@ const CATALOG = {
 async function startFakeGateway(): Promise<FakeGateway> {
   const server: Server = createServer((request, response) => {
     const path = (request.url ?? '/').split('?')[0]
-    if (path === '/v1/ov/capabilities') {
+    requested.push(`${String(path)} auth=${String(request.headers.authorization !== undefined || request.headers['x-api-key'] !== undefined)}`)
+    if (path === '/api/v1/models/catalog') {
       response.writeHead(200, { 'content-type': 'application/json' })
-      response.end(JSON.stringify(CATALOG))
+      response.end(JSON.stringify(hilo({ version: 'fake' })))
       return
     }
     response.writeHead(404, { 'content-type': 'application/json' })
@@ -70,6 +66,7 @@ const contexts: Context[] = []
 const gateways: FakeGateway[] = []
 
 afterEach(async () => {
+  requested.length = 0
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   for (const gateway of gateways.splice(0)) await gateway.close()
 })
@@ -79,8 +76,8 @@ function store(records = new Map<string, StoredSnapshot>()) {
   return {
     records,
     service: {
-      open: async () => ({
-        table: () => ({
+      open: async (domain: { name: string }) => ({
+        table: () => domain.name !== 'suanli_media_catalog' ? { get: () => undefined, put: async () => {} } : ({
           get: (key: string) => records.get(key),
           put: async (key: string, value: StoredSnapshot) => { records.set(key, value) },
         }),
@@ -104,7 +101,7 @@ async function boot(baseURL: string, storage: ReturnType<typeof store>): Promise
   ctx.provide('settings', { describe: () => [], mutate: async () => {} })
   ctx.provide('typert', {})
   ctx.provide('storageDomain', storage.service)
-  await ctx.plugin(SuanliModelCatalogService, { baseURL, apiKeyEnv: 'AURORA_API_KEY', endpointTypes: ['openai'] })
+  await ctx.plugin(SuanliModelCatalogService, { baseURL, apiKeyEnv: 'AURORA_API_KEY' })
   return ctx
 }
 
@@ -117,8 +114,9 @@ describe('catalog service over HTTP', () => {
     const media = ctx.suanliModels.media()
     expect(media.version).toBe('fake')
     const models = media.entries.map(entry => entry.model)
-    expect(models).toContain('fake-image')
-    expect(models).toContain('fake-video')
+    expect(models).toEqual(['minimax-h3-image', 'minimax-h3-2k', 'minimax-music3'])
+    // One anonymous catalog read, nothing else.
+    expect(requested).toEqual(['/api/v1/models/catalog auth=false'])
     // The classes come from the same entries, so the picker and the workbench cannot disagree.
     const classes = ctx.suanliModels.capabilities().map(members => members.capability)
     expect(classes).toContain('image.generate')
@@ -140,7 +138,8 @@ describe('catalog service over HTTP', () => {
     const offline = await boot('http://127.0.0.1:1/v1', storage)
     await vi.waitFor(() => { expect(offline.suanliModels.media().status).toBe('unreachable') })
     const media = offline.suanliModels.media()
-    expect(media.entries.map(entry => entry.model)).toContain('fake-image')
+    expect(media.entries.map(entry => entry.model)).toContain('minimax-h3-image')
+    expect(offline.suanliModels.roles().find(state => state.role === 'vision')?.fallback).toBe('qwen3.8-flash-fp8')
     expect(media.version).toBe('fake')
   })
 

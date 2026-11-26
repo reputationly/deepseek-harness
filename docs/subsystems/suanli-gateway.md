@@ -2,17 +2,17 @@
 
 English | [中文](suanli-gateway.zh.md)
 
-This product routes every model call through one gateway, so two Host namespaces translate the gateway's own contracts into what the client and the settings page render: [`@deepseek-ai/dsh-suanli-model-catalog`](../../packages/llm/suanli-model-catalog) adopts the gateway's model listing and capability catalog, and [`@deepseek-ai/dsh-suanli-media-tasks`](../../packages/llm/suanli-media-tasks) drives generation tasks on the image and video transports. Both hold the gateway key on the Host; neither puts a key, a task id, or an artifact URL through a model request.
+This product routes every model call through one gateway, so two Host namespaces translate the gateway's own contracts into what the client and the settings page render: [`@deepseek-ai/dsh-suanli-model-catalog`](../../packages/llm/suanli-model-catalog) adopts the gateway's Hilo model catalog, and [`@deepseek-ai/dsh-suanli-media-tasks`](../../packages/llm/suanli-media-tasks) drives generation tasks on the image and video transports. Both hold the gateway key on the Host; neither puts a key, a task id, or an artifact URL through a model request.
 
 ## What the catalog adopts
 
-A refresh reads `GET <modelsPath>` (default `/v1/models`), keeps the endpoint types asked for (default `openai`, the chat endpoint), merges the listing with the entries the deployment already knew — an entry that survives keeps its `contextWindow` and `inputModalities`, which a gateway listing omits — and writes the result into the route's volatile `models` field, so the picker follows the platform without a restart. A failed, unauthorized, or empty listing never clears the catalog: the route keeps serving what it had and `refresh()` reports `no-credential`, `unauthorized`, `unreachable`, or `empty-listing`.
+A refresh reads the Hilo catalog `GET <catalogPath>` (default `/api/v1/models/catalog`) without a key, merges its `text` section with the entries the deployment already knew — an entry that survives keeps its `contextWindow`, and `inputModalities` follow the catalog's `supportsImage`, `supportsVideo`, and `supportsAudio` — and writes the result into the route's volatile `models` field, so the picker follows the platform without a restart. A failed, unreadable, or empty read never clears the catalog: the route keeps serving what it had and `refresh()` reports `unreachable` or `empty-listing`. The catalog is not trimmed to the key; a model the key may not use fails when it is called.
 
 ## What the media catalog keeps
 
-`GET <capabilitiesPath>` (default `/v1/ov/capabilities`) is read independently of the listing, so either may fail without changing what the other reports. `media()` returns the last good generation — status, version, fetch time, and every entry with its transport, task types, parameter schema, limits, delivery durations, and modes — and the media workbench renders images and video from it while its own consumer reads the other operations. A read happens at startup without delaying the Host, after `credentials/reference-updated` for this service's reference, and on `refresh()`; concurrent reads share one request. The status is `ready`, `empty` for a successful read without an image or video entry, `signed-out`, `unauthorized`, `kyc-required` for a `403` whose body carries `kyc_required`, `rate-limited`, `unreachable`, or `loading` until the first read settles; a failed, empty, or unreadable read keeps the previous entries, version, and fetch time. The last good generation is stored in the `suanli_media_catalog` storage domain and read back before the first request, and stays in memory where that domain is absent. `suanli-model-catalog/media-updated` follows a committed status or version change.
+The same read supplies the generation entries: each `image`, `video`, and `audio` item becomes one entry, and its `interfaceType` selects the operation — `maas-music` is music, `maas-speech` is speech, and an empty or unknown value takes its section's default. `media()` returns the last good generation — status, version, fetch time, and every entry with its transport, parameter schema, limits, and modes — and the media workbench renders images and video from it. A read happens at startup without delaying the Host, after `credentials/reference-updated` for this service's reference, and on `refresh()`; concurrent reads share one request. The status is `ready`, `empty` for a successful read without an image or video entry, `signed-out` (the catalog is still shown), `rate-limited`, `unreachable`, or `loading` until the first read settles; a failed, empty, or unreadable read keeps the previous entries, version, and fetch time. The last good generation is stored in the `suanli_media_catalog` storage domain when its `version` changes and read back before the first request, and stays in memory where that domain is absent. `suanli-model-catalog/media-updated` follows a committed status or version change.
 
-`capabilities()` groups the entries of the last good generation into this product's classes: chat, image generation and editing, video generation, first/last frame, reference-to-video, music, and speech. One entry that declares several plays belongs to every class it names, so a single image entry with `t2i` and `i2i` fills both image classes; a pair outside the vocabulary lands in `other` rather than disappearing. `endpoint()` answers a consumer that must call the same gateway, so no second row configures the gateway a consumer already reaches through this one.
+`capabilities()` groups the last good generation into this product's classes: chat, vision, image generation and editing, video generation, first/last frame, reference-to-video, music, and speech; a pair outside the vocabulary lands in `other` rather than disappearing. `roles()` names the model each of the six roles uses — chat, vision, image, video, music, and speech — from the user's choice in the `suanli_model_roles` storage domain or the catalog's defaults, and `preferences()` holds whether generated images and videos are reviewed. `endpoint()` answers a consumer that must call the same gateway, so no second row configures the gateway a consumer already reaches through this one.
 
 ## What the task transport drives
 
@@ -129,6 +129,34 @@ Host service backing the generated `ctx.remote.suanliModels` namespace.
  * @returns the gateway root and the credential reference holding its key.
  */
 @Remote endpoint(): MediaGatewayEndpoint
+
+/**
+ * Read the models each role can use and which one it uses now.
+ * @returns one state per role: chat, vision, image, video, music, speech.
+ */
+@Remote roles(): readonly ModelRoleState[]
+
+/**
+ * Choose the model one role uses.
+ * @param role - a role other than chat, whose choice the conversation's model picker owns.
+ * @param model - a candidate of the role, or `null` to return to the catalog default.
+ * @returns the roles after the change.
+ * @throws When the role is chat or the model is not a candidate of the role.
+ */
+@Remote async selectRole(role: ModelRole, model: string | null): Promise<readonly ModelRoleState[]>
+
+/**
+ * Read the generation preferences.
+ * @returns whether generated media is reviewed.
+ */
+@Remote preferences(): MediaPreferences
+
+/**
+ * Turn the review of generated images and videos on or off.
+ * @param enabled - whether to review.
+ * @returns the preferences after the change.
+ */
+@Remote async setAutoReview(enabled: boolean): Promise<MediaPreferences>
 ```
 
 Source: [`packages/llm/suanli-model-catalog/src/index.ts`](../../packages/llm/suanli-model-catalog/src/index.ts)
@@ -149,6 +177,22 @@ The media catalog committed a change to its status or version.
  * @mode emit
  */
 'suanli-model-catalog/media-updated'(): void
+```
+
+Source: [`packages/llm/suanli-model-catalog/src/types.ts`](../../packages/llm/suanli-model-catalog/src/types.ts)
+
+<a id="suanli-model-catalogroles-updated--emit"></a>
+
+#### `suanli-model-catalog/roles-updated` — emit
+
+The role choices or generation preferences changed.
+
+```ts cordis-catalog
+/**
+ * The role choices or generation preferences changed.
+ * @mode emit
+ */
+'suanli-model-catalog/roles-updated'(): void
 ```
 
 Source: [`packages/llm/suanli-model-catalog/src/types.ts`](../../packages/llm/suanli-model-catalog/src/types.ts)

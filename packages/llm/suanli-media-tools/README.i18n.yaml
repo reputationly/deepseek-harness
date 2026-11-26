@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/llm/suanli-media-tools/README.md
+/:
+  en: 105653f23b4a4f5d
+  zh: 9d5610d2c4533844
+/deepseek-ai-dsh-suanli-media-tools:
+  en: 80da5dd7099f6f97
+  zh: b5f7bd87044bfa97
+/deepseek-ai-dsh-suanli-media-tools/summary:
+  en: 4e0d2cee235985e5
+  zh: 7f156bd90628ef0d
+/deepseek-ai-dsh-suanli-media-tools/table-of-contents:
+  en: 9631c674d4a464a1
+  zh: a93d338835e8164a
+/deepseek-ai-dsh-suanli-media-tools/why-this-exists:
+  en: d4754d973325b53c
+  zh: d1fdc284126c11e8
+/deepseek-ai-dsh-suanli-media-tools/parameter-rules:
+  en: f42b05eae9169cda
+  zh: a3fdf255f5e41c56
+/deepseek-ai-dsh-suanli-media-tools/result:
+  en: 703d4c164cbe747f
+  zh: 54444848e2afcb93
+/deepseek-ai-dsh-suanli-media-tools/model-experience:
+  en: 215e7ba838619b7b
+  zh: b88d4469af5069ea
+/deepseek-ai-dsh-suanli-media-tools/model-experience/tool-schema:
+  en: e4c7376d4f29dbd5
+  zh: a9eb58c09344e369
+/deepseek-ai-dsh-suanli-media-tools/model-experience/tool-schema/what-the-model-sees:
+  en: 4aac3d61e082875d
+  zh: bb9c2ed1066590f0
+/deepseek-ai-dsh-suanli-media-tools/model-experience/tool-schema/token-effect:
+  en: 96ee59827b597180
+  zh: b20d4325da7c6285
+/deepseek-ai-dsh-suanli-media-tools/model-experience/tool-schema/kv-cache-effect:
+  en: 35c1f2cc866312c5
+  zh: 9bae014536f7bac0
+/deepseek-ai-dsh-suanli-media-tools/known-limitations-and-deferred-work:
+  en: d5208cd9dd381a9f
+  zh: d090d1ca24bcdead

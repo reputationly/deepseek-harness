@@ -1,44 +1,36 @@
-/** The service as the workbench sees it: startup read, status changes, durable reuse, endpoint facts. */
+/** The service as the workbench sees it: startup read, status changes, durable reuse, roles, endpoint facts. */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SuanliModelCatalogService from '../src/index.ts'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { StoredSnapshot } from '../src/domain.ts'
+import { hilo, IMAGE, json } from './hilo-fixture.ts'
 
-/** One capability entry as the gateway reports it. */
-const ENTRY = {
-  id: 'generate_image:minimax-h3-image-enhanced',
-  operation: 'generate_image',
-  model: 'minimax-h3-image-enhanced',
-  displayName: { zh: '增强', en: 'Enhanced' },
-  description: { zh: '', en: '' },
-  transport: { kind: 'images' },
-  limits: { maxReferenceImages: 0, maxDurationSeconds: 0, maxInputBytes: 0 },
-  default: true,
-}
-
-/** The gateway answer for one capability read. */
-function catalog(capabilities: readonly unknown[], version = 'v1'): Response {
-  return new Response(JSON.stringify({ version, capabilities }), { status: 200, headers: { 'content-type': 'application/json' } })
-}
-
-/** A storage-domain facility holding one generation, recording every write. */
+/** A storage-domain facility holding one catalog generation, recording every catalog write. */
 function facility(initial?: StoredSnapshot) {
   const writes: StoredSnapshot[] = []
+  const domains = new Map<string, Map<string, unknown>>()
   const records = new Map<string, StoredSnapshot>()
   if (initial !== undefined) records.set('current', initial)
+  domains.set('suanli_media_catalog:snapshot', records)
   return {
     writes,
     records,
+    domains,
     service: {
-      open: async () => ({
-        table: () => ({
-          get: (key: string) => records.get(key),
-          put: async (key: string, value: StoredSnapshot) => {
-            records.set(key, value)
-            writes.push(value)
-          },
-        }),
+      open: async (domain: { name: string }) => ({
+        table: (name: string) => {
+          const key = `${domain.name}:${name}`
+          const rows = domains.get(key) ?? new Map<string, unknown>()
+          domains.set(key, rows)
+          return {
+            get: (row: string) => rows.get(row),
+            put: async (row: string, value: unknown) => {
+              rows.set(row, value)
+              if (domain.name === 'suanli_media_catalog') writes.push(value as StoredSnapshot)
+            },
+          }
+        },
         close: async () => {},
       }),
     },
@@ -57,6 +49,7 @@ async function boot(options: {
   readonly answer?: () => Promise<Response>
   readonly stored?: StoredSnapshot
   readonly withStorage?: boolean
+  readonly models?: readonly unknown[]
 }) {
   const ctx = new Context()
   contexts.push(ctx)
@@ -67,27 +60,43 @@ async function boot(options: {
       ? (options.credential === undefined ? { value: 'sk-test' } : options.credential === '' ? undefined : { value: options.credential })
       : undefined,
   })
-  ctx.provide('settings', { describe: () => [], mutate: async () => {} })
+  const mutations: unknown[] = []
+  let models = options.models
+  ctx.provide('settings', {
+    describe: () => models === undefined ? [] : [{ ns: 'llm-deepseek', value: { models } }],
+    mutate: async (ns: string, ops: readonly { value: readonly unknown[] }[]) => {
+      mutations.push({ ns, ops })
+      models = ops[0]?.value
+    },
+  })
   ctx.provide('typert', {})
   if (options.withStorage !== false) ctx.provide('storageDomain', storage.service)
-  const send = vi.fn(async () => await (options.answer ?? (async () => catalog([ENTRY])))())
+  const send = vi.fn(async (_url: string, _init?: RequestInit) => await (options.answer ?? (async () => json(hilo())))())
   vi.stubGlobal('fetch', send)
-  await ctx.plugin(SuanliModelCatalogService, {
-    baseURL: 'https://gw.example/v1',
-    apiKeyEnv: 'AURORA_API_KEY',
-    endpointTypes: ['openai'],
-  })
-  return { ctx, storage, send }
+  const updates: unknown[] = []
+  ctx.on('llm/models-updated', (provider) => { updates.push(provider) })
+  await ctx.plugin(SuanliModelCatalogService, { baseURL: 'https://gw.example/v1', apiKeyEnv: 'AURORA_API_KEY' })
+  return { ctx, storage, send, mutations, updates }
+}
+
+/** One stored generation carrying the fixture image entry. */
+const STORED_ENTRY = {
+  id: 'generate_image:minimax-h3-image', operation: 'generate_image', model: 'minimax-h3-image',
+  displayName: { zh: 'H3', en: 'H3' }, description: { zh: '', en: '' }, transport: { kind: 'images' },
+  limits: { maxReferenceImages: 0, maxDurationSeconds: 0, maxInputBytes: 0 }, default: true,
 }
 
 describe('SuanliModelCatalogService', () => {
-  it('reads the catalog at startup without blocking the mount', async () => {
-    const { ctx } = await boot({})
+  it('reads the Hilo catalog at startup without the key and without blocking the mount', async () => {
+    const { ctx, send } = await boot({})
     await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
     const media = ctx.suanliModels.media()
     expect(media.version).toBe('v1')
-    expect(media.entries.map(entry => entry.model)).toEqual(['minimax-h3-image-enhanced'])
+    expect(media.entries.map(entry => entry.model)).toEqual(['minimax-h3-image', 'minimax-h3-2k', 'minimax-music3'])
     expect(media.fetchedAt).not.toBeNull()
+    // Only the catalog is read; neither the old capability view nor the model listing.
+    expect(send.mock.calls.map(([url]) => url)).toEqual(['https://gw.example/api/v1/models/catalog'])
+    expect(JSON.stringify(send.mock.calls[0]?.[1]?.headers)).not.toContain('sk-test')
   })
 
   it('reports the endpoint a consumer must call', async () => {
@@ -97,7 +106,7 @@ describe('SuanliModelCatalogService', () => {
 
   it('serves a stored generation before the first read finishes', async () => {
     const { ctx } = await boot({
-      stored: { version: 'stored', fetchedAt: 3, payload: JSON.stringify({ version: 'stored', capabilities: [ENTRY] }) },
+      stored: { version: 'stored', fetchedAt: 3, payload: JSON.stringify({ version: 'stored', capabilities: [STORED_ENTRY] }) },
       // The network hangs: only the stored generation can answer.
       answer: () => new Promise<Response>(() => {}),
     })
@@ -107,28 +116,21 @@ describe('SuanliModelCatalogService', () => {
 
   it('keeps the entries when a later read fails and reports why', async () => {
     let failing = false
-    const { ctx } = await boot({ answer: async () => failing ? new Response('{}', { status: 500 }) : catalog([ENTRY]) })
+    const { ctx } = await boot({ answer: async () => failing ? new Response('{}', { status: 500 }) : json(hilo()) })
     await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
     failing = true
-    await ctx.suanliModels.refresh()
+    await expect(ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: false, reason: 'unreachable' })
     const media = ctx.suanliModels.media()
     expect(media.status).toBe('unreachable')
-    expect(media.entries).toHaveLength(1)
+    expect(media.entries).toHaveLength(3)
     expect(media.version).toBe('v1')
   })
 
-  it('reports signed-out without contacting the gateway when the credential is missing', async () => {
-    const send = vi.fn(async () => catalog([ENTRY]))
-    vi.stubGlobal('fetch', send)
-    const ctx = new Context()
-    contexts.push(ctx)
-    ctx.provide('loader', { await: async () => undefined })
-    ctx.provide('credentials', { resolve: async () => undefined })
-    ctx.provide('settings', { describe: () => [], mutate: async () => {} })
-    ctx.provide('typert', {})
-    await ctx.plugin(SuanliModelCatalogService, { baseURL: 'https://gw.example/v1', apiKeyEnv: 'AURORA_API_KEY', endpointTypes: ['openai'] })
+  it('shows the catalog to a signed-out user and reports signed-out', async () => {
+    const { ctx, send } = await boot({ credential: '' })
     await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('signed-out') })
-    expect(send).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalled()
+    expect(ctx.suanliModels.media().entries).toHaveLength(3)
   })
 
   it('reads again when its own credential changes', async () => {
@@ -154,45 +156,172 @@ describe('SuanliModelCatalogService', () => {
     const memory = await boot({ withStorage: false })
     await vi.waitFor(() => { expect(memory.ctx.suanliModels.media().status).toBe('ready') })
     expect(memory.storage.writes).toHaveLength(0)
-    expect(memory.ctx.suanliModels.media().entries).toHaveLength(1)
+    expect(memory.ctx.suanliModels.media().entries).toHaveLength(3)
   })
 
-  it('writes nothing and emits nothing when the model listing did not change', async () => {
-    const ctx = new Context()
-    contexts.push(ctx)
-    const mutations: unknown[] = []
-    const updates: unknown[] = []
-    ctx.provide('loader', { await: async () => undefined })
-    ctx.provide('credentials', { resolve: async () => ({ value: 'sk-test' }) })
-    // The settings entry already carries exactly what the gateway lists.
-    ctx.provide('settings', {
-      describe: () => [{ ns: 'llm-deepseek', value: { models: [{ id: 'deepseek-v4-1-flash' }] } }],
-      mutate: async (ns: string, ops: unknown) => { mutations.push({ ns, ops }) },
+  it('puts the text section in the chat catalog, keeping facts the catalog omits', async () => {
+    const { ctx, mutations, updates } = await boot({ models: [{ id: 'deepseek-v4-1-flash', contextWindow: 1_000_000 }, { id: 'retired' }] })
+    await vi.waitFor(() => { expect(mutations).toHaveLength(1) })
+    expect(mutations[0]).toEqual({
+      ns: 'llm-deepseek',
+      ops: [{ op: 'set', path: ['models'], value: [
+        { id: 'deepseek-v4-1-flash', contextWindow: 1_000_000, inputModalities: ['text', 'image'] },
+        { id: 'qwen3.8-flash-fp8', inputModalities: ['text', 'image'] },
+      ] }],
     })
-    ctx.provide('typert', {})
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      data: [{ id: 'deepseek-v4-1-flash', supported_endpoint_types: ['openai'] }],
-    }), { status: 200, headers: { 'content-type': 'application/json' } })))
-    await ctx.plugin(SuanliModelCatalogService, { baseURL: 'https://gw.example/v1', apiKeyEnv: 'AURORA_API_KEY', endpointTypes: ['openai'] })
-    ctx.on('llm/models-updated', (provider) => { updates.push(provider) })
+    expect(updates).toEqual(['deepseek-official'])
+    await expect(ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: true, count: 2, changed: false })
+  })
+
+  it('writes nothing and emits nothing when the chat models did not change', async () => {
+    const { ctx, mutations, updates } = await boot({ models: [
+      { id: 'deepseek-v4-1-flash', inputModalities: ['text', 'image'] },
+      { id: 'qwen3.8-flash-fp8', inputModalities: ['text', 'image'] },
+    ] })
+    await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
     await ctx.suanliModels.refresh()
     expect(mutations).toEqual([])
     expect(updates).toEqual([])
   })
 
-  it('derives capability classes from the same entries', async () => {
-    const { ctx } = await boot({
-      answer: async () => catalog([
-        { ...ENTRY, taskTypes: ['t2i'] },
-        { ...ENTRY, id: 'generate_video:minimax-h3-2k', operation: 'generate_video', model: 'minimax-h3-2k', transport: { kind: 'videos_task' }, taskTypes: ['t2v'], default: false },
-        { ...ENTRY, id: 'chat:deepseek-v4-1-flash', operation: 'chat', model: 'deepseek-v4-1-flash', transport: { kind: 'chat' }, default: true },
-      ]),
-    })
+  it('derives capability classes, chat and vision included, from the same catalog', async () => {
+    const { ctx } = await boot({})
     await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
     expect(ctx.suanliModels.capabilities()).toEqual([
-      { capability: 'chat', models: ['deepseek-v4-1-flash'] },
-      { capability: 'image.generate', models: ['minimax-h3-image-enhanced'] },
+      { capability: 'chat', models: ['deepseek-v4-1-flash', 'qwen3.8-flash-fp8'] },
+      { capability: 'vision.image', models: ['deepseek-v4-1-flash', 'qwen3.8-flash-fp8'] },
+      { capability: 'vision.video', models: ['qwen3.8-flash-fp8'] },
+      { capability: 'image.generate', models: ['minimax-h3-image'] },
+      { capability: 'image.edit', models: ['minimax-h3-image'] },
       { capability: 'video.generate', models: ['minimax-h3-2k'] },
+      { capability: 'video.first-last-frame', models: ['minimax-h3-2k'] },
+      { capability: 'music.generate', models: ['minimax-music3'] },
     ])
+  })
+
+  it('reports six roles and keeps a choice in the storage domain across a restart', async () => {
+    const first = await boot({ answer: async () => json(hilo({ image: [IMAGE, { ...IMAGE, platformModel: 'minimax-h3-image-enhanced' }] })) })
+    await vi.waitFor(() => { expect(first.ctx.suanliModels.media().status).toBe('ready') })
+    expect(first.ctx.suanliModels.roles().map(state => state.role)).toEqual(['chat', 'vision', 'image', 'video', 'music', 'speech'])
+    const changed = vi.fn()
+    first.ctx.on('suanli-model-catalog/roles-updated', changed)
+    await first.ctx.suanliModels.selectRole('image', 'minimax-h3-image-enhanced')
+    await first.ctx.suanliModels.setAutoReview(false)
+    expect(changed).toHaveBeenCalledTimes(2)
+    expect(first.storage.domains.get('suanli_model_roles:choice')?.get('image')).toEqual({ model: 'minimax-h3-image-enhanced' })
+    // The choice lives outside settings.
+    expect(first.mutations.every(mutation => JSON.stringify(mutation).includes('"models"'))).toBe(true)
+    await expect(first.ctx.suanliModels.selectRole('image', 'not-listed')).rejects.toThrow(/not a image model/u)
+    await expect(first.ctx.suanliModels.selectRole('chat', 'deepseek-v4-1-flash')).rejects.toThrow(/takes no choice/u)
+    const image = first.ctx.suanliModels.roles().find(state => state.role === 'image')
+    expect(image).toMatchObject({ selected: 'minimax-h3-image-enhanced', fallback: 'minimax-h3-image' })
+    expect(first.ctx.suanliModels.preferences()).toEqual({ autoReview: false })
+    expect(first.ctx.suanliModels.roles().find(state => state.role === 'speech')).toMatchObject({ candidates: [], fallback: null })
+  })
+})
+
+describe('SuanliModelCatalogService edges', () => {
+  /** Boot with neighbours a test shapes itself. */
+  async function bootWith(options: {
+    readonly resolve?: () => Promise<{ value: string } | undefined>
+    readonly open?: () => Promise<never>
+    readonly settingsValue?: unknown
+    readonly answer?: () => Promise<Response>
+    readonly config?: Record<string, unknown>
+  }) {
+    const ctx = new Context()
+    contexts.push(ctx)
+    const warnings: string[] = []
+    ctx.provide('loader', { await: async () => undefined })
+    ctx.provide('credentials', { resolve: options.resolve ?? (async () => ({ value: 'sk-test' })) })
+    const mutations: unknown[] = []
+    ctx.provide('settings', {
+      describe: () => [{ ns: 'llm-custom', value: options.settingsValue }],
+      mutate: async (ns: string, ops: unknown) => { mutations.push({ ns, ops }) },
+    })
+    ctx.provide('typert', {})
+    if (options.open !== undefined) ctx.provide('storageDomain', { open: options.open })
+    const send = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) => await (options.answer ?? (async () => json(hilo())))())
+    vi.stubGlobal('fetch', send)
+    const updates: unknown[] = []
+    ctx.on('llm/models-updated', (provider) => { updates.push(provider) })
+    await ctx.plugin(SuanliModelCatalogService, {
+      baseURL: 'https://gw.example/v1', apiKeyEnv: 'AURORA_API_KEY',
+      settingsNamespace: 'llm-custom', provider: 'custom', catalogPath: '/custom/catalog', timeoutMs: 5_000,
+      ...options.config,
+    })
+    vi.spyOn(ctx.logger, 'warn').mockImplementation((...args: unknown[]) => { warnings.push(args.map(String).join(' ')) })
+    return { ctx, send, mutations, updates, warnings }
+  }
+
+  it('answers from the pending snapshot while the catalog store is still opening', async () => {
+    const { ctx, send } = await bootWith({ open: () => new Promise<never>(() => {}) })
+    expect(ctx.suanliModels.media()).toMatchObject({ status: 'loading', entries: [] })
+    expect(ctx.suanliModels.roles().every(role => role.candidates.length === 0)).toBe(true)
+    await expect(ctx.suanliModels.refresh()).resolves.toEqual({ ok: false, reason: 'unreachable', kept: 0 })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('keeps the catalog and role choices in memory when the storage domain cannot open', async () => {
+    const { ctx, send } = await bootWith({ open: async () => { throw new Error('locked') } })
+    await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
+    expect(send.mock.calls[0]?.[0]).toBe('https://gw.example/custom/catalog')
+    await ctx.suanliModels.selectRole('image', null)
+    expect(ctx.suanliModels.roles().find(role => role.role === 'image')?.selected).toBeNull()
+  })
+
+  it('reports a read that throws through the snapshot instead of the call', async () => {
+    let fail = true
+    const { ctx, warnings } = await bootWith({ resolve: async () => { if (fail) throw new Error('vault'); return { value: 'sk' } } })
+    await vi.waitFor(() => { expect(warnings.some(line => line.includes('media catalog startup failed'))).toBe(true) })
+    await expect(ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: false, reason: 'unreachable' })
+    expect(warnings.some(line => line.includes('media catalog read failed'))).toBe(true)
+    fail = false
+    ctx.emit('credentials/reference-updated', credentialRef('AURORA_API_KEY'))
+    await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
+  })
+
+  it('reports an empty chat listing when the catalog carries no text section', async () => {
+    const { ctx, mutations } = await bootWith({ answer: async () => json(hilo({ text: [] })) })
+    await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
+    await expect(ctx.suanliModels.refresh()).resolves.toEqual({ ok: false, reason: 'empty-listing', kept: 0 })
+    expect(mutations).toEqual([])
+  })
+
+  it('reports an empty or signed-out catalog as readable', async () => {
+    const empty = await bootWith({ answer: async () => json(hilo({ image: [], video: [], audio: [] })) })
+    await vi.waitFor(() => { expect(empty.ctx.suanliModels.media().status).toBe('empty') })
+    await expect(empty.ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: true, capabilities: true })
+    let listed = true
+    const none = await bootWith({ answer: async () => json(listed ? hilo({}) : hilo({ text: [], image: [], video: [], audio: [] })) })
+    await vi.waitFor(() => { expect(none.ctx.suanliModels.media().status).toBe('ready') })
+    await expect(none.ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: true })
+    listed = false
+    await expect(none.ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: false, reason: 'empty-listing' })
+    const signedOut = await bootWith({ resolve: async () => undefined })
+    await vi.waitFor(() => { expect(signedOut.ctx.suanliModels.media().status).toBe('signed-out') })
+    await expect(signedOut.ctx.suanliModels.refresh()).resolves.toMatchObject({ ok: true, capabilities: true })
+  })
+
+  it('reads the route catalog past malformed settings and writes to its own entry', async () => {
+    const malformed = await bootWith({ settingsValue: 'broken' })
+    expect(malformed.ctx.suanliModels.read()).toEqual([])
+    const noList = await bootWith({ settingsValue: { models: 'none' } })
+    expect(noList.ctx.suanliModels.read()).toEqual([])
+    const { ctx, mutations, updates } = await bootWith({
+      settingsValue: { models: [null, { id: '' }, { id: 'kept', contextWindow: 8, inputModalities: ['text'] }] },
+      answer: async () => json(hilo({ text: [{ id: 'listen', platformModel: 'listen', supportsAudio: true }] })),
+    })
+    expect(ctx.suanliModels.read()).toEqual([{ id: 'kept', contextWindow: 8, inputModalities: ['text'] }])
+    await vi.waitFor(() => { expect(mutations).toHaveLength(1) })
+    expect(mutations[0]).toEqual({ ns: 'llm-custom', ops: [{ op: 'set', path: ['models'], value: [{ id: 'listen', inputModalities: ['text'] }] }] })
+    expect(updates).toEqual(['custom'])
+    expect(ctx.suanliModels.capabilities().filter(entry => entry.capability.startsWith('vision'))).toEqual([])
+  })
+
+  it('logs what the catalog dropped', async () => {
+    const { ctx, warnings } = await bootWith({ answer: async () => json(hilo({ image: [IMAGE, { id: 'no-model' }] })) })
+    await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
+    expect(warnings.some(line => line.includes('dropped 1 entry'))).toBe(true)
   })
 })

@@ -3,38 +3,41 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/llm/suanli-model-catalog/README.md
 /:
-  en: 154aab23efa51824
-  zh: 1a6655a054d6b84a
+  en: d81d10a4b16d6a3f
+  zh: 9788ce10a1c62f7d
 /deepseek-ai-dsh-suanli-model-catalog:
   en: e89fb0a5038c4ccf
   zh: 82f25fc6ac333d2e
 /deepseek-ai-dsh-suanli-model-catalog/summary:
-  en: 9538e1f174768d73
-  zh: 5496171fb19061d6
+  en: 2313076dd4ce2e3e
+  zh: 010aaf61fb85c8fe
 /deepseek-ai-dsh-suanli-model-catalog/table-of-contents:
-  en: 3f0c0e66b5109291
-  zh: 02a7d4915004e84a
+  en: 2dee77a2c8153c27
+  zh: 433cb8a61c18c394
 /deepseek-ai-dsh-suanli-model-catalog/why-this-exists:
-  en: 83948751475509a4
-  zh: 6a1f9de41a1562fa
+  en: bff1b8a68484e058
+  zh: 4830b25eec19f33b
 /deepseek-ai-dsh-suanli-model-catalog/refresh-rules:
-  en: b2b70745ea2d095d
-  zh: ef68bcbfb24e3c07
+  en: d06dc06c6506f89f
+  zh: 59a38d823ffd82d0
 /deepseek-ai-dsh-suanli-model-catalog/capability-classes:
-  en: a5d55cf32dd162fc
-  zh: 8f6a8081f7c0136a
+  en: b86ab324260ccace
+  zh: dd0c284e7062f517
 /deepseek-ai-dsh-suanli-model-catalog/media-catalog:
-  en: cc3b7c1719cf985e
-  zh: 7bf20aa56718d6ca
+  en: 87ef854b59c4f3dc
+  zh: e51bdc004d0ae607
+/deepseek-ai-dsh-suanli-model-catalog/model-roles:
+  en: 0a66afc773d7299b
+  zh: b28d20c5e2603ba5
 /deepseek-ai-dsh-suanli-model-catalog/model-experience:
   en: fda4fbca6f10a5bb
-  zh: 177318cd0a2268b8
+  zh: e64738b4ac19d4d9
 /deepseek-ai-dsh-suanli-model-catalog/model-experience/kv-cache-effect:
   en: 56ac74f4ed653c86
-  zh: 107913694f128804
+  zh: ce18bc3361061923
 /deepseek-ai-dsh-suanli-model-catalog/known-limitations-and-deferred-work:
-  en: 900fcca953f10ebf
-  zh: 493b9ee6eef56ba1
+  en: 363403cf9db5371a
+  zh: 3c7c5eb48ee2bcc7
 /deepseek-ai-dsh-suanli-model-catalog/known-limitations-and-deferred-work/dev-note:
-  en: 86a8863d2dada4cb
-  zh: 29de0ee6687bd62d
+  en: 76975d8bb222e130
+  zh: dc5890a053cbc7dc

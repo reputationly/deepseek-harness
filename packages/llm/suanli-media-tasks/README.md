@@ -42,7 +42,7 @@ None: no model request is built or cached here.
 
 ## Known Limitations and Deferred Work
 
-- No caller inside the product yet: the Agent tool and the composer surface that would submit these tasks are not wired, so the namespace is exercised by its own tests and by direct Remote calls.
+- Only image generation has a caller inside the product, the `generate_image` tool of `@deepseek-ai/dsh-suanli-media-tools`; video and music tasks are exercised by this package's tests and by direct Remote calls.
 - Image calls are slow (about 36 s for a 2K image on this deployment), so a caller must budget for a blocking call rather than showing a spinner without a deadline.
 - Image editing and reference-to-video need the platform to declare those capability entries first; until then their models are not in the catalog this deployment reads.
 - Artifacts are downloaded to a caller-supplied absolute path; a caller inside the product must confine that path to the Session workspace.

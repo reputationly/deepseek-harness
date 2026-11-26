@@ -3821,7 +3821,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-suanli-model-catalog`
 
 - `inject`: `credentials` · `settings` · `typert`
-- `source`: [`packages/llm/suanli-model-catalog/src/index.ts:46`](../packages/llm/suanli-model-catalog/src/index.ts)
+- `source`: [`packages/llm/suanli-model-catalog/src/index.ts:48`](../packages/llm/suanli-model-catalog/src/index.ts)
 
 ```ts config-catalog
 /** Catalog source policy: which gateway answers, which key authorizes it, and who receives the result. */
@@ -3830,21 +3830,14 @@ export interface Config {
   readonly baseURL: string
   /** Credential reference holding the gateway key. */
   readonly apiKeyEnv: string
-  /** Listing path on the gateway (default `/v1/models`). */
-  readonly modelsPath?: string
   /** Settings entry whose `models` field receives the catalog (default `llm-deepseek`). */
   readonly settingsNamespace?: string
   /** Provider id whose catalog-changed event the browser follows (default `deepseek-official`). */
   readonly provider?: string
-  /** Path of the gateway capability catalog (default `/v1/ov/capabilities`). */
-  readonly capabilitiesPath?: string
-  /** Request budget of one listing, in milliseconds. */
+  /** Path of the Hilo model catalog on the gateway origin (default `/api/v1/models/catalog`). */
+  readonly catalogPath?: string
+  /** Request budget of one catalog read, in milliseconds. */
   readonly timeoutMs?: number
-  /**
-   * Endpoint types a listed row must declare to join the catalog (default `openai`, the chat
-   * endpoint). Image, video, and music endpoints stay out until the picker can drive them.
-   */
-  readonly endpointTypes: string[]
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-suanli-model-catalog -->
@@ -5313,6 +5306,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-settings` | `configEditor` · `profileContext` | [`packages/settings/settings/src/index.ts`](../packages/settings/settings/src/index.ts) |
 | `@deepseek-ai/dsh-skill-badge` | `skills` | [`packages/experimental/skill-badge/src/index.ts`](../packages/experimental/skill-badge/src/index.ts) |
 | `@deepseek-ai/dsh-storage` | — | [`packages/storage/storage/src/index.ts`](../packages/storage/storage/src/index.ts) |
+| `@deepseek-ai/dsh-suanli-media-tools` | `tools` · `suanliModels` · `suanliMedia` · `userQuestions` · `workingDirectory` | [`packages/llm/suanli-media-tools/src/index.ts`](../packages/llm/suanli-media-tools/src/index.ts) |
 | `@deepseek-ai/dsh-subprocess-local` | — | [`packages/subprocess/subprocess-local/src/index.ts`](../packages/subprocess/subprocess-local/src/index.ts) |
 | `@deepseek-ai/dsh-subprocess-ssh` | `ssh` | [`packages/ssh/subprocess-ssh/src/index.ts`](../packages/ssh/subprocess-ssh/src/index.ts) |
 | `@deepseek-ai/dsh-terminal` | — | [`packages/terminal/terminal/src/index.ts`](../packages/terminal/terminal/src/index.ts) |

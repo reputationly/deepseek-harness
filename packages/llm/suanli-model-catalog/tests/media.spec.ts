@@ -1,8 +1,9 @@
-/** Media catalog: the last good generation stays in effect, and each read reports why it produced nothing. */
+/** Media catalog: the last good Hilo generation stays in effect, and each read reports why it produced nothing. */
 import { describe, expect, it, vi } from 'vitest'
 import { classMembers } from '../src/capabilities.ts'
 import { asGatewayCapability, decodeCatalog, mediaEntries } from '../src/media.ts'
 import { MediaCatalogSync, type MediaCatalogRecord } from '../src/media-sync.ts'
+import { hilo, IMAGE, json } from './hilo-fixture.ts'
 
 /** One capability entry as the gateway reports it. */
 function entry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -24,11 +25,6 @@ function payloadOf(capabilities: readonly unknown[], version = 'v1'): unknown {
   return { version, capabilities }
 }
 
-/** The gateway's answer as one media catalog. */
-function catalog(capabilities: readonly unknown[], version = 'v1'): Response {
-  return json(payloadOf(capabilities, version))
-}
-
 /** Decoded entries of one fixture catalog, for a store that holds them. */
 function entriesOf(capabilities: readonly unknown[]): MediaCatalogRecord['entries'] {
   const decoded = decodeCatalog(payloadOf(capabilities))
@@ -36,9 +32,7 @@ function entriesOf(capabilities: readonly unknown[]): MediaCatalogRecord['entrie
   return decoded.entries
 }
 
-function json(value: unknown, status = 200): Response {
-  return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } })
-}
+const EMPTY_CHAT = { text: [], defaults: { chat: null, multimodal: null } } as const
 
 function harness(options: {
   readonly answer?: () => Promise<Response>
@@ -47,12 +41,13 @@ function harness(options: {
   readonly now?: () => number
 }) {
   const written: MediaCatalogRecord[] = []
+  const committed: MediaCatalogRecord[] = []
   const changes: string[] = []
   const reports: string[] = []
-  const send = vi.fn(async () => await (options.answer ?? (async () => catalog([entry()])))())
+  const send = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) => await (options.answer ?? (async () => json(hilo())))())
   const subject = new MediaCatalogSync({
     origin: 'https://gateway.example',
-    capabilitiesPath: '/v1/ov/capabilities',
+    catalogPath: '/api/v1/models/catalog',
     timeoutMs: 1_000,
     send,
     credential: async () => (options.key === undefined ? 'sk-test' : options.key),
@@ -60,63 +55,59 @@ function harness(options: {
     now: options.now ?? (() => 1_700_000_000_000),
     report: (message) => { reports.push(message) },
     changed: () => { changes.push('changed') },
+    committed: async (record) => { committed.push(record) },
   })
-  return { subject, written, changes, reports, send }
+  return { subject, written, committed, changes, reports, send }
 }
 
 describe('MediaCatalogSync', () => {
-  it('commits a readable catalog and keeps every entry it carries', async () => {
-    const { subject, written, changes } = harness({
-      answer: async () => catalog([
-        entry(),
-        entry({ id: 'generate_image:minimax-h3-2k', model: 'minimax-h3-2k', default: false }),
-        entry({ id: 'generate_video:minimax-h3-ref-2k', operation: 'generate_video', model: 'minimax-h3-ref-2k', transport: { kind: 'videos_task' } }),
-        entry({ id: 'upscale:relayvsr', operation: 'upscale', model: 'relayvsr' }),
-        entry({ id: 'chat:deepseek-v4-1-flash', operation: 'chat', model: 'deepseek-v4-1-flash', transport: { kind: 'chat' } }),
-      ]),
-    })
+  it('reads the Hilo catalog anonymously and commits every generation entry it carries', async () => {
+    const { subject, written, committed, changes, send } = harness({})
     const snapshot = await subject.refresh()
+    expect(send).toHaveBeenCalledOnce()
+    const [url, init] = send.mock.calls[0] ?? []
+    expect(url).toBe('https://gateway.example/api/v1/models/catalog')
+    // The catalog is anonymous: the gateway key never leaves with this read.
+    expect(init?.headers).toEqual({ accept: 'application/json' })
     expect(snapshot.status).toBe('ready')
     expect(snapshot.version).toBe('v1')
     expect(snapshot.fetchedAt).toBe(1_700_000_000_000)
     expect(snapshot.entries.map(candidate => candidate.id)).toEqual([
-      'generate_image:minimax-h3-image-enhanced',
-      'generate_image:minimax-h3-2k',
-      'generate_video:minimax-h3-ref-2k',
-      'upscale:relayvsr',
-      'chat:deepseek-v4-1-flash',
+      'generate_image:minimax-h3-image', 'generate_video:minimax-h3-2k', 'generate_music:minimax-music3',
     ])
-    // Every operation is kept; only the workbench filters what it renders.
+    expect(subject.roles().text.map(model => model.model)).toEqual(['deepseek-v4-1-flash', 'qwen3.8-flash-fp8'])
     expect(written).toHaveLength(1)
+    expect(committed).toHaveLength(1)
     expect(changes).toEqual(['changed'])
   })
 
+  it('still reads the catalog without a key and reports signed-out', async () => {
+    const { subject, send } = harness({ key: '' })
+    await expect(subject.refresh()).resolves.toMatchObject({ status: 'signed-out', version: 'v1' })
+    expect(send).toHaveBeenCalledOnce()
+    expect(subject.current().entries).toHaveLength(3)
+  })
+
   it.each([
-    ['signed-out', { key: '' }],
-    ['unauthorized', { answer: async () => json({}, 401) }],
-    ['kyc-required', { answer: async () => json({ error: { code: 'kyc_required' } }, 403) }],
-    ['unauthorized', { answer: async () => json({ error: { code: 'forbidden' } }, 403) }],
-    ['unauthorized', { answer: async () => new Response('no body', { status: 403 }) }],
     ['rate-limited', { answer: async () => json({}, 429) }],
+    ['unreachable', { answer: async () => json({}, 401) }],
     ['unreachable', { answer: async () => json({}, 500) }],
     ['unreachable', { answer: async () => { throw new Error('connect ECONNREFUSED') } }],
     ['unreachable', { answer: async () => new Response('not json', { status: 200 }) }],
     ['unreachable', { answer: async () => json({ nope: true }) }],
   ] as const)('reports %s and keeps the previous generation', async (status, options) => {
-    const stored: MediaCatalogRecord = { version: 'kept', fetchedAt: 1, entries: entriesOf([entry()]) }
-    const { subject, written } = harness({ ...options, stored })
+    const stored: MediaCatalogRecord = { version: 'kept', fetchedAt: 1, entries: entriesOf([entry()]), ...EMPTY_CHAT }
+    const { subject, written, committed } = harness({ ...options, stored })
     subject.hydrate()
     await expect(subject.refresh()).resolves.toMatchObject({ status, version: 'kept', fetchedAt: 1 })
     expect(written).toEqual([])
+    expect(committed).toEqual([])
     expect(subject.current().entries).toHaveLength(1)
   })
 
   it('reports an empty catalog without discarding the entries in effect', async () => {
-    const stored: MediaCatalogRecord = { version: 'kept', fetchedAt: 1, entries: entriesOf([entry()]) }
-    const { subject, written } = harness({
-      stored,
-      answer: async () => catalog([entry({ id: 'chat:model', operation: 'chat', model: 'model', transport: { kind: 'chat' } })], 'v2'),
-    })
+    const stored: MediaCatalogRecord = { version: 'kept', fetchedAt: 1, entries: entriesOf([entry()]), ...EMPTY_CHAT }
+    const { subject, written } = harness({ stored, answer: async () => json(hilo({ version: 'v2', image: [], video: [], audio: [], text: [] })) })
     subject.hydrate()
     await expect(subject.refresh()).resolves.toMatchObject({ status: 'empty', version: 'kept' })
     expect(written).toEqual([])
@@ -128,26 +119,41 @@ describe('MediaCatalogSync', () => {
     expect(send).toHaveBeenCalledOnce()
   })
 
-  it('stores the generation only when the version changes', async () => {
-    const unchanged = harness({ answer: async () => catalog([entry()], 'v1') })
+  it('stores the generation and reports a change only when the version changes', async () => {
+    const unchanged = harness({})
     await unchanged.subject.refresh()
     await unchanged.subject.refresh()
     expect(unchanged.written).toHaveLength(1)
+    expect(unchanged.changes).toEqual(['changed'])
 
-    const changed = harness({ answer: async () => catalog([entry()], 'v2') })
+    let version = 'v1'
+    const changed = harness({ answer: async () => json(hilo({ version })) })
     await changed.subject.refresh()
+    version = 'v2'
     await changed.subject.refresh()
-    // The second read repeats v2, so only the first one stores.
-    expect(changed.written).toHaveLength(1)
+    expect(changed.written.map(record => record.version)).toEqual(['v1', 'v2'])
+    expect(changed.changes).toEqual(['changed', 'changed'])
   })
 
-  it('seeds the snapshot from the stored generation before the first read', () => {
-    const stored: MediaCatalogRecord = { version: 'stored', fetchedAt: 7, entries: entriesOf([entry()]) }
+  it('warns about an unknown interface type once per version', async () => {
+    const { subject, reports } = harness({ answer: async () => json(hilo({ image: [{ ...IMAGE, interfaceType: 'maas-image-v9' }] })) })
+    await subject.refresh()
+    await subject.refresh()
+    expect(reports.filter(message => message.includes('maas-image-v9'))).toHaveLength(1)
+  })
+
+  it('seeds the snapshot and chat models from the stored generation before the first read', () => {
+    const stored: MediaCatalogRecord = {
+      version: 'stored', fetchedAt: 7, entries: entriesOf([entry()]),
+      text: [{ model: 'm', label: 'M', supportsImage: false, supportsVideo: false, supportsAudio: false }],
+      defaults: { chat: 'm', multimodal: null },
+    }
     const { subject } = harness({ stored })
     expect(subject.current()).toMatchObject({ status: 'loading', version: null, entries: [] })
     subject.hydrate()
     expect(subject.current()).toMatchObject({ status: 'loading', version: 'stored', fetchedAt: 7 })
     expect(subject.current().entries).toHaveLength(1)
+    expect(subject.roles().defaults.chat).toBe('m')
   })
 })
 
@@ -228,5 +234,56 @@ describe('mediaEntries', () => {
       { capability: 'video.reference', models: ['h3'] },
       { capability: 'other', models: ['relayvsr'] },
     ])
+  })
+})
+
+describe('MediaCatalogSync edges', () => {
+  it('reports a body it cannot parse or decode as unreachable', async () => {
+    const broken = harness({ answer: async () => new Response('not json', { status: 200 }) })
+    await expect(broken.subject.refresh()).resolves.toMatchObject({ status: 'unreachable' })
+    const foreign = harness({ answer: async () => json({ capabilities: [] }) })
+    await expect(foreign.subject.refresh()).resolves.toMatchObject({ status: 'unreachable' })
+  })
+
+  it('counts several dropped rows and keeps the read when the store refuses it', async () => {
+    const { subject, reports } = harness({ answer: async () => json(hilo({ image: [IMAGE, { id: 'a' }, { id: 'b' }] })) })
+    ;(subject as unknown as { inputs: { store: { write: () => Promise<void> } } }).inputs.store.write = async () => { throw new Error('disk full') }
+    await expect(subject.refresh()).resolves.toMatchObject({ status: 'ready' })
+    expect(reports.some(message => message.includes('dropped 2 entries'))).toBe(true)
+    expect(reports.some(message => message.includes('disk full'))).toBe(true)
+  })
+
+  it('does not announce a stored generation over entries already in effect', async () => {
+    const stored: MediaCatalogRecord = { version: 'stored', fetchedAt: 7, entries: entriesOf([entry()]), ...EMPTY_CHAT }
+    const { subject, changes } = harness({ stored })
+    subject.hydrate()
+    subject.hydrate()
+    expect(changes).toHaveLength(1)
+  })
+})
+
+describe('decodeCatalog edges', () => {
+  it('fills defaults for malformed stored fields and drops unusable modes', () => {
+    const decoded = decodeCatalog({ capabilities: [entry({
+      displayName: { zh: 1, en: null },
+      limits: { maxReferenceImages: 'two' },
+      paramSchema: { type: 3, properties: { loose: 'x', typed: { type: 5, enum: [] } } },
+      modes: [{ id: '' }, { id: 'ok', taskType: 7 }],
+    })] })
+    expect(decoded?.entries[0]).toMatchObject({
+      displayName: { zh: '', en: '' },
+      limits: { maxReferenceImages: 0 },
+      paramSchema: { type: 'object', properties: { loose: { type: 'string' }, typed: { type: 'string' } } },
+      modes: [{ id: 'ok', taskType: '' }],
+    })
+  })
+})
+
+describe('MediaCatalogSync repeated failures', () => {
+  it('announces a failure once while the gateway stays down', async () => {
+    const { subject, changes } = harness({ answer: async () => new Response('', { status: 502 }) })
+    await subject.refresh()
+    await subject.refresh()
+    expect(changes).toHaveLength(1)
   })
 })

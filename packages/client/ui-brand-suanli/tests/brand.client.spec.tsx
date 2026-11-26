@@ -70,7 +70,7 @@ describe('product brand plugin', () => {
     await subject.ctx.plugin({ inject: [...inject], apply }).await()
     for (const hole of HOLES) expect(subject.slots.entries(hole)).toHaveLength(1)
     expect(subject.slots.entries(HERO_HOLE)).toHaveLength(1)
-    expect(subject.slots.entries(CATALOG_HOLE)).toHaveLength(1)
+    expect(subject.slots.entries(CATALOG_HOLE)).toHaveLength(2)
     // The blank home keeps its frame slot free for other occupants.
     expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(0)
   })
