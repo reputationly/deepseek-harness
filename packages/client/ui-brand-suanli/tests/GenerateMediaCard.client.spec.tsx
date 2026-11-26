@@ -82,6 +82,12 @@ it('regenerates by sending the same requirements from the composer', () => {
   expect(inputActions.submit).toHaveBeenCalledTimes(1)
 })
 
+it('shows the requirement review next to the result', () => {
+  mount({ meta: { ...VIDEO, review: { verdict: 'mismatch', reason: '画面里没有海' } } })
+  expect(screen.getByText('审核：不符合要求。画面里没有海')).toBeTruthy()
+  expect(screen.getByRole('button', { name: '重新生成' })).toBeTruthy()
+})
+
 it('shows the failure text', () => {
   mount({ isError: true, text: 'Video generation failed: 当前不支持' })
   expect(screen.getByText('视频生成失败')).toBeTruthy()

@@ -12,7 +12,7 @@ export type GatewayStatusKey =
   | 'class.chat' | 'class.vision-image' | 'class.vision-video' | 'class.image-generate' | 'class.image-edit' | 'class.video-generate' | 'class.video-first-last-frame' | 'class.video-reference' | 'class.music-generate' | 'class.speech-generate' | 'class.other' | 'catalog.capability-title' | 'catalog.capability-missing'
   | 'roles.title' | 'roles.description' | 'roles.loading' | 'roles.failed' | 'roles.chat' | 'roles.vision' | 'roles.image' | 'roles.video' | 'roles.music' | 'roles.speech' | 'roles.chat-hint' | 'roles.default' | 'roles.unavailable' | 'roles.review' | 'roles.review-description'
   | 'image.generating' | 'image.generated' | 'image.cancelled' | 'image.failed' | 'image.download' | 'image.copy-prompt' | 'image.copied' | 'image.regenerate' | 'image.regenerate-request'
-  | 'video.generating' | 'video.generated' | 'video.failed' | 'video.regenerate-request' | 'music.generating' | 'music.generated' | 'music.failed' | 'music.regenerate-request' | 'media.play-video' | 'media.play-audio' | 'media.loading' | 'media.open' | 'media.unreadable'
+  | 'video.generating' | 'video.generated' | 'video.failed' | 'video.regenerate-request' | 'music.generating' | 'music.generated' | 'music.failed' | 'music.regenerate-request' | 'media.play-video' | 'media.play-audio' | 'media.loading' | 'media.open' | 'media.unreadable' | 'review.match' | 'review.partial' | 'review.mismatch'
 
 /** English copy. */
 export const en: Record<GatewayStatusKey, string> = {
@@ -86,6 +86,9 @@ export const en: Record<GatewayStatusKey, string> = {
   'media.loading': 'Loading…',
   'media.open': 'Open file',
   'media.unreadable': 'Could not read {path}',
+  'review.match': 'Review: matches the request. {reason}',
+  'review.partial': 'Review: partly matches. {reason}',
+  'review.mismatch': 'Review: does not match. {reason}',
 }
 
 /** Chinese copy. */
@@ -160,6 +163,9 @@ export const zh: Record<GatewayStatusKey, string> = {
   'media.loading': '正在读取…',
   'media.open': '打开文件',
   'media.unreadable': '无法读取 {path}',
+  'review.match': '审核：符合要求。{reason}',
+  'review.partial': '审核：部分符合。{reason}',
+  'review.mismatch': '审核：不符合要求。{reason}',
 }
 
 /** Japanese copy. */
@@ -234,6 +240,9 @@ export const ja: Record<GatewayStatusKey, string> = {
   'media.loading': '読み込み中…',
   'media.open': 'ファイルを開く',
   'media.unreadable': '{path} を読み込めませんでした',
+  'review.match': '審査：要件を満たしています。{reason}',
+  'review.partial': '審査：一部満たしています。{reason}',
+  'review.mismatch': '審査：要件を満たしていません。{reason}',
 }
 
 /** Spanish copy. */
@@ -308,6 +317,9 @@ export const es: Record<GatewayStatusKey, string> = {
   'media.loading': 'Cargando…',
   'media.open': 'Abrir archivo',
   'media.unreadable': 'No se pudo leer {path}',
+  'review.match': 'Revisión: cumple la solicitud. {reason}',
+  'review.partial': 'Revisión: cumple en parte. {reason}',
+  'review.mismatch': 'Revisión: no cumple la solicitud. {reason}',
 }
 
 /** French copy. */
@@ -382,6 +394,9 @@ export const fr: Record<GatewayStatusKey, string> = {
   'media.loading': 'Chargement…',
   'media.open': 'Ouvrir le fichier',
   'media.unreadable': 'Impossible de lire {path}',
+  'review.match': 'Vérification : conforme à la demande. {reason}',
+  'review.partial': 'Vérification : partiellement conforme. {reason}',
+  'review.mismatch': 'Vérification : non conforme. {reason}',
 }
 
 /** German copy. */
@@ -456,6 +471,9 @@ export const de: Record<GatewayStatusKey, string> = {
   'media.loading': 'Wird geladen…',
   'media.open': 'Datei öffnen',
   'media.unreadable': '{path} konnte nicht gelesen werden',
+  'review.match': 'Prüfung: entspricht der Anfrage. {reason}',
+  'review.partial': 'Prüfung: entspricht teilweise. {reason}',
+  'review.mismatch': 'Prüfung: entspricht nicht der Anfrage. {reason}',
 }
 
 /** Russian copy. */
@@ -530,6 +548,9 @@ export const ru: Record<GatewayStatusKey, string> = {
   'media.loading': 'Загрузка…',
   'media.open': 'Открыть файл',
   'media.unreadable': 'Не удалось прочитать {path}',
+  'review.match': 'Проверка: соответствует запросу. {reason}',
+  'review.partial': 'Проверка: соответствует частично. {reason}',
+  'review.mismatch': 'Проверка: не соответствует запросу. {reason}',
 }
 
 /** Portuguese copy. */
@@ -604,4 +625,7 @@ export const pt: Record<GatewayStatusKey, string> = {
   'media.loading': 'Carregando…',
   'media.open': 'Abrir arquivo',
   'media.unreadable': 'Não foi possível ler {path}',
+  'review.match': 'Revisão: atende ao pedido. {reason}',
+  'review.partial': 'Revisão: atende em parte. {reason}',
+  'review.mismatch': 'Revisão: não atende ao pedido. {reason}',
 }

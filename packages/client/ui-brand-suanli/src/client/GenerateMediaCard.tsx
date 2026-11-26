@@ -55,6 +55,9 @@ function GeneratedMedia({ result, kind, props }: { result: MediaResult; kind: 'v
   return <div className={css.card}>
     <p className={css.title}>{t(`${kind}.generated`)}</p>
     <p className={css.detail}>{facts}</p>
+    {result.review !== undefined && (
+      <p className={css.detail} data-verdict={result.review.verdict}>{t(`review.${result.review.verdict}`, { reason: result.review.reason })}</p>
+    )}
     {result.media.map(item => <MediaPlayer key={item.path} item={item} props={props} />)}
     <div className={css.actions}>
       <Button size="sm" icon={copy.copied ? <IconCheckOutlineRegular /> : <IconCopyOutlineRegular />} onClick={copy.onCopy}>
