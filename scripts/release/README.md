@@ -53,6 +53,8 @@ The flow is `prepare → build(matrix) → publish`: calculate one version; pack
 
 If a platform fails, no platform is published. Advancing a pointer to a missing platform artifact would make client updates return 404.
 
+`prepare` first runs `node scripts/release/plugin-freshness.mjs`. It stops the release when the `dist` branch of an external plugin pinned in `apps/cli/package.json` has a newer package than the pinned one; merge the plugin upgrade pull request first.
+
 <a id="bucket-layout"></a>
 
 ## Bucket layout

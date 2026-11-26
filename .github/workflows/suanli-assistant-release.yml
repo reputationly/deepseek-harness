@@ -32,6 +32,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Check the external plugins are current
+        run: node scripts/release/plugin-freshness.mjs
       - id: v
         run: |
           version="${{ inputs.version }}"
