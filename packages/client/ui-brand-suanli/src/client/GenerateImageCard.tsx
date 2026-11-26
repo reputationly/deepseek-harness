@@ -43,7 +43,9 @@ export function GenerateImageCard(props: GenerateImageCardProps) {
 function GeneratedImages({ result, props }: { result: ImageResult; props: GenerateImageCardProps }) {
   const { t, loadImage, inputActions, renderFactorySlot } = props
   const copy = useClipboardCopy(result.prompt)
-  const stored = result.images.flatMap(image => image.attachment === undefined ? [] : [{ attachment: image.attachment, label: baseName(image.path) }])
+  const stored = result.images.flatMap(image => (
+    image.attachment === undefined ? [] : [{ attachment: image.attachment, label: baseName(image.path) }]
+  ))
   const download = useCallback(() => {
     void (async () => {
       for (const image of stored) {

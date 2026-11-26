@@ -39,7 +39,7 @@ try {
     arguments: { prompt: 'a kitten playing' },
   })
   await writeFile('./media-tools-report.json', JSON.stringify({
-    schemaProperties: Object.keys((schema?.parameters.properties ?? {}) as object),
+    schemaProperties: Object.keys(schema?.parameters.properties ?? {}),
     isError: result.isError,
     text: result.content.filter(block => block.type === 'text').map(block => block.text).join(''),
     meta: result.meta,

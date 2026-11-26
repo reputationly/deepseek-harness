@@ -12,7 +12,7 @@ afterEach(cleanup)
 const t: TranslateNS<'gatewayStatus'> = (key, params) => {
   const dictionary: Partial<Record<string, string>> = zh
   const template = dictionary[key] ?? key
-  return template.replace(/\{(\w+)\}/gu, (_match, name: string) => String(params?.[name] ?? ''))
+  return template.replace(/\{(\w+)\}/gu, (_match, name: string) => JSON.stringify(params?.[name] ?? '').replace(/^"|"$/gu, ''))
 }
 
 const ATTACHMENT = { attachmentId: 'att-1', mediaType: 'image/png', bytes: 10, width: 1, height: 1 }

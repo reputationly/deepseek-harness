@@ -23,7 +23,7 @@ import type {} from '@deepseek-ai/dsh-user-questions'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { ASPECT, RESOLUTION, check, specOf } from './params.ts'
 import { questionOf, readAnswer, type OpenParameter } from './questions.ts'
-import type { GeneratedImage, ImageResultMeta, ParameterCheck } from './types.ts'
+import type { GeneratedImage, ImageResultMeta } from './types.ts'
 
 export type * from './types.ts'
 
@@ -242,7 +242,7 @@ async function resolveParameters(
       const result = readAnswer(item, answer.find(entry => entry.id === item.spec.key))
       if (result === 'skipped') return undefined
       if (result.kind === 'ok') settled[item.spec.key] = result.value
-      else again.push({ ...item, check: result as Exclude<ParameterCheck, { kind: 'ok' }> })
+      else again.push({ ...item, check: result })
     }
     if (again.length > 0 && round > 0) {
       throw new Error(`The answers are still not supported: ${again.map(item => item.spec.label).join(', ')}.`)
