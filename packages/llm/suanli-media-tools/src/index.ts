@@ -8,7 +8,7 @@
  */
 
 import { mkdir, readFile, realpath, rename } from 'node:fs/promises'
-import { extname, join, sep } from 'node:path'
+import { extname, isAbsolute, join, relative } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { CapabilityEntry } from '@deepseek-ai/dsh-suanli-model-catalog/types'
@@ -202,12 +202,13 @@ async function generateImage(ctx: Context, args: ImageArgs, exec: ToolExecution)
   const base = { prompt: args.prompt, model, modelLabel }
   if (parameters === undefined) return { ...base, status: 'cancelled' as const, parameters: [], images: [] }
 
+  const directory = await outputDirectory(cwd)
   const images: Saved[] = []
   for (let index = 0; index < count; index++) {
     exec.signal.throwIfAborted()
     const url = await submitOne(ctx, { model, prompt: args.prompt, references, parameters })
     exec.signal.throwIfAborted()
-    images.push(await saveOne(ctx, url, cwd))
+    images.push(await saveOne(ctx, url, directory))
   }
   return {
     ...base,
@@ -309,16 +310,11 @@ async function submitOne(
  * Save one artifact into `generated/` and admit it as an attachment for the card.
  * @param ctx - plugin context.
  * @param url - artifact URL.
- * @param cwd - session workspace.
+ * @param directory - the session's generated/ directory.
  * @returns the saved image.
- * @throws When `generated/` leaves the workspace, or the artifact could not be written.
+ * @throws When the artifact could not be written.
  */
-async function saveOne(ctx: Context, url: string, cwd: string): Promise<Saved> {
-  const directory = join(cwd, 'generated')
-  await mkdir(directory, { recursive: true })
-  if (!(await realpath(directory)).startsWith((await realpath(cwd)) + sep)) {
-    throw new Error('The workspace generated/ directory points outside the workspace.')
-  }
+async function saveOne(ctx: Context, url: string, directory: string): Promise<Saved> {
   const stem = join(directory, `${stamp()}-${Math.random().toString(36).slice(2, 8)}`)
   const saved = await ctx.suanliMedia.saveArtifact(url, `${stem}.png`)
   if (!saved.ok) throw failure(saved.reason, saved.detail)
@@ -352,6 +348,22 @@ async function admit(
     ctx.logger.warn('suanli media tools: the card cannot show %s: %s', path, String(error))
     return {}
   }
+}
+
+/**
+ * Create the session's `generated/` directory before any image is requested.
+ * @param cwd - session workspace.
+ * @returns the directory path.
+ * @throws When `generated/` resolves outside the workspace.
+ */
+async function outputDirectory(cwd: string): Promise<string> {
+  const directory = join(cwd, 'generated')
+  await mkdir(directory, { recursive: true })
+  const inside = relative(await realpath(cwd), await realpath(directory))
+  if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) {
+    throw new Error('The workspace generated/ directory points outside the workspace.')
+  }
+  return directory
 }
 
 /**

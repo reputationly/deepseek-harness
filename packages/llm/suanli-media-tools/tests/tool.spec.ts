@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -100,6 +100,18 @@ describe('generate_image', () => {
     expect(files).toHaveLength(1)
     expect(files[0]).toMatch(/\.png$/u)
     expect(JSON.parse(textOf(result))).toMatchObject({ status: 'generated', parameters: { aspect_ratio: '9:16', resolution: '2K' } })
+  })
+
+  it('refuses before submitting when generated/ points outside the workspace', async () => {
+    const { submit, run, cwd } = await boot()
+    const outside = await mkdtemp(join(tmpdir(), 'suanli-media-outside-'))
+    dirs.push(outside)
+    await symlink(outside, join(cwd, 'generated'))
+    const result = await run({ prompt: '小猫玩耍', aspect_ratio: '竖屏', resolution: '2k' })
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain('outside the workspace')
+    expect(submit).not.toHaveBeenCalled()
+    expect(await readdir(outside)).toEqual([])
   })
 
   it('asks for both missing parameters on one card, catalog default first', async () => {
