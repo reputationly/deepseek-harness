@@ -125,7 +125,7 @@
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@michengai/dsh-im-connect": "1.0.46",
     "@michengai/dsh-codex-pet": "https://raw.githubusercontent.com/reputationly/dsh-codex-pet/dd3cca954ac5d0a6ab70f6d70e365b789c7592d8/michengai-dsh-codex-pet-1.1.1-suanli.3.tgz",
-    "@q253595422/dsh-imagegen-video": "https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/a2ca83a4d608dabf017175d48f9c9801781052d1/q253595422-dsh-imagegen-video-1.35.0-suanli.2.5.tgz"
+    "@q253595422/dsh-imagegen-video": "https://raw.githubusercontent.com/reputationly/dsh-imagegen-video/44ebf8c4e58cb572de449f37d5bed0b19d1a6a63/q253595422-dsh-imagegen-video-1.35.0-suanli.2.6.tgz"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-skill-badge": "workspace:*",
