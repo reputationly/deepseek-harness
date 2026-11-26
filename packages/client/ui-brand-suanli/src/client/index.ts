@@ -81,9 +81,7 @@ export function apply(ctx: ClientContext): void {
     inject: (): { openInCreative: OpenInCreative } => ({
       openInCreative: (input) => {
         const creative = ctx.get('suanliCreative') as CreativeFace | undefined
-        if (creative === undefined) return false
-        void creative.openImages(input)
-        return true
+        return creative?.openImages(input) ?? false
       },
     }),
   }, GenerateImageCard))

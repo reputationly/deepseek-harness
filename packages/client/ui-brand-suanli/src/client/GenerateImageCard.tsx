@@ -18,7 +18,7 @@ export interface CreativeImages {
   images: Array<{ b64: string; mime: string }>
 }
 
-/** @returns false when the creative workbench is not loaded. */
+/** @returns false when the creative workbench is not loaded or is switched off. */
 export type OpenInCreative = (input: CreativeImages) => boolean
 
 export type GenerateImageCardProps = ToolCallViewProps & PropsRenderFactories & {
