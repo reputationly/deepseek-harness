@@ -243,8 +243,8 @@ export class SuanliModelCatalogService extends TypertRemoteService {
       committed: async (record) => { await this.applyChat(record) },
     })
     this.roleStore = await this.openRoleStore()
-    mediaSync.hydrate()
     this.mediaSync = mediaSync
+    mediaSync.hydrate()
     await mediaSync.refresh()
   }
 

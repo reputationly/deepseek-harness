@@ -75,8 +75,14 @@ async function boot(options: {
   vi.stubGlobal('fetch', send)
   const updates: unknown[] = []
   ctx.on('llm/models-updated', (provider) => { updates.push(provider) })
+  // Entries a listener reads when the catalog announces a change.
+  const announced: number[] = []
+  ctx.on('suanli-model-catalog/media-updated', () => {
+    const service = ctx.get('suanliModels') as { media: () => { entries: readonly unknown[] } } | undefined
+    announced.push(service?.media().entries.length ?? -1)
+  })
   await ctx.plugin(SuanliModelCatalogService, { baseURL: 'https://gw.example/v1', apiKeyEnv: 'AURORA_API_KEY' })
-  return { ctx, storage, send, mutations, updates }
+  return { ctx, storage, send, mutations, updates, announced }
 }
 
 /** One stored generation carrying the fixture image entry. */
@@ -112,6 +118,14 @@ describe('SuanliModelCatalogService', () => {
     })
     await vi.waitFor(() => { expect(ctx.suanliModels.media().version).toBe('stored') })
     expect(ctx.suanliModels.media().entries).toHaveLength(1)
+  })
+
+  it('announces a stored generation that a listener can already read', async () => {
+    const { announced } = await boot({
+      stored: { version: 'stored', fetchedAt: 3, payload: JSON.stringify({ version: 'stored', capabilities: [STORED_ENTRY] }) },
+      answer: () => new Promise<Response>(() => {}),
+    })
+    await vi.waitFor(() => { expect(announced).toEqual([1]) })
   })
 
   it('keeps the entries when a later read fails and reports why', async () => {
