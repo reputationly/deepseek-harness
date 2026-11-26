@@ -53,6 +53,8 @@
 
 任一平台失败时，所有平台都不发布。若入口指向缺失的平台产物，客户端更新会返回 404。
 
+`prepare` 先运行 `node scripts/release/plugin-freshness.mjs`。`apps/cli/package.json` 固定的外部插件在 `dist` 分支上有更新的发行包时，发布会停下；先合并插件升级 PR。
+
 <a id="bucket-layout"></a>
 
 ## 存储桶布局
