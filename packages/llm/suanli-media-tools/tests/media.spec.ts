@@ -110,8 +110,10 @@ async function boot(options: {
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(plugin)
-  const run = async (name: string, args: Record<string, unknown>, signal = new AbortController().signal) => await executeToolFixture(ctx, {
-    callId: ToolCallId('c1'), name, arguments: args, agent: { id: 'a1' } as unknown as Agent, signal,
+  const run = async (
+    name: string, args: Record<string, unknown>, signal = new AbortController().signal, session = 's1',
+  ) => await executeToolFixture(ctx, {
+    callId: ToolCallId('c1'), name, arguments: args, agent: { id: 'a1', session: { id: session } } as unknown as Agent, signal,
   })
   return { ctx, cwd, ask, submit, wait, cancel, run }
 }
@@ -204,6 +206,29 @@ describe('generate_video', () => {
     const args = { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true }
     await run('generate_video', args, controller.signal)
     await run('generate_video', args)
+    expect(submit).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves the task rendering and resumable when the Host shuts down mid-call', async () => {
+    const controller = new AbortController()
+    const { submit, wait, cancel, run } = await boot()
+    wait.mockImplementationOnce(async () => {
+      controller.abort({ kind: 'disposed' })
+      return { ok: false, reason: 'timed-out' }
+    })
+    const args = { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true }
+    await run('generate_video', args, controller.signal)
+    expect(cancel).not.toHaveBeenCalled()
+    expect((await run('generate_video', args)).isError).toBe(false)
+    expect(submit).toHaveBeenCalledTimes(1)
+  })
+
+  it('never attaches another chat to this chat\'s task', async () => {
+    const { submit, wait, run } = await boot()
+    const args = { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true }
+    wait.mockRejectedValueOnce(new Error('the Host went away'))
+    await run('generate_video', args)
+    await run('generate_video', args, new AbortController().signal, 's2')
     expect(submit).toHaveBeenCalledTimes(2)
   })
 

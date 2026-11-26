@@ -55,16 +55,17 @@ export interface PendingTasks {
 }
 
 /**
- * Fingerprint one submission: the same workspace, model, prompt, inputs, and parameters give the same key.
+ * Fingerprint one submission: the same session, workspace, model, prompt, inputs, and parameters give the same key.
+ * @param session - session id, so another chat never attaches to this chat's task.
  * @param cwd - session workspace.
  * @param request - the submission.
  * @returns the key.
  */
-export function fingerprint(cwd: string, request: MediaSubmitRequest): string {
+export function fingerprint(session: string, cwd: string, request: MediaSubmitRequest): string {
   const params = Object.entries(request.params ?? {}).sort(([a], [b]) => a.localeCompare(b))
   return createHash('sha256')
     .update(JSON.stringify([
-      cwd, request.operation, request.model, request.prompt, request.taskType ?? null, request.referenceImages ?? [], params,
+      session, cwd, request.operation, request.model, request.prompt, request.taskType ?? null, request.referenceImages ?? [], params,
     ]))
     .digest('hex')
 }

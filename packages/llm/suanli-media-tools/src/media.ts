@@ -235,7 +235,7 @@ async function generate(
     ...chosen.references.length > 0 ? { referenceImages: chosen.references } : {},
     params: settled,
   }
-  const key = fingerprint(cwd, request)
+  const key = fingerprint(exec.agent?.session.id ?? '', cwd, request)
   let url: string
   let taskId = await pending.find(key)
   if (taskId === undefined) {
@@ -262,6 +262,16 @@ async function generate(
 }
 
 /**
+ * Whether the call stopped because the Host is shutting down rather than because the user stopped it.
+ * @param signal - aborted call signal.
+ * @returns true for a Host shutdown, which leaves the task rendering and resumable.
+ */
+function shutdown(signal: AbortSignal): boolean {
+  const reason: unknown = signal.reason
+  return typeof reason === 'object' && reason !== null && (reason as { kind?: unknown }).kind === 'disposed'
+}
+
+/**
  * Poll one task until it delivers; a stop cancels the task at the gateway.
  * @param ctx - plugin context.
  * @param what - which generation, for errors.
@@ -278,6 +288,7 @@ async function waitFor(
   settled: () => Promise<void>,
 ): Promise<string> {
   const cancel = (): void => {
+    if (shutdown(signal)) return
     void settled().catch(() => {})
     void ctx.suanliMedia.cancel(taskId, operation).catch((error: unknown) => {
       ctx.logger.warn('suanli media tools: cancelling task %s failed: %s', taskId, String(error))
