@@ -688,6 +688,10 @@
       "items": {
         "type": "string"
       }
+    },
+    "source_video": {
+      "type": "string",
+      "description": "Workspace path of a clip to continue; duration_seconds is then the total length. Not combined with images."
     }
   },
   "required": [

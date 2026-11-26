@@ -23,6 +23,8 @@ const POLL_MS = 10_000
 const GONE: ReadonlySet<MediaFailureReason> = new Set(['not-found', 'rejected', 'cancelled', 'no-artifact'])
 /** Largest image a frame or reference may be. */
 const MAX_REFERENCE_BYTES = 20 * 1024 * 1024
+/** Largest clip the gateway continues. */
+const MAX_SOURCE_VIDEO_BYTES = 50 * 1024 * 1024
 
 /** Arguments of `generate_video`. */
 interface VideoArgs {
@@ -34,6 +36,7 @@ interface VideoArgs {
   readonly first_frame?: string | undefined
   readonly last_frame?: string | undefined
   readonly reference_images?: readonly string[] | undefined
+  readonly source_video?: string | undefined
 }
 
 /** Arguments of `generate_music`. */
@@ -49,6 +52,7 @@ interface Plan {
   readonly modelLabel: string
   readonly taskType?: string
   readonly references: readonly string[]
+  readonly sourceVideo?: string
   readonly extra: Readonly<Record<string, string>>
 }
 
@@ -64,7 +68,7 @@ export interface MediaValue {
 }
 
 const videoDescription = 'Generate a video clip from a text description, optionally from a first (and last) frame '
-  + 'or from reference images in the workspace. Pass the user\'s own words for aspect ratio, resolution, duration, '
+  + 'or from reference images in the workspace, or continue a workspace clip. Pass the user\'s own words for aspect ratio, resolution, duration, '
   + 'and sound when they give them (for example "竖屏", "2K", 10, true); leave them out otherwise. The tool asks the '
   + 'user for anything missing or unsupported, so do not ask first. Rendering takes minutes; call it once.'
 
@@ -92,6 +96,10 @@ export function videoTool(ctx: Context, pending: PendingTasks) {
       reference_images: {
         type: 'array', items: { type: 'string' },
         description: 'Workspace paths of images whose subjects or style the clip should follow; not combined with frames.',
+      },
+      source_video: {
+        type: 'string',
+        description: 'Workspace path of a clip to continue; duration_seconds is then the total length. Not combined with images.',
       },
     },
     output: outputOf(),
@@ -233,6 +241,7 @@ async function generate(
     prompt,
     ...chosen.taskType !== undefined ? { taskType: chosen.taskType } : {},
     ...chosen.references.length > 0 ? { referenceImages: chosen.references } : {},
+    ...chosen.sourceVideo !== undefined ? { sourceVideo: chosen.sourceVideo } : {},
     params: settled,
   }
   const key = fingerprint(exec.agent?.session.id ?? '', cwd, request)
@@ -358,9 +367,12 @@ async function planVideo(
   {
     const references = args.reference_images ?? []
     const frames = [args.first_frame, args.last_frame].filter((path): path is string => path !== undefined && path !== '')
+    const source = args.source_video === undefined || args.source_video === '' ? undefined : args.source_video
     if (references.length > 0 && frames.length > 0) throw new Error('Pass either frames or reference images, not both.')
+    if (source !== undefined && references.length + frames.length > 0) throw new Error('A continued clip takes no images.')
     if (args.first_frame === undefined && args.last_frame !== undefined) throw new Error('last_frame needs first_frame.')
-    const wanted = references.length > 0 ? 'reference' : frames.length > 0 ? 'first-last-frame' : 'text-to-video'
+    const wanted = source !== undefined ? 'video-extension'
+      : references.length > 0 ? 'reference' : frames.length > 0 ? 'first-last-frame' : 'text-to-video'
     const offers = (entry: CapabilityEntry): CapabilityMode | undefined | null =>
       entry.modes === undefined || entry.modes.length === 0 ? null : entry.modes.find(mode => mode.id === wanted)
     const entry = entries.find(item => item.model === preferred && offers(item) !== undefined)
@@ -382,6 +394,7 @@ async function planVideo(
       modelLabel: labelOf(ctx, 'video', entry),
       ...taskType !== undefined ? { taskType } : {},
       references: await readImages(ctx, images, cwd, signal),
+      ...source !== undefined ? { sourceVideo: await readVideo(ctx, source, cwd, signal) } : {},
       extra: hasMode && mode !== undefined ? { image_mode: mode.id } : {},
     }
   }
@@ -426,7 +439,28 @@ function labelOf(ctx: Context, role: 'video' | 'music', entry: CapabilityEntry):
  * @returns the name.
  */
 function modeName(mode: string): string {
-  return mode === 'reference' ? 'Reference-to-video' : mode === 'first-last-frame' ? 'Frame-to-video' : 'Text-to-video'
+  return mode === 'reference' ? 'Reference-to-video'
+    : mode === 'first-last-frame' ? 'Frame-to-video'
+      : mode === 'video-extension' ? 'Video continuation' : 'Text-to-video'
+}
+
+/**
+ * Read the clip to continue through the session's filesystem policy.
+ * @param ctx - plugin context.
+ * @param path - workspace path.
+ * @param cwd - session workspace.
+ * @param signal - call cancellation.
+ * @returns its data URL.
+ * @throws When the file is not an MP4 or WebM clip.
+ */
+async function readVideo(ctx: Context, path: string, cwd: string, signal: AbortSignal): Promise<string> {
+  const target = await ctx.fs.resolve(path, { cwd, signal })
+  const data = await ctx.fs.readBytes(target, signal, MAX_SOURCE_VIDEO_BYTES)
+  const isMp4 = ascii(data, 4, 4) === 'ftyp'
+  if (!isMp4 && !(data[0] === 0x1a && data[1] === 0x45 && data[2] === 0xdf && data[3] === 0xa3)) {
+    throw new Error(`"${path}" is not an MP4 or WebM clip.`)
+  }
+  return `data:${isMp4 ? 'video/mp4' : 'video/webm'};base64,${Buffer.from(data).toString('base64')}`
 }
 
 /**

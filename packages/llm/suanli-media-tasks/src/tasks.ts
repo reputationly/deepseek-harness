@@ -62,6 +62,7 @@ function bodyOf(request: MediaSubmitRequest): Record<string, unknown> {
   const images = references.length > 0 ? references : undefined
   const metadata: Record<string, unknown> = { ...request.params ?? {} }
   if (request.taskType !== undefined) metadata.task_type = request.taskType
+  if (request.sourceVideo !== undefined) metadata.source_video = request.sourceVideo
   if (transportOf(request.operation) === 'videos') {
     return {
       model: request.model,

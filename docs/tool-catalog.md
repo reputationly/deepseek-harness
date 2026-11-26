@@ -644,7 +644,7 @@ Source: [`packages/llm/suanli-media-tools/src/index.ts`](../packages/llm/suanli-
 
 ### `generate_video`
 
-Generate a video clip from a text description, optionally from a first (and last) frame or from reference images in the workspace. Pass the user's own words for aspect ratio, resolution, duration, and sound when they give them (for example "竖屏", "2K", 10, true); leave them out otherwise. The tool asks the user for anything missing or unsupported, so do not ask first. Rendering takes minutes; call it once.
+Generate a video clip from a text description, optionally from a first (and last) frame or from reference images in the workspace, or continue a workspace clip. Pass the user's own words for aspect ratio, resolution, duration, and sound when they give them (for example "竖屏", "2K", 10, true); leave them out otherwise. The tool asks the user for anything missing or unsupported, so do not ask first. Rendering takes minutes; call it once.
 
 ```json
 {
@@ -684,6 +684,10 @@ Generate a video clip from a text description, optionally from a first (and last
       "items": {
         "type": "string"
       }
+    },
+    "source_video": {
+      "type": "string",
+      "description": "Workspace path of a clip to continue; duration_seconds is then the total length. Not combined with images."
     }
   },
   "required": [

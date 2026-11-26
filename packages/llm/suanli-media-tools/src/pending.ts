@@ -65,7 +65,8 @@ export function fingerprint(session: string, cwd: string, request: MediaSubmitRe
   const params = Object.entries(request.params ?? {}).sort(([a], [b]) => a.localeCompare(b))
   return createHash('sha256')
     .update(JSON.stringify([
-      session, cwd, request.operation, request.model, request.prompt, request.taskType ?? null, request.referenceImages ?? [], params,
+      session, cwd, request.operation, request.model, request.prompt, request.taskType ?? null,
+      request.referenceImages ?? [], request.sourceVideo ?? null, params,
     ]))
     .digest('hex')
 }
