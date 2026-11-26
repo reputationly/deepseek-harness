@@ -7,6 +7,7 @@ import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-suanli-model-catalog'
+import { review } from './review.ts'
 import { failure, outputDirectory, resolveParameters, saveArtifact, workspaceOf } from './common.ts'
 import { ASPECT, AUDIO, DURATION, INSTRUMENTAL, RESOLUTION, type ParameterKind } from './params.ts'
 import type { MediaResultMeta } from './types.ts'
@@ -56,6 +57,7 @@ interface MediaValue {
   readonly modelLabel: string
   readonly parameters: { key: string; value: string }[]
   readonly media: { path: string; mediaType: string }[]
+  readonly review?: { verdict: 'match' | 'partial' | 'mismatch'; reason: string }
 }
 
 const videoDescription = 'Generate a video clip from a text description, optionally from a first (and last) frame '
@@ -138,6 +140,13 @@ function outputOf() {
         prompt: { type: 'string', required: true },
         model: { type: 'string', required: true },
         modelLabel: { type: 'string', required: true },
+        review: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            verdict: { type: 'string', required: true, enum: ['match', 'partial', 'mismatch'] },
+            reason: { type: 'string', required: true },
+          },
+        },
         parameters: {
           type: 'array', required: true,
           items: {
@@ -163,6 +172,7 @@ function outputOf() {
           model: value.model,
           parameters: Object.fromEntries(value.parameters.map(entry => [entry.key, entry.value])),
           files: value.media.map(item => item.path),
+          ...value.review !== undefined ? { review: value.review } : {},
         }),
     }],
     presentationMeta: (_args: unknown, value: MediaValue): JsonValue => ({
@@ -172,6 +182,7 @@ function outputOf() {
       modelLabel: value.modelLabel,
       parameters: Object.fromEntries(value.parameters.map(entry => [entry.key, entry.value])),
       media: value.media.map(item => ({ path: item.path, mediaType: item.mediaType })),
+      ...value.review !== undefined ? { review: value.review } : {},
     } satisfies MediaResultMeta),
   }
 }
@@ -219,11 +230,14 @@ async function generate(
   const url = submitted.url ?? await waitFor(ctx, what, submitted.taskId, operation, budgetMs, exec.signal)
   exec.signal.throwIfAborted()
   const { path, data } = await saveArtifact(ctx, what, url, cwd, bytes => typeOf(bytes, role).extension)
+  const mediaType = typeOf(data, role).mediaType
+  const reviewed = role === 'video' ? await review(ctx, prompt, [{ data, mediaType }]) : undefined
   return {
     ...base,
     status: 'generated',
     parameters: Object.entries(settled).filter(([key]) => key !== 'lyrics').map(([key, value]) => ({ key, value })),
-    media: [{ path, mediaType: typeOf(data, role).mediaType }],
+    media: [{ path, mediaType }],
+    ...reviewed !== undefined ? { review: reviewed } : {},
   }
 }
 

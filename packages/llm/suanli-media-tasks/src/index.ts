@@ -20,7 +20,7 @@ import {
 import { MediaTaskClient, transportFor } from './tasks.ts'
 import type {
   MediaCancelResult, MediaDownloadResult, MediaOperation, MediaStatusResult, MediaSubmitRequest, MediaSubmitResult,
-  MediaTransport,
+  MediaInspectRequest, MediaInspectResult, MediaTransport,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -145,6 +145,16 @@ export class SuanliMediaTasksService extends TypertRemoteService {
   @Remote
   async saveArtifact(url: string, targetPath: string): Promise<MediaDownloadResult> {
     return await this.client.save(url, targetPath, new AbortController().signal)
+  }
+
+  /**
+   * Ask a vision model one question about generated files.
+   * @param request - vision model, instruction, and the inlined files.
+   * @returns the answer text, or why there is none.
+   */
+  @Remote
+  async inspect(request: MediaInspectRequest): Promise<MediaInspectResult> {
+    return await this.client.inspect(request, new AbortController().signal)
   }
 
   /**

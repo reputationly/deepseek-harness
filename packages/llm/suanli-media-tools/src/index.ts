@@ -16,6 +16,8 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-suanli-model-catalog'
 import type {} from '@deepseek-ai/dsh-suanli-media-tasks'
+import { readFile } from 'node:fs/promises'
+import { review } from './review.ts'
 import { failure, outputDirectory, resolveParameters, saveArtifact, workspaceOf } from './common.ts'
 import { musicTool, videoTool } from './media.ts'
 import { ASPECT, RESOLUTION } from './params.ts'
@@ -121,6 +123,13 @@ function imageTool(ctx: Context) {
           prompt: { type: 'string', required: true },
           model: { type: 'string', required: true },
           modelLabel: { type: 'string', required: true },
+          review: {
+            type: 'object', additionalProperties: false,
+            properties: {
+              verdict: { type: 'string', required: true, enum: ['match', 'partial', 'mismatch'] },
+              reason: { type: 'string', required: true },
+            },
+          },
           parameters: {
             type: 'array', required: true,
             items: {
@@ -149,6 +158,7 @@ function imageTool(ctx: Context) {
             model: value.model,
             parameters: Object.fromEntries(value.parameters.map(entry => [entry.key, entry.value])),
             files: value.images.map(image => image.path),
+            ...value.review !== undefined ? { review: value.review } : {},
           }),
       }],
       presentationMeta: (_args, value): JsonValue => ({
@@ -161,6 +171,7 @@ function imageTool(ctx: Context) {
           path: image.path,
           ...image.attachment !== undefined ? { attachment: image.attachment } : {},
         })),
+        ...value.review !== undefined ? { review: value.review } : {},
       } satisfies Omit<ImageResultMeta, 'images'> & { images: readonly { path: string; attachment?: Attachment }[] }),
     },
     timeoutMs: IMAGE_WAIT_MS * MAX_COUNT + 600_000,
@@ -202,11 +213,16 @@ async function generateImage(ctx: Context, args: ImageArgs, exec: ToolExecution)
     exec.signal.throwIfAborted()
     images.push(await saveOne(ctx, url, cwd))
   }
+  const reviewed = await review(ctx, args.prompt, await Promise.all(images.map(async (image) => {
+    const data = new Uint8Array(await readFile(image.path))
+    return { data, mediaType: sniff(data) ?? 'image/png' }
+  })))
   return {
     ...base,
     status: 'generated' as const,
     parameters: Object.entries(parameters).map(([key, value]) => ({ key, value })),
     images,
+    ...reviewed !== undefined ? { review: reviewed } : {},
   }
 }
 

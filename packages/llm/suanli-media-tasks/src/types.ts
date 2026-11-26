@@ -79,3 +79,26 @@ export type MediaDownloadResult =
 export type MediaCancelResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: MediaFailureReason; readonly detail?: string }
+
+/** One file a vision model looks at, inlined as a data URL. */
+export interface MediaInspectInput {
+  /** Whether the chat request carries it as an image or a video part. */
+  readonly kind: 'image' | 'video'
+  /** `data:<type>;base64,...` of the file. */
+  readonly dataUrl: string
+}
+
+/** One question to a vision model about generated files. */
+export interface MediaInspectRequest {
+  /** Wire model id of the vision model. */
+  readonly model: string
+  /** What the model is asked about the files. */
+  readonly instruction: string
+  /** The files, in the order the instruction refers to them. */
+  readonly media: readonly MediaInspectInput[]
+}
+
+/** The vision model's answer, or why there is none. */
+export type MediaInspectResult =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly reason: MediaFailureReason; readonly detail?: string }

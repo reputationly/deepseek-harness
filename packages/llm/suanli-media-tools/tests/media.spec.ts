@@ -61,6 +61,7 @@ async function boot(options: {
   answer?: (request: AskUserQuestionRequest) => AskUserQuestionAnswer
   wait?: () => Promise<unknown>
   save?: (path: string, cwd: string) => Promise<void>
+  review?: string
 } = {}) {
   const cwd = await mkdtemp(join(tmpdir(), 'suanli-media-video-'))
   dirs.push(cwd)
@@ -71,7 +72,9 @@ async function boot(options: {
   const ctx = new Context()
   contexts.push(ctx)
   ctx.provide('suanliModels', {
+    preferences: () => ({ autoReview: options.review !== undefined }),
     roles: () => [
+      { role: 'vision', candidates: [{ model: 'vl', label: 'VL' }], selected: null, fallback: 'vl' },
       { role: 'video', candidates: [{ model: FL.model, label: 'MiniMax H3' }, { model: REF.model, label: 'MiniMax H3 Ref' }], selected: null, fallback: FL.model },
       { role: 'music', candidates: [{ model: MUSIC.model, label: 'Music 3.0' }], selected: null, fallback: MUSIC.model },
     ],
@@ -79,6 +82,7 @@ async function boot(options: {
   } as never)
   ctx.provide('suanliMedia', {
     submit, wait, cancel,
+    inspect: vi.fn(async () => ({ ok: true, text: options.review ?? '' })),
     saveArtifact: async (url: string, path: string) => {
       await options.save?.(path, cwd)
       await writeFile(path, url.endsWith('/m') ? MP3 : MP4)
@@ -179,6 +183,21 @@ describe('generate_video', () => {
     expect(result.isError).toBe(true)
     expect(textOf(result)).toContain('outside the workspace')
     expect(await readdir(outside)).toEqual([])
+  })
+})
+
+describe('requirement review', () => {
+  it('records the vision model verdict in the result', async () => {
+    const { run } = await boot({ review: '```json\n{"verdict":"mismatch","reason":"画面里没有海"}\n```' })
+    const result = await run('generate_video', { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true })
+    expect(result.meta).toMatchObject({ review: { verdict: 'mismatch', reason: '画面里没有海' } })
+    expect(JSON.parse(textOf(result))).toMatchObject({ review: { verdict: 'mismatch' } })
+  })
+
+  it('leaves the result unreviewed when review is off', async () => {
+    const { run } = await boot()
+    const result = await run('generate_video', { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true })
+    expect(result.meta).not.toHaveProperty('review')
   })
 })
 

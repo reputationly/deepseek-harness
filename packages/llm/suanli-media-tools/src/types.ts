@@ -3,6 +3,8 @@
  * @module @deepseek-ai/dsh-suanli-media-tools/types
  */
 
+import type { Review } from './review.ts'
+
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 
 /** One generation parameter the catalog entry declares as a closed set. */
@@ -45,6 +47,8 @@ export interface ImageResultMeta {
   readonly parameters: Readonly<Record<string, string>>
   /** Generated images in submission order. */
   readonly images: readonly GeneratedImage[]
+  /** The vision model's requirement review, when review is on and succeeded. */
+  readonly review?: Review
 }
 
 /** One saved video or audio file. */
@@ -69,4 +73,6 @@ export interface MediaResultMeta {
   readonly parameters: Readonly<Record<string, string>>
   /** Generated files. */
   readonly media: readonly GeneratedMedia[]
+  /** The vision model's requirement review, when review is on and succeeded. */
+  readonly review?: Review
 }
