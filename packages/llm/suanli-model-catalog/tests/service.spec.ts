@@ -50,6 +50,7 @@ async function boot(options: {
   readonly stored?: StoredSnapshot
   readonly withStorage?: boolean
   readonly models?: readonly unknown[]
+  readonly pinned?: boolean
 }) {
   const ctx = new Context()
   contexts.push(ctx)
@@ -65,6 +66,7 @@ async function boot(options: {
   ctx.provide('settings', {
     describe: () => models === undefined ? [] : [{ ns: 'llm-deepseek', value: { models } }],
     mutate: async (ns: string, ops: readonly { value: readonly unknown[] }[]) => {
+      if (options.pinned === true) throw new Error(`Configuration for "${ns}" is overridden by a home patch`)
       mutations.push({ ns, ops })
       models = ops[0]?.value
     },
@@ -118,6 +120,12 @@ describe('SuanliModelCatalogService', () => {
     })
     await vi.waitFor(() => { expect(ctx.suanliModels.media().version).toBe('stored') })
     expect(ctx.suanliModels.media().entries).toHaveLength(1)
+  })
+
+  it('announces the media catalog when the profile pins the chat models', async () => {
+    const { ctx, announced } = await boot({ pinned: true })
+    await vi.waitFor(() => { expect(announced).toEqual([3]) })
+    expect(ctx.suanliModels.media().status).toBe('ready')
   })
 
   it('announces a stored generation that a listener can already read', async () => {

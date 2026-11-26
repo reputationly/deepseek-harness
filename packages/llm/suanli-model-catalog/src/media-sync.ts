@@ -168,8 +168,13 @@ export class MediaCatalogSync {
       : mediaEntries(record.entries).length === 0 ? 'empty' : 'ready'
     this.snapshot = { status, version: record.version, fetchedAt: record.fetchedAt, entries: record.entries }
     this.chat = { text: record.text, defaults: record.defaults }
-    await this.inputs.committed(record)
     if (previous.status !== status || previous.version !== record.version) this.inputs.changed()
+    try {
+      await this.inputs.committed(record)
+    } catch (error) {
+      // A profile that pins the chat models refuses the write; the media catalog stays in effect.
+      this.inputs.report(`model catalog: could not apply the chat models (${String(error)})`)
+    }
     return this.snapshot
   }
 }
