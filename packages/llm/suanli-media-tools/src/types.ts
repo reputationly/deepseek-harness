@@ -46,3 +46,27 @@ export interface ImageResultMeta {
   /** Generated images in submission order. */
   readonly images: readonly GeneratedImage[]
 }
+
+/** One saved video or audio file. */
+export interface GeneratedMedia {
+  /** Absolute path under the session's `generated/`. */
+  readonly path: string
+  /** Sniffed type, such as `video/mp4` or `audio/mpeg`. */
+  readonly mediaType: string
+}
+
+/** Presentation metadata of a `generate_video` or `generate_music` result. */
+export interface MediaResultMeta {
+  /** Whether a file was generated or the user cancelled before submission. */
+  readonly status: 'generated' | 'cancelled'
+  /** What the user asked for. */
+  readonly prompt: string
+  /** Gateway model id. */
+  readonly model: string
+  /** Model name the card shows. */
+  readonly modelLabel: string
+  /** Settled parameters by catalog key. */
+  readonly parameters: Readonly<Record<string, string>>
+  /** Generated files. */
+  readonly media: readonly GeneratedMedia[]
+}

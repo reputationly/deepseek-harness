@@ -23,6 +23,8 @@ export interface ParameterKind {
   readonly label: string
   /** Map one user wording to a comparable form. */
   readonly normalize: (raw: string) => string
+  /** Words the card shows for catalog values, such as `true` → 有声. */
+  readonly labels?: Readonly<Record<string, string>>
 }
 
 /**
@@ -50,6 +52,44 @@ export function normalizeResolution(raw: string): string {
 export const ASPECT: ParameterKind = { keys: ['aspect_ratio', 'ratio'], label: '宽高比', normalize: normalizeAspect }
 /** Resolution tier of an image. */
 export const RESOLUTION: ParameterKind = { keys: ['resolution', 'size'], label: '分辨率', normalize: normalizeResolution }
+
+/**
+ * Bring one duration wording to whole seconds.
+ * @param raw - user wording, such as `10秒` or `10s`.
+ * @returns comparable form.
+ */
+export function normalizeDuration(raw: string): string {
+  const trimmed = raw.replace(/\s|秒钟|秒|seconds?|secs?|s$/giu, '')
+  const seconds = Number(trimmed)
+  return Number.isFinite(seconds) ? String(seconds) : trimmed
+}
+
+/** Yes and no wording users say for a switch. */
+const YES = /^(true|yes|y|是|有|要|开|开启|需要|有声|带声音|带人声|纯音乐|纯器乐|器乐)$/iu
+const NO = /^(false|no|n|否|无|不要|关|关闭|不需要|无声|静音|不带声音|人声|带歌词)$/iu
+
+/**
+ * Bring one switch wording to the `true`/`false` form the catalog uses.
+ * @param raw - user wording.
+ * @returns comparable form.
+ */
+export function normalizeSwitch(raw: string): string {
+  const trimmed = raw.trim()
+  if (YES.test(trimmed)) return 'true'
+  if (NO.test(trimmed)) return 'false'
+  return trimmed.toLowerCase()
+}
+
+/** Clip length in seconds. */
+export const DURATION: ParameterKind = { keys: ['duration', 'duration_seconds'], label: '时长（秒）', normalize: normalizeDuration }
+/** Whether a clip carries generated sound. */
+export const AUDIO: ParameterKind = {
+  keys: ['generate_audio', 'with_audio', 'audio'], label: '声音', normalize: normalizeSwitch, labels: { true: '有声', false: '无声' },
+}
+/** Whether music has no vocals. */
+export const INSTRUMENTAL: ParameterKind = {
+  keys: ['is_instrumental', 'instrumental'], label: '纯音乐', normalize: normalizeSwitch, labels: { true: '纯音乐', false: '带人声' },
+}
 
 /**
  * Read one closed-set parameter from a catalog entry.
