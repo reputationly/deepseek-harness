@@ -1,6 +1,6 @@
 /** Config-schema projection and form edits over Cordis profile patches. */
 import { existsSync } from 'node:fs'
-import { readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse, stringify } from 'yaml'
 import { Context, FiberState, Service, resolveConfig, type Fiber } from '@deepseek-ai/cordis'
@@ -65,11 +65,14 @@ export class SettingsConflictError extends Error {
 
 /** Whether a value is a plain data object (not an array, null, or class instance). */
 /** Replace a file's contents through a sibling temporary file, so an interrupted write leaves the old contents whole.
+ * The replacement keeps the original file's permission bits, so a private copy stays private.
  * @param path - file to replace.
  * @param contents - new contents. */
 async function replaceFile(path: string, contents: string): Promise<void> {
   const staged = `${path}.${String(process.pid)}.tmp`
-  await writeFile(staged, contents)
+  const { mode } = await stat(path)
+  await writeFile(staged, contents, { mode: mode & 0o777 })
+  await chmod(staged, mode & 0o777)
   await rename(staged, path)
 }
 
