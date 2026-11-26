@@ -20,6 +20,7 @@ import { speechTool } from './speech.ts'
 import { review } from './review.ts'
 import { failure, outputDirectory, resolveParameters, saveArtifact, workspaceOf } from './common.ts'
 import { musicTool, videoTool } from './media.ts'
+import { pendingTasks } from './pending.ts'
 import { ASPECT, RESOLUTION } from './params.ts'
 import type { GeneratedImage, ImageResultMeta } from './types.ts'
 
@@ -72,10 +73,11 @@ interface ImageArgs {
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
+  const pending = pendingTasks(ctx)
   const tools = [
     { role: 'image', build: imageTool },
-    { role: 'video', build: videoTool },
-    { role: 'music', build: musicTool },
+    { role: 'video', build: (c: Context) => videoTool(c, pending) },
+    { role: 'music', build: (c: Context) => musicTool(c, pending) },
     { role: 'speech', build: speechTool },
   ] as const
   const registered = new Map<string, () => void>()

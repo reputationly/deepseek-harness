@@ -181,6 +181,32 @@ describe('generate_video', () => {
     expect(cancel).toHaveBeenCalledWith('t1', 'generate_video')
   })
 
+  it('resumes an unsettled task instead of submitting it again, and submits anew once it delivered', async () => {
+    const { submit, wait, run } = await boot()
+    const args = { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true }
+    wait.mockRejectedValueOnce(new Error('the Host went away'))
+    expect((await run('generate_video', args)).isError).toBe(true)
+    const resumed = await run('generate_video', args)
+    expect(resumed.isError).toBe(false)
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(wait).toHaveBeenLastCalledWith('t1', 'generate_video', expect.any(Number))
+    await run('generate_video', args)
+    expect(submit).toHaveBeenCalledTimes(2)
+  })
+
+  it('submits anew after the call stopped its task', async () => {
+    const controller = new AbortController()
+    const { submit, wait, run } = await boot()
+    wait.mockImplementationOnce(async () => {
+      controller.abort()
+      return { ok: false, reason: 'timed-out' }
+    })
+    const args = { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true }
+    await run('generate_video', args, controller.signal)
+    await run('generate_video', args)
+    expect(submit).toHaveBeenCalledTimes(2)
+  })
+
   it('never publishes outside the workspace when generated/ is replaced during rendering', async () => {
     const outside = await mkdtemp(join(tmpdir(), 'suanli-media-outside-'))
     dirs.push(outside)

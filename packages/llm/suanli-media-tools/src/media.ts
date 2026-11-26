@@ -2,12 +2,13 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { CapabilityEntry, CapabilityMode } from '@deepseek-ai/dsh-suanli-model-catalog/types'
-import type { MediaOperation } from '@deepseek-ai/dsh-suanli-media-tasks/types'
+import type { MediaFailureReason, MediaOperation } from '@deepseek-ai/dsh-suanli-media-tasks/types'
 import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-suanli-model-catalog'
 import { review } from './review.ts'
+import { fingerprint, type PendingTasks } from './pending.ts'
 import { failure, outputDirectory, resolveParameters, saveArtifact, workspaceOf } from './common.ts'
 import { ASPECT, AUDIO, DURATION, INSTRUMENTAL, RESOLUTION, type ParameterKind } from './params.ts'
 import type { MediaResultMeta } from './types.ts'
@@ -18,6 +19,8 @@ const VIDEO_WAIT_MS = 20 * 60_000
 const MUSIC_WAIT_MS = 10 * 60_000
 /** One status poll; a stop is noticed within this much time. */
 const POLL_MS = 10_000
+/** Wait failures after which the task can no longer deliver; any other failure leaves it resumable. */
+const GONE: ReadonlySet<MediaFailureReason> = new Set(['not-found', 'rejected', 'cancelled', 'no-artifact'])
 /** Largest image a frame or reference may be. */
 const MAX_REFERENCE_BYTES = 20 * 1024 * 1024
 
@@ -71,9 +74,10 @@ const musicDescription = 'Generate a piece of music from a description of its st
 /**
  * Build the `generate_video` definition.
  * @param ctx - plugin context.
+ * @param pending - unsettled tasks a repeated call resumes.
  * @returns the tool.
  */
-export function videoTool(ctx: Context) {
+export function videoTool(ctx: Context, pending: PendingTasks) {
   return defineTool({
     name: 'generate_video',
     description: videoDescription,
@@ -93,7 +97,7 @@ export function videoTool(ctx: Context) {
     output: outputOf(),
     timeoutMs: VIDEO_WAIT_MS + 600_000,
     async execute(args, exec) {
-      return await generate(ctx, 'Video', 'generate_video', 'video', VIDEO_WAIT_MS, args.prompt, exec,
+      return await generate(ctx, pending, 'Video', 'generate_video', 'video', VIDEO_WAIT_MS, args.prompt, exec,
         async (entries, preferred, cwd) => await planVideo(ctx, entries, preferred, cwd, args, exec.signal),
         [[ASPECT, args.aspect_ratio], [RESOLUTION, args.resolution],
           [DURATION, args.duration_seconds === undefined ? undefined : String(args.duration_seconds)],
@@ -105,9 +109,10 @@ export function videoTool(ctx: Context) {
 /**
  * Build the `generate_music` definition.
  * @param ctx - plugin context.
+ * @param pending - unsettled tasks a repeated call resumes.
  * @returns the tool.
  */
-export function musicTool(ctx: Context) {
+export function musicTool(ctx: Context, pending: PendingTasks) {
   return defineTool({
     name: 'generate_music',
     description: musicDescription,
@@ -119,7 +124,7 @@ export function musicTool(ctx: Context) {
     output: outputOf(),
     timeoutMs: MUSIC_WAIT_MS + 600_000,
     async execute(args, exec) {
-      return await generate(ctx, 'Music', 'generate_music', 'music', MUSIC_WAIT_MS, args.prompt, exec,
+      return await generate(ctx, pending, 'Music', 'generate_music', 'music', MUSIC_WAIT_MS, args.prompt, exec,
         (entries, preferred) => Promise.resolve(planMusic(ctx, entries, preferred, args)),
         [[INSTRUMENTAL, args.instrumental === undefined ? undefined : String(args.instrumental)]])
     },
@@ -190,6 +195,7 @@ export function outputOf() {
 /**
  * Run one generation: plan, settle parameters, submit, wait, and save.
  * @param ctx - plugin context.
+ * @param pending - unsettled tasks; an identical request resumes its task instead of submitting again.
  * @param what - which generation, for errors.
  * @param operation - catalog operation.
  * @param role - model role whose choice is preferred.
@@ -202,7 +208,7 @@ export function outputOf() {
  * @throws When no model fits, the gateway refused, or the file could not be saved.
  */
 async function generate(
-  ctx: Context, what: string, operation: MediaOperation, role: 'video' | 'music', budgetMs: number, prompt: string,
+  ctx: Context, pending: PendingTasks, what: string, operation: MediaOperation, role: 'video' | 'music', budgetMs: number, prompt: string,
   exec: ToolExecution, plan: (entries: readonly CapabilityEntry[], preferred: string | null, cwd: string) => Promise<Plan>,
   requested: readonly (readonly [ParameterKind, string | undefined])[],
 ): Promise<MediaValue> {
@@ -221,18 +227,29 @@ async function generate(
   const settled: Record<string, string> = lyrics === undefined || instrumental ? rest : { ...rest, lyrics }
   await outputDirectory(cwd)
   exec.signal.throwIfAborted()
-  const submitted = await ctx.suanliMedia.submit({
+  const request = {
     operation,
     model,
     prompt,
     ...chosen.taskType !== undefined ? { taskType: chosen.taskType } : {},
     ...chosen.references.length > 0 ? { referenceImages: chosen.references } : {},
     params: settled,
-  })
-  if (!submitted.ok) throw failure(what, submitted.reason, submitted.detail)
-  const url = submitted.url ?? await waitFor(ctx, what, submitted.taskId, operation, budgetMs, exec.signal)
+  }
+  const key = fingerprint(cwd, request)
+  let url: string
+  let taskId = await pending.find(key)
+  if (taskId === undefined) {
+    const submitted = await ctx.suanliMedia.submit(request)
+    if (!submitted.ok) throw failure(what, submitted.reason, submitted.detail)
+    taskId = submitted.taskId
+    if (submitted.url === undefined) await pending.remember(key, taskId)
+    url = submitted.url ?? await waitFor(ctx, what, taskId, operation, budgetMs, exec.signal, async () => { await pending.forget(key) })
+  } else {
+    url = await waitFor(ctx, what, taskId, operation, budgetMs, exec.signal, async () => { await pending.forget(key) })
+  }
   exec.signal.throwIfAborted()
   const { path, data } = await saveArtifact(ctx, what, url, cwd, bytes => typeOf(bytes, role).extension)
+  await pending.forget(key)
   const mediaType = typeOf(data, role).mediaType
   const reviewed = role === 'video' ? await review(ctx, prompt, [{ data, mediaType }]) : undefined
   return {
@@ -252,13 +269,16 @@ async function generate(
  * @param operation - operation that submitted it.
  * @param budgetMs - longest the call waits.
  * @param signal - call cancellation.
+ * @param settled - called once the task can no longer deliver: it failed, was cancelled, or the call stopped it.
  * @returns the artifact URL.
- * @throws When the task failed, was cancelled, or outlasted the budget.
+ * @throws When the task failed, was cancelled, or outlasted the budget; an outlasted task stays resumable.
  */
 async function waitFor(
   ctx: Context, what: string, taskId: string, operation: MediaOperation, budgetMs: number, signal: AbortSignal,
+  settled: () => Promise<void>,
 ): Promise<string> {
   const cancel = (): void => {
+    void settled().catch(() => {})
     void ctx.suanliMedia.cancel(taskId, operation).catch((error: unknown) => {
       ctx.logger.warn('suanli media tools: cancelling task %s failed: %s', taskId, String(error))
     })
@@ -275,10 +295,12 @@ async function waitFor(
       signal.throwIfAborted()
       if (!waited.ok) {
         if (waited.reason === 'timed-out') continue
+        if (GONE.has(waited.reason)) await settled()
         throw failure(what, waited.reason, waited.detail)
       }
       const { status } = waited
       if (status.url !== undefined) return status.url
+      if (status.state !== 'running') await settled()
       if (status.state === 'failed') throw failure(what, 'rejected', status.error)
       if (status.state === 'cancelled') throw failure(what, 'cancelled', status.error)
       if (status.state === 'succeeded') throw failure(what, 'no-artifact', status.error)

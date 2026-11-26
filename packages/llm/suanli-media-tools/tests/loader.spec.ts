@@ -20,6 +20,7 @@ interface Report {
   meta: { status: string; model: string; images: { path: string }[] }
   generated: string[]
   asked: { id: string; options: string[] }[][]
+  restart: { submittedBeforeRestart: number; submittedAfterRestart: number; isError: boolean; meta: { status: string } }
   video: {
     isError: boolean
     asked: number
@@ -28,7 +29,7 @@ interface Report {
 }
 
 describe('suanli-media-tools through a real Loader composition', () => {
-  it('asks for the catalog parameter, generates an image and a video with the catalog models, and saves into generated/', async () => {
+  it('asks for the catalog parameter, generates an image and a video, resumes a video across a restart, and saves into generated/', async () => {
     let report: Report | undefined
     const { stderr } = await runLoaderSmoke({
       label: 'suanli-media-tools loader smoke',
@@ -53,6 +54,7 @@ describe('suanli-media-tools through a real Loader composition', () => {
       meta: { status: 'generated', model: 'fake-video', parameters: { ratio: '9:16', resolution: '768P', duration: '5', image_mode: 'text-to-video' } },
     })
     expect(report?.video.meta.media[0]?.mediaType).toBe('video/mp4')
-    expect(report?.generated.filter(name => name.endsWith('.mp4'))).toHaveLength(1)
+    expect(report?.restart).toMatchObject({ submittedBeforeRestart: 1, submittedAfterRestart: 0, isError: false, meta: { status: 'generated' } })
+    expect(report?.generated.filter(name => name.endsWith('.mp4'))).toHaveLength(2)
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 })
