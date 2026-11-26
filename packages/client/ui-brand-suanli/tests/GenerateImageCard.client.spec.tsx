@@ -19,7 +19,7 @@ const ATTACHMENT = { attachmentId: 'att-1', mediaType: 'image/png', bytes: 10, w
 
 const META = {
   status: 'generated', prompt: '小猫玩耍', model: 'minimax-h3-image', modelLabel: 'MiniMax H3 Image',
-  parameters: [{ key: 'aspect_ratio', value: '9:16' }, { key: 'resolution', value: '2K' }],
+  parameters: { aspect_ratio: '9:16', resolution: '2K' },
   images: [{ path: '/w/generated/cat.png', attachment: ATTACHMENT }],
 }
 
@@ -58,7 +58,7 @@ it('shows the generated images with model, parameters, and actions', () => {
 it('regenerates by sending the same requirements from the composer', () => {
   const { inputActions } = mount({ meta: META })
   fireEvent.click(screen.getByRole('button', { name: '重新生成' }))
-  expect(inputActions.setDraft).toHaveBeenCalledWith('按同样的要求重新生成图片：小猫玩耍')
+  expect(inputActions.setDraft).toHaveBeenCalledWith('按同样的要求重新生成图片：小猫玩耍（MiniMax H3 Image · 9:16 · 2K）')
   expect(inputActions.submit).toHaveBeenCalledTimes(1)
 })
 
@@ -97,7 +97,7 @@ it('reads only well-formed metadata', () => {
   expect(imageResultOf(null)).toBeNull()
   expect(imageResultOf([])).toBeNull()
   expect(imageResultOf({ ...META, prompt: 1 })).toBeNull()
-  expect(imageResultOf({ ...META, parameters: {} })).toBeNull()
-  expect(imageResultOf({ ...META, parameters: [{ key: 'a' }, 3], images: [3, { path: 1 }, { path: 'p', attachment: { attachmentId: 'x' } }] }))
+  expect(imageResultOf({ ...META, parameters: [] })).toBeNull()
+  expect(imageResultOf({ ...META, parameters: { a: 1 }, images: [3, { path: 1 }, { path: 'p', attachment: { attachmentId: 'x' } }] }))
     .toEqual({ status: 'generated', prompt: '小猫玩耍', modelLabel: 'MiniMax H3 Image', parameters: [], images: [{ path: 'p' }] })
 })

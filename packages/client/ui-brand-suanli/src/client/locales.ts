@@ -71,7 +71,7 @@ export const en: Record<GatewayStatusKey, string> = {
   'image.copy-prompt': 'Copy prompt',
   'image.copied': 'Copied',
   'image.regenerate': 'Regenerate',
-  'image.regenerate-request': 'Generate the image again with the same requirements: {prompt}',
+  'image.regenerate-request': 'Generate the image again with the same requirements: {prompt} ({settings})',
 }
 
 /** Chinese copy. */
@@ -132,7 +132,7 @@ export const zh: Record<GatewayStatusKey, string> = {
   'image.copy-prompt': '复制提示词',
   'image.copied': '已复制',
   'image.regenerate': '重新生成',
-  'image.regenerate-request': '按同样的要求重新生成图片：{prompt}',
+  'image.regenerate-request': '按同样的要求重新生成图片：{prompt}（{settings}）',
 }
 
 /** Japanese copy. */
@@ -193,7 +193,7 @@ export const ja: Record<GatewayStatusKey, string> = {
   'image.copy-prompt': 'プロンプトをコピー',
   'image.copied': 'コピーしました',
   'image.regenerate': '再生成',
-  'image.regenerate-request': '同じ条件で画像をもう一度生成してください：{prompt}',
+  'image.regenerate-request': '同じ条件で画像をもう一度生成してください：{prompt}（{settings}）',
 }
 
 /** Spanish copy. */
@@ -254,7 +254,7 @@ export const es: Record<GatewayStatusKey, string> = {
   'image.copy-prompt': 'Copiar prompt',
   'image.copied': 'Copiado',
   'image.regenerate': 'Regenerar',
-  'image.regenerate-request': 'Genera la imagen de nuevo con los mismos requisitos: {prompt}',
+  'image.regenerate-request': 'Genera la imagen de nuevo con los mismos requisitos: {prompt} ({settings})',
 }
 
 /** French copy. */
@@ -315,7 +315,7 @@ export const fr: Record<GatewayStatusKey, string> = {
   'image.copy-prompt': 'Copier le prompt',
   'image.copied': 'Copié',
   'image.regenerate': 'Régénérer',
-  'image.regenerate-request': 'Génère de nouveau l’image avec les mêmes exigences : {prompt}',
+  'image.regenerate-request': 'Génère de nouveau l’image avec les mêmes exigences : {prompt} ({settings})',
 }
 
 /** German copy. */
@@ -376,7 +376,7 @@ export const de: Record<GatewayStatusKey, string> = {
   'image.copy-prompt': 'Prompt kopieren',
   'image.copied': 'Kopiert',
   'image.regenerate': 'Neu erzeugen',
-  'image.regenerate-request': 'Erzeuge das Bild erneut mit denselben Vorgaben: {prompt}',
+  'image.regenerate-request': 'Erzeuge das Bild erneut mit denselben Vorgaben: {prompt} ({settings})',
 }
 
 /** Russian copy. */
@@ -437,7 +437,7 @@ export const ru: Record<GatewayStatusKey, string> = {
   'image.copy-prompt': 'Копировать промпт',
   'image.copied': 'Скопировано',
   'image.regenerate': 'Создать заново',
-  'image.regenerate-request': 'Создай изображение заново с теми же требованиями: {prompt}',
+  'image.regenerate-request': 'Создай изображение заново с теми же требованиями: {prompt} ({settings})',
 }
 
 /** Portuguese copy. */
@@ -498,5 +498,5 @@ export const pt: Record<GatewayStatusKey, string> = {
   'image.copy-prompt': 'Copiar prompt',
   'image.copied': 'Copiado',
   'image.regenerate': 'Gerar novamente',
-  'image.regenerate-request': 'Gere a imagem novamente com os mesmos requisitos: {prompt}',
+  'image.regenerate-request': 'Gere a imagem novamente com os mesmos requisitos: {prompt} ({settings})',
 }

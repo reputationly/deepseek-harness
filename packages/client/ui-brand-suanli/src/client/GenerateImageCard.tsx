@@ -56,11 +56,11 @@ function GeneratedImages({ result, props }: { result: ImageResult; props: Genera
       }
     })()
   }, [stored, loadImage])
-  const regenerate = useCallback(() => {
-    inputActions.setDraft(t('image.regenerate-request', { prompt: result.prompt }))
-    inputActions.submit()
-  }, [inputActions, t, result.prompt])
   const facts = [result.modelLabel, ...result.parameters.map(item => item.value)].join(' · ')
+  const regenerate = useCallback(() => {
+    inputActions.setDraft(t('image.regenerate-request', { prompt: result.prompt, settings: facts }))
+    inputActions.submit()
+  }, [inputActions, t, result.prompt, facts])
   return <div className={css.card}>
     <p className={css.title}>{t('image.generated', { count: result.images.length })}</p>
     <p className={css.detail}>{facts}</p>

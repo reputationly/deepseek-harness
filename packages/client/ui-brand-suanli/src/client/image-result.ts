@@ -26,14 +26,13 @@ export function imageResultOf(meta: unknown): ImageResult | null {
   const { status, prompt, modelLabel, parameters, images } = meta
   if (status !== 'generated' && status !== 'cancelled') return null
   if (typeof prompt !== 'string' || typeof modelLabel !== 'string') return null
-  if (!Array.isArray(parameters) || !Array.isArray(images)) return null
-  const pairs = parameters.filter((item): item is { key: string; value: string } =>
-    isRecord(item) && typeof item.key === 'string' && typeof item.value === 'string')
+  if (!isRecord(parameters) || !Array.isArray(images)) return null
+  const pairs = Object.entries(parameters).flatMap(([key, value]) => typeof value === 'string' ? [{ key, value }] : [])
   const items = images.filter(isRecord).flatMap((item): ImageResultItem[] => {
     if (typeof item.path !== 'string') return []
     return isAttachment(item.attachment) ? [{ path: item.path, attachment: item.attachment }] : [{ path: item.path }]
   })
-  return { status, prompt, modelLabel, parameters: pairs.map(({ key, value }) => ({ key, value })), images: items }
+  return { status, prompt, modelLabel, parameters: pairs, images: items }
 }
 
 /**
