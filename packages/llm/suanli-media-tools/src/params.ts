@@ -86,6 +86,9 @@ export const DURATION: ParameterKind = { keys: ['duration', 'duration_seconds'],
 export const AUDIO: ParameterKind = {
   keys: ['generate_audio', 'with_audio', 'audio'], label: '声音', normalize: normalizeSwitch, labels: { true: '有声', false: '无声' },
 }
+/** Voice of synthesized speech. */
+export const VOICE: ParameterKind = { keys: ['voice', 'voice_id'], label: '音色', normalize: raw => raw.trim() }
+
 /** Whether music has no vocals. */
 export const INSTRUMENTAL: ParameterKind = {
   keys: ['is_instrumental', 'instrumental'], label: '纯音乐', normalize: normalizeSwitch, labels: { true: '纯音乐', false: '带人声' },

@@ -17,6 +17,7 @@ import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-suanli-model-catalog'
 import type {} from '@deepseek-ai/dsh-suanli-media-tasks'
 import { readFile } from 'node:fs/promises'
+import { speechTool } from './speech.ts'
 import { review } from './review.ts'
 import { failure, outputDirectory, resolveParameters, saveArtifact, workspaceOf } from './common.ts'
 import { musicTool, videoTool } from './media.ts'
@@ -76,6 +77,7 @@ export function apply(ctx: Context): void {
     { role: 'image', build: imageTool },
     { role: 'video', build: videoTool },
     { role: 'music', build: musicTool },
+    { role: 'speech', build: speechTool },
   ] as const
   const registered = new Map<string, () => void>()
   const sync = (): void => {

@@ -1,4 +1,4 @@
-/** Inline card for one generate_video or generate_music call: progress, players for the saved files, and follow-up actions. */
+/** Inline card for one generate_video, generate_music, or generate_speech call: progress, players, and follow-up actions. */
 import { useCallback, useEffect, useState } from 'react'
 import {
   Button, IconCheckOutlineRegular, IconCopyOutlineRegular, IconDownloadOutlineRegular, IconRefreshOutlineRegular,
@@ -22,7 +22,7 @@ export type GenerateMediaCardProps = ToolCallViewProps & { loadMedia: MediaLoade
  */
 export function GenerateMediaCard(props: GenerateMediaCardProps) {
   const { t } = props
-  const kind = props.toolName === 'generate_music' ? 'music' : 'video'
+  const kind = props.toolName === 'generate_video' ? 'video' : props.toolName === 'generate_speech' ? 'speech' : 'music'
   if (props.phase !== 'result') {
     return <div className={css.card}><TextShimmer active><span className={css.title}>{t(`${kind}.generating`)}</span></TextShimmer></div>
   }
@@ -44,7 +44,7 @@ export function GenerateMediaCard(props: GenerateMediaCardProps) {
  * @param root - the generated result, which tool made it, and the card props.
  * @returns the players with their actions.
  */
-function GeneratedMedia({ result, kind, props }: { result: MediaResult; kind: 'video' | 'music'; props: GenerateMediaCardProps }) {
+function GeneratedMedia({ result, kind, props }: { result: MediaResult; kind: 'video' | 'music' | 'speech'; props: GenerateMediaCardProps }) {
   const { t, inputActions } = props
   const copy = useClipboardCopy(result.prompt)
   const facts = [result.modelLabel, ...result.parameters.map(item => item.value)].join(' · ')

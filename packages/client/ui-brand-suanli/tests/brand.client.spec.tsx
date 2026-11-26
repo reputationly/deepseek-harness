@@ -104,7 +104,7 @@ describe('product brand plugin', () => {
     const fiber = subject.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     expect(subject.slots.entries('tool.call.toolview').map(entry => entry.options.key).sort())
-      .toEqual(['generate_image', 'generate_music', 'generate_video'])
+      .toEqual(['generate_image', 'generate_music', 'generate_speech', 'generate_video'])
     await fiber.dispose()
     expect(subject.slots.entries('tool.call.toolview')).toHaveLength(0)
   })

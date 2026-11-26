@@ -20,7 +20,7 @@ import {
 import { MediaTaskClient, transportFor } from './tasks.ts'
 import type {
   MediaCancelResult, MediaDownloadResult, MediaOperation, MediaStatusResult, MediaSubmitRequest, MediaSubmitResult,
-  MediaInspectRequest, MediaInspectResult, MediaTransport,
+  MediaInspectRequest, MediaInspectResult, MediaSpeakRequest, MediaTransport,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -155,6 +155,17 @@ export class SuanliMediaTasksService extends TypertRemoteService {
   @Remote
   async inspect(request: MediaInspectRequest): Promise<MediaInspectResult> {
     return await this.client.inspect(request, new AbortController().signal)
+  }
+
+  /**
+   * Synthesize speech and write the audio to a path the caller owns.
+   * @param request - speech model, text, and catalog parameters.
+   * @param targetPath - absolute path the caller owns.
+   * @returns the written path and size, or why nothing was written.
+   */
+  @Remote
+  async speak(request: MediaSpeakRequest, targetPath: string): Promise<MediaDownloadResult> {
+    return await this.client.speak(request, targetPath, new AbortController().signal)
   }
 
   /**

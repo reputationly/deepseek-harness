@@ -21,7 +21,7 @@ Host tool plugin that generates images, videos, and music from chat with the mod
 
 ## Why this exists
 
-A user who writes "生成一张小猫玩耍的图片" in a task conversation expects an image, not a detour into the 「创作」 workbench; the same holds for 「做一个 10 秒竖屏视频」 and 「生成一段轻快的钢琴曲」. Each tool reads its role (image, video, music) from `suanliModels.roles()`, takes that model's entry from `suanliModels.media()`, submits through `suanliMedia`, and never touches the gateway key. `generate_image`, `generate_video`, and `generate_music` are each registered only while the catalog has a model for their role, and re-registered when the catalog or the role selection changes.
+A user who writes "生成一张小猫玩耍的图片" in a task conversation expects an image, not a detour into the 「创作」 workbench; the same holds for 「做一个 10 秒竖屏视频」 and 「生成一段轻快的钢琴曲」. Each tool reads its role (image, video, music, speech) from `suanliModels.roles()`, takes that model's entry from `suanliModels.media()`, submits through `suanliMedia`, and never touches the gateway key. `generate_image`, `generate_video`, `generate_music`, and `generate_speech` are each registered only while the catalog has a model for their role, and re-registered when the catalog or the role selection changes.
 
 ## Parameter rules
 
@@ -47,7 +47,7 @@ The model receives a JSON text with `status`, `model`, `parameters`, and `files`
 
 #### What the model sees
 
-The [`generate_image`, `generate_video`, and `generate_music`](../../../docs/tool-catalog.md#deepseek-aidsh-suanli-media-tools) schemas, each while the catalog has a model for its role; absent otherwise.
+The [`generate_image`, `generate_video`, `generate_music`, and `generate_speech`](../../../docs/tool-catalog.md#deepseek-aidsh-suanli-media-tools) schemas, each while the catalog has a model for its role; absent otherwise.
 
 #### Token effect
 
@@ -59,7 +59,7 @@ The schema is prefix-stable. Registration changes only when a model of a role ap
 
 ## Known Limitations and Deferred Work
 
-- **No speech yet** — speech waits for `maas-speech` catalog entries.
+- **Speech only through `/v1/audio/speech`** — `generate_speech` is offered only while the catalog lists a `maas-speech` entry, and synthesis is one synchronous call that a stop does not cancel at the gateway.
 - **Review is advisory and partial** — with automatic review on, the selected vision model judges whether images and videos match the request and the card shows its verdict; it never regenerates by itself. Music and videos over 20 MiB are not reviewed, and a failed review call leaves the result unreviewed.
 - **No video extension** — the task transport sends images only, so the `video-extension` mode, which needs a source video, is not offered from chat.
 - **No resume after restart** — a video still rendering when the Host exits is not fetched again; the gateway task keeps running and the call reports an interruption.

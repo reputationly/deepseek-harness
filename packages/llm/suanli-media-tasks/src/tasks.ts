@@ -2,6 +2,7 @@
 import type {
   MediaInspectRequest,
   MediaInspectResult,
+  MediaSpeakRequest,
   MediaCancelResult, MediaDownloadResult, MediaFailureReason, MediaOperation, MediaStatusResult,
   MediaSubmitRequest, MediaSubmitResult, MediaTaskState, MediaTransport,
 } from './types.ts'
@@ -256,6 +257,36 @@ export class MediaTaskClient {
     if (!answer.ok) return answer
     const text = (answer.value as { choices?: { message?: { content?: unknown } }[] } | null)?.choices?.[0]?.message?.content
     return typeof text === 'string' && text !== '' ? { ok: true, text } : { ok: false, reason: 'rejected', detail: 'the vision model answered no text' }
+  }
+
+  /**
+   * Synthesize speech through the gateway's `/v1/audio/speech` and write the audio it answers.
+   * @param request - speech model, text, and catalog parameters.
+   * @param targetPath - path the caller owns.
+   * @param signal - aborts the call.
+   * @returns the written path and size, or why nothing was written.
+   */
+  async speak(request: MediaSpeakRequest, targetPath: string, signal: AbortSignal): Promise<MediaDownloadResult> {
+    const key = await this.options.credential()
+    if (key === undefined || key === '') return { ok: false, reason: 'no-credential' }
+    const { writeFile } = await import('node:fs/promises')
+    let response: Response
+    try {
+      response = await this.options.send(new URL('/v1/audio/speech', this.options.baseURL).href, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${key}`, 'x-api-key': key, 'content-type': 'application/json' },
+        body: JSON.stringify({ ...request.params, model: request.model, input: request.input }),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(this.options.timeoutMs)]),
+      })
+      if (response.status === 401 || response.status === 403) return { ok: false, reason: 'unauthorized' }
+      if (!response.ok) return { ok: false, reason: 'rejected', detail: await errorTextOf(response) }
+      const bytes = Buffer.from(await response.arrayBuffer())
+      if (bytes.byteLength === 0) return { ok: false, reason: 'no-artifact' }
+      await writeFile(targetPath, bytes)
+      return { ok: true, path: targetPath, bytes: bytes.byteLength }
+    } catch {
+      return { ok: false, reason: signal.aborted ? 'cancelled' : 'unreachable' }
+    }
   }
 
   /** Perform one authenticated call and decode its JSON answer. */

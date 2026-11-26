@@ -35,6 +35,12 @@ const video = (model: string, modes: unknown[]) => ({
 })
 const FL = video('minimax-h3-2k', [mode('text-to-video', 't2v', 0), mode('first-last-frame', 'flf2v', 2, 'i2v')])
 const REF = video('minimax-h3-ref-2k', [mode('reference', 'r2va', 9)])
+const SPEECH = {
+  id: 'generate_speech:minimax-speech', operation: 'generate_speech', model: 'minimax-speech',
+  displayName: { zh: 'Speech', en: 'Speech' }, description: { zh: '', en: '' }, transport: { kind: 'audio_speech' },
+  paramSchema: { type: 'object', properties: { voice: { type: 'string', title: '音色', enum: ['female-1', 'male-1'] } }, required: ['voice'] },
+}
+
 const MUSIC = {
   id: 'generate_music:minimax-music3', operation: 'generate_music', model: 'minimax-music3',
   displayName: { zh: 'Music 3.0', en: 'Music 3.0' }, description: { zh: '', en: '' }, transport: { kind: 'videos_task' },
@@ -75,13 +81,19 @@ async function boot(options: {
     preferences: () => ({ autoReview: options.review !== undefined }),
     roles: () => [
       { role: 'vision', candidates: [{ model: 'vl', label: 'VL' }], selected: null, fallback: 'vl' },
+      { role: 'speech', candidates: [{ model: 'minimax-speech', label: 'Speech' }], selected: null, fallback: 'minimax-speech' },
       { role: 'video', candidates: [{ model: FL.model, label: 'MiniMax H3' }, { model: REF.model, label: 'MiniMax H3 Ref' }], selected: null, fallback: FL.model },
       { role: 'music', candidates: [{ model: MUSIC.model, label: 'Music 3.0' }], selected: null, fallback: MUSIC.model },
     ],
-    media: () => ({ status: 'ready', version: '1', fetchedAt: 1, entries: [FL, REF, MUSIC] }),
+    media: () => ({ status: 'ready', version: '1', fetchedAt: 1, entries: [FL, REF, MUSIC, SPEECH] }),
   } as never)
   ctx.provide('suanliMedia', {
     submit, wait, cancel,
+    speak: vi.fn(async (_request: unknown, path: string) => {
+      await options.save?.(path, cwd)
+      await writeFile(path, MP3)
+      return { ok: true as const, path, bytes: MP3.byteLength }
+    }),
     inspect: vi.fn(async () => ({ ok: true, text: options.review ?? '' })),
     saveArtifact: async (url: string, path: string) => {
       await options.save?.(path, cwd)
@@ -208,6 +220,17 @@ describe('generate_music', () => {
     expect(result.isError).toBe(false)
     expect(ask.mock.calls[0]?.[0].questions[0]?.options?.map(option => option.label)).toEqual(['带人声', '纯音乐'])
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ operation: 'generate_music', params: { is_instrumental: 'true' } }))
+    expect((await readdir(join(cwd, 'generated')))[0]).toMatch(/\.mp3$/u)
+  })
+})
+
+describe('generate_speech', () => {
+  it('asks the voice the catalog requires and saves the audio', async () => {
+    const { ask, run, cwd } = await boot({ answer: () => ({ answers: [{ id: 'voice', selected: ['male-1'] }] }) })
+    const result = await run('generate_speech', { text: '你好，欢迎使用蒜狸小助手' })
+    expect(result.isError).toBe(false)
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(result.meta).toMatchObject({ status: 'generated', model: 'minimax-speech', parameters: { voice: 'male-1' } })
     expect((await readdir(join(cwd, 'generated')))[0]).toMatch(/\.mp3$/u)
   })
 })

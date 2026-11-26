@@ -282,7 +282,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
     async mount(ctx) {
       // Schema harvest never reads a catalog, asks a question, or submits a task; the tool registers
       // only while its role has a candidate.
-      const roles = ['image', 'video', 'music'].map(role => ({
+      const roles = ['image', 'video', 'music', 'speech'].map(role => ({
         role, candidates: [{ model: `catalog-${role}`, label: `catalog-${role}` }], selected: null, fallback: `catalog-${role}`,
       }))
       ctx.provide('suanliModels', { roles: () => roles, media: () => ({ status: 'ready', entries: [] }) } as never)

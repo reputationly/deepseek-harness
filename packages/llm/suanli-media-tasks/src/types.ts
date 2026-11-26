@@ -102,3 +102,13 @@ export interface MediaInspectRequest {
 export type MediaInspectResult =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly reason: MediaFailureReason; readonly detail?: string }
+
+/** One speech synthesis: the text to read and the voice parameters the catalog declares. */
+export interface MediaSpeakRequest {
+  /** Wire model id of the speech model. */
+  readonly model: string
+  /** Text read aloud. */
+  readonly input: string
+  /** Catalog parameters such as `voice`, by catalog key. */
+  readonly params: Readonly<Record<string, string>>
+}

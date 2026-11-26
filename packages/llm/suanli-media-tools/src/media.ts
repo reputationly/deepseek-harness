@@ -50,7 +50,7 @@ interface Plan {
 }
 
 /** Result value both tools return. */
-interface MediaValue {
+export interface MediaValue {
   readonly status: 'generated' | 'cancelled'
   readonly prompt: string
   readonly model: string
@@ -130,7 +130,7 @@ export function musicTool(ctx: Context) {
  * Output schema, model text, and card metadata both tools share.
  * @returns the output definition.
  */
-function outputOf() {
+export function outputOf() {
   return {
     schema: {
       type: 'object',
@@ -413,7 +413,7 @@ function imageTypeOf(data: Uint8Array): string | undefined {
  * @param role - what was generated, for the fallback.
  * @returns the type and extension.
  */
-function typeOf(data: Uint8Array, role: 'video' | 'music'): { mediaType: string; extension: string } {
+export function typeOf(data: Uint8Array, role: 'video' | 'music'): { mediaType: string; extension: string } {
   if (ascii(data, 4, 4) === 'ftyp') {
     return role === 'music' ? { mediaType: 'audio/mp4', extension: '.m4a' } : { mediaType: 'video/mp4', extension: '.mp4' }
   }

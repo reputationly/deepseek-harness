@@ -79,7 +79,7 @@ export function apply(ctx: ClientContext): void {
     name: 'tool.call.toolview', key: 'generate_image', locale: NS,
   }, GenerateImageCard))
   // Videos and music play inline once the user asks; the bytes come from the call's own Session workspace.
-  for (const key of ['generate_video', 'generate_music']) {
+  for (const key of ['generate_video', 'generate_music', 'generate_speech']) {
     ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
       name: 'tool.call.toolview', key, locale: NS,
       inject: (sessionId: SessionId): { loadMedia: MediaLoader } => ({

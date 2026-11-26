@@ -26,7 +26,7 @@ The wordmark reads `DSH_CLIENT_TITLE` at build time, so the product name stays a
 | `sidebar.brand.name` | the wordmark, followed by the gateway connection light |
 | `conversation.hero.brand.mark` | the mark on the blank home |
 | `settings.models.footer` | the catalog-refresh row: syncs the picker's models from this deployment's gateway |
-| `tool.call.toolview` (`generate_image`, `generate_video`, `generate_music`) | the chat generation cards: images through the attachment gallery; videos and music read from the Session workspace window by window when the user presses play, then shown in the native player |
+| `tool.call.toolview` (`generate_image`, `generate_video`, `generate_music`, `generate_speech`) | the chat generation cards: images through the attachment gallery; videos and music read from the Session workspace window by window when the user presses play, then shown in the native player |
 
 The blank home's `conversation.hero.frame` layer stays free, so no decoration is drawn behind the mark.
 

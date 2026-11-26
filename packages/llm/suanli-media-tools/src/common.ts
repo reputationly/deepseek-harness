@@ -6,7 +6,7 @@ import { isAbsolute, join, relative } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityEntry } from '@deepseek-ai/dsh-suanli-model-catalog/types'
-import type { MediaFailureReason } from '@deepseek-ai/dsh-suanli-media-tasks/types'
+import type { MediaDownloadResult, MediaFailureReason } from '@deepseek-ai/dsh-suanli-media-tasks/types'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-suanli-media-tasks'
 import type {} from '@deepseek-ai/dsh-user-questions'
@@ -155,9 +155,26 @@ export interface SavedArtifact {
 export async function saveArtifact(
   ctx: Context, what: string, url: string, cwd: string, extensionOf: (data: Uint8Array) => string,
 ): Promise<SavedArtifact> {
+  return await publishArtifact(ctx, what, cwd, async target => await ctx.suanliMedia.saveArtifact(url, target), extensionOf)
+}
+
+/**
+ * Let the gateway write into a private staging file, then publish it under `generated/` the way {@link saveArtifact} does.
+ * @param _ctx - plugin context.
+ * @param what - which generation, for errors.
+ * @param cwd - session workspace.
+ * @param fill - writes the artifact to the staging path it receives.
+ * @param extensionOf - file extension for the written bytes.
+ * @returns the saved file and its bytes.
+ * @throws When nothing was written or the file could not be published inside the workspace.
+ */
+export async function publishArtifact(
+  _ctx: Context, what: string, cwd: string,
+  fill: (target: string) => Promise<MediaDownloadResult>, extensionOf: (data: Uint8Array) => string,
+): Promise<SavedArtifact> {
   const staging = await mkdtemp(join(tmpdir(), 'suanli-media-'))
   try {
-    const saved = await ctx.suanliMedia.saveArtifact(url, join(staging, 'artifact'))
+    const saved = await fill(join(staging, 'artifact'))
     if (!saved.ok) throw failure(what, saved.reason, saved.detail)
     const data = new Uint8Array(await readFile(saved.path))
     const directory = await outputDirectory(cwd)

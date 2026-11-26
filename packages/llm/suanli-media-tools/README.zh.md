@@ -21,7 +21,7 @@ Host 工具插件：在对话里用用户选定的模型生成图片、视频和
 
 ## 为什么需要它 <a id="why-this-exists"></a>
 
-用户在任务对话里写「生成一张小猫玩耍的图片」，期望直接得到图片，而不是转去「创作」工作台；「做一个 10 秒竖屏视频」「生成一段轻快的钢琴曲」也一样。每个工具从 `suanliModels.roles()` 读取自己的角色（生图、生视频、生音乐），从 `suanliModels.media()` 取该模型的条目，通过 `suanliMedia` 提交，从不接触网关 key。`generate_image`、`generate_video`、`generate_music` 只在目录里有对应角色的模型时注册，目录或角色选择变化时重新注册。
+用户在任务对话里写「生成一张小猫玩耍的图片」，期望直接得到图片，而不是转去「创作」工作台；「做一个 10 秒竖屏视频」「生成一段轻快的钢琴曲」也一样。每个工具从 `suanliModels.roles()` 读取自己的角色（生图、生视频、生音乐、生语音），从 `suanliModels.media()` 取该模型的条目，通过 `suanliMedia` 提交，从不接触网关 key。`generate_image`、`generate_video`、`generate_music`、`generate_speech` 只在目录里有对应角色的模型时注册，目录或角色选择变化时重新注册。
 
 ## 参数规则 <a id="parameter-rules"></a>
 
@@ -47,7 +47,7 @@ Host 工具插件：在对话里用用户选定的模型生成图片、视频和
 
 #### 模型看到什么 <a id="what-the-model-sees"></a>
 
-目录里有对应角色模型时的 [`generate_image`、`generate_video`、`generate_music`](../../../docs/tool-catalog.zh.md#deepseek-aidsh-suanli-media-tools) schema；没有时不出现。
+目录里有对应角色模型时的 [`generate_image`、`generate_video`、`generate_music`、`generate_speech`](../../../docs/tool-catalog.zh.md#deepseek-aidsh-suanli-media-tools) schema；没有时不出现。
 
 #### Token 影响 <a id="token-effect"></a>
 
@@ -59,7 +59,7 @@ schema 前缀稳定。只有某个角色的模型在目录中出现或消失时�
 
 ## 已知限制与后续工作 <a id="known-limitations-and-deferred-work"></a>
 
-- **还没有语音**：生语音要等目录出现 `maas-speech` 条目。
+- **语音只走 `/v1/audio/speech`**：目录里有 `maas-speech` 条目时才提供 `generate_speech`；合成是一次同步调用，按停止不会在网关取消。
 - **审核只是提示，且不全覆盖**：开启自动审核时，所选多模态识别模型判断图片和视频是否符合要求，卡片显示结论，不会自动重新生成。音乐和超过 20 MiB 的视频不审核，审核调用失败时结果保持未审核。
 - **不支持视频续写**：任务通道只能传图片，需要源视频的 `video-extension` 玩法不从对话提供。
 - **重启后不续取**：Host 退出时仍在渲染的视频不会再取回；网关任务继续运行，调用报告中断。
