@@ -1,7 +1,7 @@
 /** Steps every generation tool shares: the parameter card, the workspace, and saving artifacts. */
 
 import { constants } from 'node:fs'
-import { lstat, mkdir, mkdtemp, open, readFile, realpath, rm } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, open, readFile, readlink, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -204,11 +204,23 @@ async function writeInside(directory: string, path: string, data: Uint8Array): P
     const entry = await lstat(path).catch(() => undefined)
     const same = parent.isDirectory() && entry !== undefined && entry.isFile()
       && entry.dev === created.dev && entry.ino === created.ino && created.nlink === 1
-    if (!same) throw new Error('The workspace generated/ directory points outside the workspace.')
+    if (!same || !await opensAt(handle.fd, path)) throw new Error('The workspace generated/ directory points outside the workspace.')
     await handle.writeFile(data)
   } finally {
     await handle.close()
   }
+}
+
+/**
+ * Where the kernel says an open file lives, which no later swap of a parent can fake.
+ * @param fd - the open file.
+ * @param path - where it must be.
+ * @returns false when the file is elsewhere; true where the platform cannot tell (no `/proc`).
+ */
+async function opensAt(fd: number, path: string): Promise<boolean> {
+  if (process.platform !== 'linux') return true
+  const actual = await readlink(`/proc/self/fd/${String(fd)}`).catch(() => undefined)
+  return actual === undefined || actual === path
 }
 
 /**
