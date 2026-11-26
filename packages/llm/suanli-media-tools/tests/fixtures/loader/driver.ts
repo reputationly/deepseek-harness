@@ -42,7 +42,7 @@ const proxy = createServer((request, response) => {
     const upstream = await fetch(`${origin}${url}`, {
       method: request.method ?? 'GET',
       headers: { 'content-type': request.headers['content-type'] ?? 'application/json' },
-      ...request.method === 'GET' || request.method === 'HEAD' ? {} : { body: payload },
+      ...request.method === 'GET' || request.method === 'HEAD' ? {} : { body: new Uint8Array(payload) },
     })
     response.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') ?? 'application/json' })
     response.end(Buffer.from(await upstream.arrayBuffer()))
