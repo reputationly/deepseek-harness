@@ -64,6 +64,15 @@ export class SettingsConflictError extends Error {
 }
 
 /** Whether a value is a plain data object (not an array, null, or class instance). */
+/** Replace a file's contents through a sibling temporary file, so an interrupted write leaves the old contents whole.
+ * @param path - file to replace.
+ * @param contents - new contents. */
+async function replaceFile(path: string, contents: string): Promise<void> {
+  const staged = `${path}.${String(process.pid)}.tmp`
+  await writeFile(staged, contents)
+  await rename(staged, path)
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const proto: unknown = Object.getPrototypeOf(value)
@@ -269,7 +278,7 @@ export class SettingsForms extends Service {
       return
     }
     // A partial import never repeats, so the copy exists only to hand a rejected section back to an operator.
-    await writeFile(imported, stringify(rejected))
+    await replaceFile(imported, stringify(rejected))
     if (unidentifiable) {
       this.ownerContext.logger.warn('settings: %s keeps a section whose entry no longer exists; its secret fields cannot be identified and were left as they are', imported)
     }
@@ -307,7 +316,7 @@ export class SettingsForms extends Service {
       redacted[section] = withoutSecrets
     }
     if (!changed) return
-    await writeFile(path, stringify(redacted))
+    await replaceFile(path, stringify(redacted))
     this.ownerContext.logger.info('settings: removed stored secrets from %s', path)
   }
 
