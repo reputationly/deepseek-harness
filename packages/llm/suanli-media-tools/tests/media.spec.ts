@@ -224,6 +224,15 @@ describe('generate_music', () => {
   })
 })
 
+describe('generate_music lyrics', () => {
+  it('drops the lyrics when the user chooses an instrumental piece', async () => {
+    const { submit, run, wait } = await boot({ answer: () => ({ answers: [{ id: 'is_instrumental', selected: ['纯音乐'] }] }) })
+    wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/m' } })
+    await run('generate_music', { prompt: '轻快的钢琴曲', lyrics: '啦啦啦' })
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ params: { is_instrumental: 'true' } }))
+  })
+})
+
 describe('generate_speech', () => {
   it('asks the voice the catalog requires and saves the audio', async () => {
     const { ask, run, cwd } = await boot({ answer: () => ({ answers: [{ id: 'voice', selected: ['male-1'] }] }) })

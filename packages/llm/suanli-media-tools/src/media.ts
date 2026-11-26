@@ -215,7 +215,10 @@ async function generate(
   const base = { prompt, model, modelLabel: chosen.modelLabel }
   const parameters = await resolveParameters(ctx, chosen.entry, requested, exec)
   if (parameters === undefined) return { ...base, status: 'cancelled', parameters: [], media: [] }
-  const settled = { ...parameters, ...chosen.extra }
+  const merged = { ...parameters, ...chosen.extra }
+  const { lyrics, ...rest } = merged
+  const instrumental = merged['is_instrumental'] === 'true' || merged['instrumental'] === 'true'
+  const settled: Record<string, string> = lyrics === undefined || instrumental ? rest : { ...rest, lyrics }
   await outputDirectory(cwd)
   exec.signal.throwIfAborted()
   const submitted = await ctx.suanliMedia.submit({
