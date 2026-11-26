@@ -30,6 +30,7 @@ The platform's capability catalog names generation operations that the chat rout
 - A caller cancellation stops the wait without a gateway call.
 - The gateway may refuse a cancellation with `409` when the task is already past the point where it can stop; that surface is reported as `rejected` with the HTTP status rather than as a transport failure.
 - `download` reads the artifact URL the task reported and writes exactly the path the caller names; `saveArtifact` does the same for a URL a caller already holds, which is how a synchronous image answer reaches disk.
+- `inspect` sends one instruction and inlined images or a video to a vision model through `/v1/chat/completions` with the same key and returns the answer text; callers bound the file size.
 - Image calls get their own budget (default 240 s): the image endpoint answers only when the image exists, while the task transports answer with an id and poll separately.
 
 ## Model Experience
