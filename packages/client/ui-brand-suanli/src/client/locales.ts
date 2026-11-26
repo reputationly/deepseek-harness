@@ -11,6 +11,7 @@ export type GatewayStatusKey =
   | 'catalog.failed' | 'catalog.count'
   | 'class.chat' | 'class.vision-image' | 'class.vision-video' | 'class.image-generate' | 'class.image-edit' | 'class.video-generate' | 'class.video-first-last-frame' | 'class.video-reference' | 'class.music-generate' | 'class.speech-generate' | 'class.other' | 'catalog.capability-title' | 'catalog.capability-missing'
   | 'roles.title' | 'roles.description' | 'roles.loading' | 'roles.failed' | 'roles.chat' | 'roles.vision' | 'roles.image' | 'roles.video' | 'roles.music' | 'roles.speech' | 'roles.chat-hint' | 'roles.default' | 'roles.unavailable' | 'roles.review' | 'roles.review-description'
+  | 'image.generating' | 'image.generated' | 'image.cancelled' | 'image.failed' | 'image.download' | 'image.copy-prompt' | 'image.copied' | 'image.regenerate' | 'image.regenerate-request'
 
 /** English copy. */
 export const en: Record<GatewayStatusKey, string> = {
@@ -62,6 +63,15 @@ export const en: Record<GatewayStatusKey, string> = {
   'roles.unavailable': 'Not available yet',
   'roles.review': 'Review generated media',
   'roles.review-description': 'A multimodal model checks generated images and videos against the request.',
+  'image.generating': 'Generating image…',
+  'image.generated': '{count} image(s) generated',
+  'image.cancelled': 'Generation cancelled',
+  'image.failed': 'Image generation failed',
+  'image.download': 'Download',
+  'image.copy-prompt': 'Copy prompt',
+  'image.copied': 'Copied',
+  'image.regenerate': 'Regenerate',
+  'image.regenerate-request': 'Generate the image again with the same requirements: {prompt}',
 }
 
 /** Chinese copy. */
@@ -114,6 +124,15 @@ export const zh: Record<GatewayStatusKey, string> = {
   'roles.unavailable': '暂未开放',
   'roles.review': '生成后自动审核',
   'roles.review-description': '由多模态识别模型检查生成的图片和视频是否符合要求。',
+  'image.generating': '正在生成图片…',
+  'image.generated': '已生成 {count} 张图片',
+  'image.cancelled': '已取消生成',
+  'image.failed': '图片生成失败',
+  'image.download': '下载',
+  'image.copy-prompt': '复制提示词',
+  'image.copied': '已复制',
+  'image.regenerate': '重新生成',
+  'image.regenerate-request': '按同样的要求重新生成图片：{prompt}',
 }
 
 /** Japanese copy. */
@@ -166,6 +185,15 @@ export const ja: Record<GatewayStatusKey, string> = {
   'roles.unavailable': '未提供',
   'roles.review': '生成後に自動レビュー',
   'roles.review-description': 'マルチモーダルモデルが生成された画像と動画を依頼内容と照合します。',
+  'image.generating': '画像を生成中…',
+  'image.generated': '{count} 枚の画像を生成しました',
+  'image.cancelled': '生成をキャンセルしました',
+  'image.failed': '画像を生成できませんでした',
+  'image.download': 'ダウンロード',
+  'image.copy-prompt': 'プロンプトをコピー',
+  'image.copied': 'コピーしました',
+  'image.regenerate': '再生成',
+  'image.regenerate-request': '同じ条件で画像をもう一度生成してください：{prompt}',
 }
 
 /** Spanish copy. */
@@ -218,6 +246,15 @@ export const es: Record<GatewayStatusKey, string> = {
   'roles.unavailable': 'Aún no disponible',
   'roles.review': 'Revisar el contenido generado',
   'roles.review-description': 'Un modelo multimodal comprueba que las imágenes y vídeos generados cumplen la petición.',
+  'image.generating': 'Generando imagen…',
+  'image.generated': '{count} imagen(es) generada(s)',
+  'image.cancelled': 'Generación cancelada',
+  'image.failed': 'No se pudo generar la imagen',
+  'image.download': 'Descargar',
+  'image.copy-prompt': 'Copiar prompt',
+  'image.copied': 'Copiado',
+  'image.regenerate': 'Regenerar',
+  'image.regenerate-request': 'Genera la imagen de nuevo con los mismos requisitos: {prompt}',
 }
 
 /** French copy. */
@@ -270,6 +307,15 @@ export const fr: Record<GatewayStatusKey, string> = {
   'roles.unavailable': 'Pas encore disponible',
   'roles.review': 'Vérifier les médias générés',
   'roles.review-description': 'Un modèle multimodal vérifie que les images et vidéos générées répondent à la demande.',
+  'image.generating': 'Génération de l’image…',
+  'image.generated': '{count} image(s) générée(s)',
+  'image.cancelled': 'Génération annulée',
+  'image.failed': 'Échec de la génération d’image',
+  'image.download': 'Télécharger',
+  'image.copy-prompt': 'Copier le prompt',
+  'image.copied': 'Copié',
+  'image.regenerate': 'Régénérer',
+  'image.regenerate-request': 'Génère de nouveau l’image avec les mêmes exigences : {prompt}',
 }
 
 /** German copy. */
@@ -322,6 +368,15 @@ export const de: Record<GatewayStatusKey, string> = {
   'roles.unavailable': 'Noch nicht verfügbar',
   'roles.review': 'Generierte Medien prüfen',
   'roles.review-description': 'Ein multimodales Modell prüft generierte Bilder und Videos anhand der Anfrage.',
+  'image.generating': 'Bild wird erzeugt…',
+  'image.generated': '{count} Bild(er) erzeugt',
+  'image.cancelled': 'Erzeugung abgebrochen',
+  'image.failed': 'Bild konnte nicht erzeugt werden',
+  'image.download': 'Herunterladen',
+  'image.copy-prompt': 'Prompt kopieren',
+  'image.copied': 'Kopiert',
+  'image.regenerate': 'Neu erzeugen',
+  'image.regenerate-request': 'Erzeuge das Bild erneut mit denselben Vorgaben: {prompt}',
 }
 
 /** Russian copy. */
@@ -374,6 +429,15 @@ export const ru: Record<GatewayStatusKey, string> = {
   'roles.unavailable': 'Пока недоступно',
   'roles.review': 'Проверять результат',
   'roles.review-description': 'Мультимодальная модель проверяет, соответствуют ли изображения и видео запросу.',
+  'image.generating': 'Создание изображения…',
+  'image.generated': 'Создано изображений: {count}',
+  'image.cancelled': 'Создание отменено',
+  'image.failed': 'Не удалось создать изображение',
+  'image.download': 'Скачать',
+  'image.copy-prompt': 'Копировать промпт',
+  'image.copied': 'Скопировано',
+  'image.regenerate': 'Создать заново',
+  'image.regenerate-request': 'Создай изображение заново с теми же требованиями: {prompt}',
 }
 
 /** Portuguese copy. */
@@ -426,4 +490,13 @@ export const pt: Record<GatewayStatusKey, string> = {
   'roles.unavailable': 'Ainda não disponível',
   'roles.review': 'Revisar mídia gerada',
   'roles.review-description': 'Um modelo multimodal verifica se as imagens e vídeos gerados atendem ao pedido.',
+  'image.generating': 'Gerando imagem…',
+  'image.generated': '{count} imagem(ns) gerada(s)',
+  'image.cancelled': 'Geração cancelada',
+  'image.failed': 'Falha ao gerar a imagem',
+  'image.download': 'Baixar',
+  'image.copy-prompt': 'Copiar prompt',
+  'image.copied': 'Copiado',
+  'image.regenerate': 'Gerar novamente',
+  'image.regenerate-request': 'Gere a imagem novamente com os mesmos requisitos: {prompt}',
 }

@@ -4,17 +4,45 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../api/gateway-status" },
-    { "path": "../locale/tsconfig.client.json" },
-    { "path": "../ui-conversation/tsconfig.client.json" },
-    { "path": "../ui-primitives" },
-    { "path": "../ui-renderer" },
-    { "path": "../ui-sidebar" },
-    { "path": "../ui-slots" },
-    { "path": "../ui-settings-models" },
-    { "path": "../../llm/suanli-model-catalog" }
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../api/gateway-status"
+    },
+    {
+      "path": "../locale/tsconfig.client.json"
+    },
+    {
+      "path": "../ui-conversation/tsconfig.client.json"
+    },
+    {
+      "path": "../ui-primitives"
+    },
+    {
+      "path": "../ui-renderer"
+    },
+    {
+      "path": "../ui-sidebar"
+    },
+    {
+      "path": "../ui-slots"
+    },
+    {
+      "path": "../ui-settings-models"
+    },
+    {
+      "path": "../../llm/suanli-model-catalog"
+    },
+    {
+      "path": "../ui-tool"
+    },
+    {
+      "path": "../../attachment/attachment"
+    }
   ]
 }

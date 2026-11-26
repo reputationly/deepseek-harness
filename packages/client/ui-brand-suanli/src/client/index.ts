@@ -15,6 +15,7 @@ import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import { BrandMark, BrandName } from './Brand.tsx'
 import type { GatewayStatusFace } from './ConnectionPill.tsx'
 import { CatalogSyncRow, type CatalogSyncOutcome } from './CatalogSyncRow.tsx'
+import { GenerateImageCard } from './GenerateImageCard.tsx'
 import { ModelRolesRow, type ModelRoleView, type ModelRolesView } from './ModelRolesRow.tsx'
 import { de, en, es, fr, ja, pt, ru, zh, type GatewayStatusKey } from './locales.ts'
 
@@ -70,6 +71,10 @@ export function apply(ctx: ClientContext): void {
     setAutoReview: (enabled: boolean) => Promise<ModelRolesView>
     t: TranslateNS<'gatewayStatus'>
   }) => createElement(ModelRolesRow, { load: props.load, select: props.select, setAutoReview: props.setAutoReview, t: props.t })))
+  // Images generated from chat render inline, with download, prompt copy, and regenerate.
+  ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+    name: 'tool.call.toolview', key: 'generate_image', locale: NS,
+  }, GenerateImageCard))
   ctx.slots.inject('sidebar.brand.mark', () =>
     ctx.slots.inject('sidebar.brand.name', function* () {
       yield ctx.slots.register({ name: 'sidebar.brand.mark' }, BrandMark)
