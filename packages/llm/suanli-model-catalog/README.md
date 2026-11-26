@@ -28,7 +28,7 @@ The route's `models` field is volatile configuration, so a write reaches the run
 ## Refresh rules
 
 - The catalog is read anonymously: the request carries no `Authorization` or `x-api-key`, and the catalog is not trimmed to the key. A model the key may not use fails when it is called, with the gateway's reason.
-- The `text` section decides chat membership and order; an entry the deployment already knew keeps its `contextWindow`, and `inputModalities` follow `supportsImage`, `supportsVideo`, and `supportsAudio`.
+- The `text` section decides chat membership and order; an entry the deployment already knew keeps its `contextWindow`, and `inputModalities` are `text` plus `image` when `supportsImage` is set, the input kinds a chat route accepts; `supportsVideo` only makes a model a vision candidate.
 - A failed, unreadable, or empty read never clears the catalog: the route keeps serving what it had, and `refresh()` reports `unreachable` or `empty-listing`.
 - The settings write and `llm/models-updated` are skipped when the merged chat catalog matches the one in effect.
 

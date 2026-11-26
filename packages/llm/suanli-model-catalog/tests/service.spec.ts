@@ -166,7 +166,7 @@ describe('SuanliModelCatalogService', () => {
       ns: 'llm-deepseek',
       ops: [{ op: 'set', path: ['models'], value: [
         { id: 'deepseek-v4-1-flash', contextWindow: 1_000_000, inputModalities: ['text', 'image'] },
-        { id: 'qwen3.8-flash-fp8', inputModalities: ['text', 'image', 'video'] },
+        { id: 'qwen3.8-flash-fp8', inputModalities: ['text', 'image'] },
       ] }],
     })
     expect(updates).toEqual(['deepseek-official'])
@@ -176,7 +176,7 @@ describe('SuanliModelCatalogService', () => {
   it('writes nothing and emits nothing when the chat models did not change', async () => {
     const { ctx, mutations, updates } = await boot({ models: [
       { id: 'deepseek-v4-1-flash', inputModalities: ['text', 'image'] },
-      { id: 'qwen3.8-flash-fp8', inputModalities: ['text', 'image', 'video'] },
+      { id: 'qwen3.8-flash-fp8', inputModalities: ['text', 'image'] },
     ] })
     await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
     await ctx.suanliModels.refresh()
@@ -308,7 +308,7 @@ describe('SuanliModelCatalogService edges', () => {
     })
     expect(ctx.suanliModels.read()).toEqual([{ id: 'kept', contextWindow: 8, inputModalities: ['text'] }])
     await vi.waitFor(() => { expect(mutations).toHaveLength(1) })
-    expect(mutations[0]).toEqual({ ns: 'llm-custom', ops: [{ op: 'set', path: ['models'], value: [{ id: 'listen', inputModalities: ['text', 'audio'] }] }] })
+    expect(mutations[0]).toEqual({ ns: 'llm-custom', ops: [{ op: 'set', path: ['models'], value: [{ id: 'listen', inputModalities: ['text'] }] }] })
     expect(updates).toEqual(['custom'])
     expect(ctx.suanliModels.capabilities().filter(entry => entry.capability.startsWith('vision'))).toEqual([])
   })

@@ -30,7 +30,7 @@ Host Remote 命名空间：读取网关的 Hilo 模型目录（`GET /api/v1/mode
 ## 刷新规则
 
 - 目录匿名读取：请求不带 `Authorization` 或 `x-api-key`，目录也不按 key 裁剪。key 无权使用的模型在调用时失败，并展示网关给出的原因。
-- `text` 段决定对话目录的成员和顺序；部署已知的条目保留 `contextWindow`，`inputModalities` 按 `supportsImage`、`supportsVideo` 和 `supportsAudio` 生成。
+- `text` 段决定对话目录的成员和顺序；部署已知的条目保留 `contextWindow`，`inputModalities` 为 `text`，`supportsImage` 为真时加 `image`，这是对话路由接受的输入类型；`supportsVideo` 只让模型成为多模态识别候选。
 - 失败、无法解析或为空的读取从不清空目录：路由继续提供已有内容，`refresh()` 报告 `unreachable` 或 `empty-listing`。
 - 合并后的对话目录与当前一致时，不写设置，也不发 `llm/models-updated`。
 

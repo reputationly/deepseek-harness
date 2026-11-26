@@ -306,10 +306,8 @@ export class SuanliModelCatalogService extends TypertRemoteService {
     const merged = mergeCatalog(record.text.map(model => model.model), previous)
     const models: CatalogEntry[] = merged.map((entry) => {
       const listed = record.text.find(model => model.model === entry.id)
-      const inputModalities = ['text',
-        ...listed?.supportsImage === true ? ['image'] : [],
-        ...listed?.supportsVideo === true ? ['video'] : [],
-        ...listed?.supportsAudio === true ? ['audio'] : []]
+      // Chat routes accept text and image input; video support only feeds the vision role.
+      const inputModalities = listed?.supportsImage === true ? ['text', 'image'] : ['text']
       return { ...entry, inputModalities }
     })
     const changed = JSON.stringify(previous) !== JSON.stringify(models)
