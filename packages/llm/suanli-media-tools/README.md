@@ -59,7 +59,8 @@ The schema is prefix-stable. Registration changes only when a model of a role ap
 
 ## Known Limitations and Deferred Work
 
-- **No speech or review yet** — speech waits for `maas-speech` catalog entries, and the multimodal requirement review is not part of this package yet.
+- **No speech yet** — speech waits for `maas-speech` catalog entries.
+- **Review is advisory and partial** — with automatic review on, the selected vision model judges whether images and videos match the request and the card shows its verdict; it never regenerates by itself. Music and videos over 20 MiB are not reviewed, and a failed review call leaves the result unreviewed.
 - **No video extension** — the task transport sends images only, so the `video-extension` mode, which needs a source video, is not offered from chat.
 - **No resume after restart** — a video still rendering when the Host exits is not fetched again; the gateway task keeps running and the call reports an interruption.
 - **No progress percentage** — the call blocks until the file exists (about 36 s for a 2K image, minutes for a video), and the card shows an indeterminate progress state.
