@@ -150,11 +150,11 @@ function imageTool(ctx: Context) {
         text: value.status === 'cancelled'
           ? 'The user cancelled the generation; nothing was submitted.'
           : JSON.stringify({
-              status: value.status,
-              model: value.model,
-              parameters: Object.fromEntries(value.parameters.map(entry => [entry.key, entry.value])),
-              files: value.images.map(image => image.path),
-            }),
+            status: value.status,
+            model: value.model,
+            parameters: Object.fromEntries(value.parameters.map(entry => [entry.key, entry.value])),
+            files: value.images.map(image => image.path),
+          }),
       }],
       presentationMeta: (_args, value): JsonValue => ({
         status: value.status,
@@ -371,11 +371,10 @@ async function referencesOf(entry: CapabilityEntry, paths: readonly string[], cw
  * Session workspace of the call.
  * @param ctx - plugin context.
  * @param exec - the execution.
- * @returns the absolute directory.
- * @throws When the call has no session.
+ * @returns the absolute directory; a call outside a session uses the process directory.
  */
 async function workspaceOf(ctx: Context, exec: ToolExecution): Promise<string> {
-  if (exec.agent === undefined) throw new Error('generate_image needs a session workspace.')
+  if (exec.agent === undefined) return process.cwd()
   return await ctx.workingDirectory.ensure(exec.agent, exec.signal)
 }
 
