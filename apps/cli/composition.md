@@ -210,6 +210,8 @@ flowchart LR
   cfg --> plugin_dsh_base_suanli_model_catalog
   plugin_dsh_base_suanli_media_tasks["suanli-media-tasks<br/>@deepseek-ai/dsh-suanli-media-tasks"]
   cfg --> plugin_dsh_base_suanli_media_tasks
+  plugin_dsh_base_suanli_media_tools["suanli-media-tools<br/>@deepseek-ai/dsh-suanli-media-tools"]
+  cfg --> plugin_dsh_base_suanli_media_tools
 ```
 
 | Plugin id | Package / module |
@@ -315,6 +317,7 @@ flowchart LR
 | `llm-deepseek-account` | `@deepseek-ai/dsh-llm-deepseek-account` |
 | `suanli-model-catalog` | `@deepseek-ai/dsh-suanli-model-catalog` |
 | `suanli-media-tasks` | `@deepseek-ai/dsh-suanli-media-tasks` |
+| `suanli-media-tools` | `@deepseek-ai/dsh-suanli-media-tools` |
 
 Source config: [`packages/bundle/base/cordis.patch.yml`](../../packages/bundle/base/cordis.patch.yml).
 

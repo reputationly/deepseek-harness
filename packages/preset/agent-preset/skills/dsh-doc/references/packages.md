@@ -327,6 +327,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-llm-retry` | yes | Provider-routed LLM request retry policy for the DeepSeek Harness |
 | `@deepseek-ai/dsh-plugin-package-inventory-deepseek` | yes | Active Loader-backed plugin package inventory for official DeepSeek LLM API requests |
 | `@deepseek-ai/dsh-suanli-media-tasks` | yes | Host Remote namespace that submits, polls, cancels, and downloads this deployment's generation tasks |
+| `@deepseek-ai/dsh-suanli-media-tools` | no | Chat generation tools that read the Hilo catalog, ask for missing or unsupported parameters, and save results into the session |
 | `@deepseek-ai/dsh-suanli-model-catalog` | yes | Host Remote namespace that refreshes the product's model catalog from its gateway |
 | `@deepseek-ai/dsh-token-meter` | yes | Replay-aware token measurement service (ctx.tokenMeter) for the DeepSeek Harness |
 

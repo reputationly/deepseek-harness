@@ -57,6 +57,7 @@ import * as ToolPwshPersistent from '@deepseek-ai/dsh-tool-pwsh-persistent'
 import CordisHostRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolPresent from '@deepseek-ai/dsh-tool-present'
+import * as SuanliMediaTools from '@deepseek-ai/dsh-suanli-media-tools'
 import * as ToolOffice from '@deepseek-ai/dsh-tool-office'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
@@ -271,6 +272,22 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ActionCards)
     },
     note: 'Declared only to an Agent that loaded the skill of a registered card kind; the kind packages register their actions, and the Personalized recommendations bundle supplies the shipped kinds.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-suanli-media-tools',
+    dir: 'suanli-media-tools',
+    source: 'packages/llm/suanli-media-tools/src/index.ts',
+    requires: ['ctx.tools', 'ctx.suanliModels', 'ctx.suanliMedia', 'ctx.userQuestions', 'ctx.workingDirectory'],
+    writes: ['tool/call', 'tool/result', 'user-questions/request'],
+    async mount(ctx) {
+      // Schema harvest never reads a catalog, asks a question, or submits a task; the tool registers
+      // only while the image role has a candidate.
+      const image = { role: 'image', candidates: [{ model: 'catalog-image', label: 'catalog-image' }], selected: null, fallback: 'catalog-image' }
+      ctx.provide('suanliModels', { roles: () => [image], media: () => ({ status: 'ready', entries: [] }) } as never)
+      ctx.provide('suanliMedia', {} as never)
+      if (ctx.get('userQuestions') === undefined) ctx.provide('userQuestions', {} as never)
+      await ctx.plugin(SuanliMediaTools)
+    },
   },
   {
     pkg: '@deepseek-ai/dsh-tool-ask-user',
