@@ -49,6 +49,7 @@ async function bench(declare = true) {
       'sidebar.brand.name': { kind: 'single' as const, scope: 'root' as const },
       'conversation.hero.brand.mark': { kind: 'single' as const, scope: 'root' as const },
       'settings.models.footer': { kind: 'list' as const, scope: 'root' as const },
+      'tool.call.toolview': { kind: 'keyed' as const, scope: 'session' as const },
     },
   } as never, () => null)
   const disposeHoles = declare ? declareHoles() : undefined
@@ -96,6 +97,16 @@ describe('product brand plugin', () => {
     after.declareHoles()
     await Promise.resolve()
     for (const hole of HOLES) expect(after.slots.entries(hole)).toHaveLength(1)
+  })
+
+  it('fills the image, video, and music tool cards and removes them on teardown', async () => {
+    const subject = await bench()
+    const fiber = subject.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    expect(subject.slots.entries('tool.call.toolview').map(entry => entry.options.key).sort())
+      .toEqual(['generate_image', 'generate_music', 'generate_video'])
+    await fiber.dispose()
+    expect(subject.slots.entries('tool.call.toolview')).toHaveLength(0)
   })
 
   it('renders the wordmark with the connection light after it', async () => {

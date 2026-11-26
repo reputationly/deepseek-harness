@@ -12,6 +12,7 @@ export type GatewayStatusKey =
   | 'class.chat' | 'class.vision-image' | 'class.vision-video' | 'class.image-generate' | 'class.image-edit' | 'class.video-generate' | 'class.video-first-last-frame' | 'class.video-reference' | 'class.music-generate' | 'class.speech-generate' | 'class.other' | 'catalog.capability-title' | 'catalog.capability-missing'
   | 'roles.title' | 'roles.description' | 'roles.loading' | 'roles.failed' | 'roles.chat' | 'roles.vision' | 'roles.image' | 'roles.video' | 'roles.music' | 'roles.speech' | 'roles.chat-hint' | 'roles.default' | 'roles.unavailable' | 'roles.review' | 'roles.review-description'
   | 'image.generating' | 'image.generated' | 'image.cancelled' | 'image.failed' | 'image.download' | 'image.copy-prompt' | 'image.copied' | 'image.regenerate' | 'image.regenerate-request'
+  | 'video.generating' | 'video.generated' | 'video.failed' | 'video.regenerate-request' | 'music.generating' | 'music.generated' | 'music.failed' | 'music.regenerate-request' | 'media.play-video' | 'media.play-audio' | 'media.loading' | 'media.open' | 'media.unreadable'
 
 /** English copy. */
 export const en: Record<GatewayStatusKey, string> = {
@@ -72,6 +73,19 @@ export const en: Record<GatewayStatusKey, string> = {
   'image.copied': 'Copied',
   'image.regenerate': 'Regenerate',
   'image.regenerate-request': 'Generate the image again with the same requirements: {prompt} ({settings})',
+  'video.generating': 'Generating video…',
+  'video.generated': 'Video generated',
+  'video.failed': 'Video generation failed',
+  'video.regenerate-request': 'Generate the video again with the same requirements: {prompt} ({settings})',
+  'music.generating': 'Generating music…',
+  'music.generated': 'Music generated',
+  'music.failed': 'Music generation failed',
+  'music.regenerate-request': 'Generate the music again with the same requirements: {prompt} ({settings})',
+  'media.play-video': 'Play video',
+  'media.play-audio': 'Play audio',
+  'media.loading': 'Loading…',
+  'media.open': 'Open file',
+  'media.unreadable': 'Could not read {path}',
 }
 
 /** Chinese copy. */
@@ -133,6 +147,19 @@ export const zh: Record<GatewayStatusKey, string> = {
   'image.copied': '已复制',
   'image.regenerate': '重新生成',
   'image.regenerate-request': '按同样的要求重新生成图片：{prompt}（{settings}）',
+  'video.generating': '正在生成视频…',
+  'video.generated': '视频已生成',
+  'video.failed': '视频生成失败',
+  'video.regenerate-request': '按同样的要求重新生成视频：{prompt}（{settings}）',
+  'music.generating': '正在生成音乐…',
+  'music.generated': '音乐已生成',
+  'music.failed': '音乐生成失败',
+  'music.regenerate-request': '按同样的要求重新生成音乐：{prompt}（{settings}）',
+  'media.play-video': '播放视频',
+  'media.play-audio': '播放音频',
+  'media.loading': '正在读取…',
+  'media.open': '打开文件',
+  'media.unreadable': '无法读取 {path}',
 }
 
 /** Japanese copy. */
@@ -194,6 +221,19 @@ export const ja: Record<GatewayStatusKey, string> = {
   'image.copied': 'コピーしました',
   'image.regenerate': '再生成',
   'image.regenerate-request': '同じ条件で画像をもう一度生成してください：{prompt}（{settings}）',
+  'video.generating': '動画を生成中…',
+  'video.generated': '動画を生成しました',
+  'video.failed': '動画を生成できませんでした',
+  'video.regenerate-request': '同じ条件で動画をもう一度生成してください：{prompt}（{settings}）',
+  'music.generating': '音楽を生成中…',
+  'music.generated': '音楽を生成しました',
+  'music.failed': '音楽を生成できませんでした',
+  'music.regenerate-request': '同じ条件で音楽をもう一度生成してください：{prompt}（{settings}）',
+  'media.play-video': '動画を再生',
+  'media.play-audio': '音声を再生',
+  'media.loading': '読み込み中…',
+  'media.open': 'ファイルを開く',
+  'media.unreadable': '{path} を読み込めませんでした',
 }
 
 /** Spanish copy. */
@@ -255,6 +295,19 @@ export const es: Record<GatewayStatusKey, string> = {
   'image.copied': 'Copiado',
   'image.regenerate': 'Regenerar',
   'image.regenerate-request': 'Genera la imagen de nuevo con los mismos requisitos: {prompt} ({settings})',
+  'video.generating': 'Generando vídeo…',
+  'video.generated': 'Vídeo generado',
+  'video.failed': 'No se pudo generar el vídeo',
+  'video.regenerate-request': 'Genera el vídeo de nuevo con los mismos requisitos: {prompt} ({settings})',
+  'music.generating': 'Generando música…',
+  'music.generated': 'Música generada',
+  'music.failed': 'No se pudo generar la música',
+  'music.regenerate-request': 'Genera la música de nuevo con los mismos requisitos: {prompt} ({settings})',
+  'media.play-video': 'Reproducir vídeo',
+  'media.play-audio': 'Reproducir audio',
+  'media.loading': 'Cargando…',
+  'media.open': 'Abrir archivo',
+  'media.unreadable': 'No se pudo leer {path}',
 }
 
 /** French copy. */
@@ -316,6 +369,19 @@ export const fr: Record<GatewayStatusKey, string> = {
   'image.copied': 'Copié',
   'image.regenerate': 'Régénérer',
   'image.regenerate-request': 'Génère de nouveau l’image avec les mêmes exigences : {prompt} ({settings})',
+  'video.generating': 'Génération de la vidéo…',
+  'video.generated': 'Vidéo générée',
+  'video.failed': 'Échec de la génération vidéo',
+  'video.regenerate-request': 'Génère à nouveau la vidéo avec les mêmes exigences : {prompt} ({settings})',
+  'music.generating': 'Génération de la musique…',
+  'music.generated': 'Musique générée',
+  'music.failed': 'Échec de la génération musicale',
+  'music.regenerate-request': 'Génère à nouveau la musique avec les mêmes exigences : {prompt} ({settings})',
+  'media.play-video': 'Lire la vidéo',
+  'media.play-audio': 'Lire l’audio',
+  'media.loading': 'Chargement…',
+  'media.open': 'Ouvrir le fichier',
+  'media.unreadable': 'Impossible de lire {path}',
 }
 
 /** German copy. */
@@ -377,6 +443,19 @@ export const de: Record<GatewayStatusKey, string> = {
   'image.copied': 'Kopiert',
   'image.regenerate': 'Neu erzeugen',
   'image.regenerate-request': 'Erzeuge das Bild erneut mit denselben Vorgaben: {prompt} ({settings})',
+  'video.generating': 'Video wird generiert…',
+  'video.generated': 'Video generiert',
+  'video.failed': 'Videogenerierung fehlgeschlagen',
+  'video.regenerate-request': 'Erzeuge das Video erneut mit denselben Anforderungen: {prompt} ({settings})',
+  'music.generating': 'Musik wird generiert…',
+  'music.generated': 'Musik generiert',
+  'music.failed': 'Musikgenerierung fehlgeschlagen',
+  'music.regenerate-request': 'Erzeuge die Musik erneut mit denselben Anforderungen: {prompt} ({settings})',
+  'media.play-video': 'Video abspielen',
+  'media.play-audio': 'Audio abspielen',
+  'media.loading': 'Wird geladen…',
+  'media.open': 'Datei öffnen',
+  'media.unreadable': '{path} konnte nicht gelesen werden',
 }
 
 /** Russian copy. */
@@ -438,6 +517,19 @@ export const ru: Record<GatewayStatusKey, string> = {
   'image.copied': 'Скопировано',
   'image.regenerate': 'Создать заново',
   'image.regenerate-request': 'Создай изображение заново с теми же требованиями: {prompt} ({settings})',
+  'video.generating': 'Генерация видео…',
+  'video.generated': 'Видео создано',
+  'video.failed': 'Не удалось создать видео',
+  'video.regenerate-request': 'Создай видео ещё раз с теми же требованиями: {prompt} ({settings})',
+  'music.generating': 'Генерация музыки…',
+  'music.generated': 'Музыка создана',
+  'music.failed': 'Не удалось создать музыку',
+  'music.regenerate-request': 'Создай музыку ещё раз с теми же требованиями: {prompt} ({settings})',
+  'media.play-video': 'Воспроизвести видео',
+  'media.play-audio': 'Воспроизвести аудио',
+  'media.loading': 'Загрузка…',
+  'media.open': 'Открыть файл',
+  'media.unreadable': 'Не удалось прочитать {path}',
 }
 
 /** Portuguese copy. */
@@ -499,4 +591,17 @@ export const pt: Record<GatewayStatusKey, string> = {
   'image.copied': 'Copiado',
   'image.regenerate': 'Gerar novamente',
   'image.regenerate-request': 'Gere a imagem novamente com os mesmos requisitos: {prompt} ({settings})',
+  'video.generating': 'Gerando vídeo…',
+  'video.generated': 'Vídeo gerado',
+  'video.failed': 'Falha ao gerar o vídeo',
+  'video.regenerate-request': 'Gere o vídeo novamente com os mesmos requisitos: {prompt} ({settings})',
+  'music.generating': 'Gerando música…',
+  'music.generated': 'Música gerada',
+  'music.failed': 'Falha ao gerar a música',
+  'music.regenerate-request': 'Gere a música novamente com os mesmos requisitos: {prompt} ({settings})',
+  'media.play-video': 'Reproduzir vídeo',
+  'media.play-audio': 'Reproduzir áudio',
+  'media.loading': 'Carregando…',
+  'media.open': 'Abrir arquivo',
+  'media.unreadable': 'Não foi possível ler {path}',
 }

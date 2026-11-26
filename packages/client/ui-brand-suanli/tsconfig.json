@@ -15,6 +15,18 @@
       "path": "../../api/gateway-status"
     },
     {
+      "path": "../../api/workspace-files/tsconfig.client.json"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../llm/suanli-model-catalog"
+    },
+    {
       "path": "../locale/tsconfig.client.json"
     },
     {
@@ -27,22 +39,16 @@
       "path": "../ui-renderer"
     },
     {
+      "path": "../ui-settings-models"
+    },
+    {
       "path": "../ui-sidebar"
     },
     {
       "path": "../ui-slots"
     },
     {
-      "path": "../ui-settings-models"
-    },
-    {
-      "path": "../../llm/suanli-model-catalog"
-    },
-    {
       "path": "../ui-tool"
-    },
-    {
-      "path": "../../attachment/attachment"
     }
   ]
 }

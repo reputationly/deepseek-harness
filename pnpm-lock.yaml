@@ -4087,6 +4087,9 @@ importers:
       '@deepseek-ai/dsh-api-gateway-status':
         specifier: workspace:*
         version: link:../../api/gateway-status
+      '@deepseek-ai/dsh-api-workspace-files':
+        specifier: workspace:*
+        version: link:../../api/workspace-files
       '@deepseek-ai/dsh-attachment':
         specifier: workspace:*
         version: link:../../attachment/attachment
@@ -4114,6 +4117,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-tool':
         specifier: workspace:*
         version: link:../ui-tool
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
       '@deepseek-ai/dsh-suanli-model-catalog':
         specifier: workspace:*
         version: link:../../llm/suanli-model-catalog

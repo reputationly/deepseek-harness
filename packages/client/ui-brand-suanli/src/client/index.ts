@@ -11,11 +11,14 @@ import type { ModelsFooterOwnerProps } from '@deepseek-ai/dsh-client-ui-settings
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-api-gateway-status/remote'
 import type {} from '@deepseek-ai/dsh-suanli-model-catalog/remote'
+import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import { BrandMark, BrandName } from './Brand.tsx'
 import type { GatewayStatusFace } from './ConnectionPill.tsx'
 import { CatalogSyncRow, type CatalogSyncOutcome } from './CatalogSyncRow.tsx'
 import { GenerateImageCard } from './GenerateImageCard.tsx'
+import { GenerateMediaCard, type MediaLoader } from './GenerateMediaCard.tsx'
 import { ModelRolesRow, type ModelRoleView, type ModelRolesView } from './ModelRolesRow.tsx'
 import { de, en, es, fr, ja, pt, ru, zh, type GatewayStatusKey } from './locales.ts'
 
@@ -75,6 +78,15 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
     name: 'tool.call.toolview', key: 'generate_image', locale: NS,
   }, GenerateImageCard))
+  // Videos and music play inline once the user asks; the bytes come from the call's own Session workspace.
+  for (const key of ['generate_video', 'generate_music']) {
+    ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+      name: 'tool.call.toolview', key, locale: NS,
+      inject: (sessionId: SessionId): { loadMedia: MediaLoader } => ({
+        loadMedia: async (path, mediaType, signal) => await readWhole(ctx, sessionId, path, mediaType, signal),
+      }),
+    }, GenerateMediaCard))
+  }
   ctx.slots.inject('sidebar.brand.mark', () =>
     ctx.slots.inject('sidebar.brand.name', function* () {
       yield ctx.slots.register({ name: 'sidebar.brand.mark' }, BrandMark)
@@ -164,4 +176,32 @@ function gatewayStatus(ctx: ClientContext): ClientContext['remote']['gatewayStat
 function unwrap(result: { ok: true; value: GatewayStatus } | { ok: false; error: unknown }): GatewayStatus {
   if (!result.ok) throw new Error('gateway status request failed')
   return result.value
+}
+
+/** Upper bound on one generated file the card reads into memory. */
+const MAX_MEDIA_BYTES = 512 * 1024 * 1024
+
+/**
+ * Read one workspace file window by window, so files above the full-read cap still play.
+ * @param ctx - Client root context.
+ * @param sessionId - Session whose workspace holds the file.
+ * @param path - saved file path.
+ * @param mediaType - the type the Blob carries.
+ * @param signal - aborts the read.
+ * @returns the file's bytes.
+ * @throws When the Host refuses a window or the file exceeds the bound.
+ */
+async function readWhole(ctx: ClientContext, sessionId: SessionId, path: string, mediaType: string, signal: AbortSignal): Promise<Blob> {
+  const parts: Uint8Array<ArrayBuffer>[] = []
+  let offset = 0
+  for (;;) {
+    const answer = await ctx.remote.workspaceFiles.readBytes(sessionId, path, { range: { offset } }, signal)
+    if (!answer.ok) throw new Error(answer.error.message)
+    const data = new Uint8Array(answer.value.data.byteLength)
+    data.set(answer.value.data)
+    parts.push(data)
+    offset += data.byteLength
+    if (answer.value.eof || data.byteLength === 0) return new Blob(parts, { type: mediaType })
+    if (offset > MAX_MEDIA_BYTES) throw new Error(`"${path}" exceeds ${String(MAX_MEDIA_BYTES)} bytes`)
+  }
 }
