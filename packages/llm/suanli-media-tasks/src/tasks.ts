@@ -1,5 +1,8 @@
 /** Generation-task client for the deployment's gateway: submit, poll, cancel, download. */
 import type {
+  MediaInspectRequest,
+  MediaInspectResult,
+  MediaSpeakRequest,
   MediaCancelResult, MediaDownloadResult, MediaFailureReason, MediaOperation, MediaStatusResult,
   MediaSubmitRequest, MediaSubmitResult, MediaTaskState, MediaTransport,
 } from './types.ts'
@@ -228,6 +231,57 @@ export class MediaTaskClient {
       const response = await this.options.send(url, { signal: AbortSignal.any([signal, budget]) })
       if (!response.ok) return { ok: false, reason: 'unreachable', detail: `HTTP ${String(response.status)}` }
       const bytes = Buffer.from(await response.arrayBuffer())
+      await writeFile(targetPath, bytes)
+      return { ok: true, path: targetPath, bytes: bytes.byteLength }
+    } catch {
+      return { ok: false, reason: signal.aborted ? 'cancelled' : 'unreachable' }
+    }
+  }
+
+  /**
+   * Ask a vision model one question about generated files through the gateway's chat endpoint.
+   * @param request - vision model, instruction, and the inlined files.
+   * @param signal - aborts the call.
+   * @returns the answer text, or why there is none.
+   */
+  async inspect(request: MediaInspectRequest, signal: AbortSignal): Promise<MediaInspectResult> {
+    const content = [
+      { type: 'text', text: request.instruction },
+      ...request.media.map(item => item.kind === 'image'
+        ? { type: 'image_url', image_url: { url: item.dataUrl } }
+        : { type: 'video_url', video_url: { url: item.dataUrl } }),
+    ]
+    const answer = await this.call('POST', '/v1/chat/completions', {
+      model: request.model, stream: false, temperature: 0, messages: [{ role: 'user', content }],
+    }, signal)
+    if (!answer.ok) return answer
+    const text = (answer.value as { choices?: { message?: { content?: unknown } }[] } | null)?.choices?.[0]?.message?.content
+    return typeof text === 'string' && text !== '' ? { ok: true, text } : { ok: false, reason: 'rejected', detail: 'the vision model answered no text' }
+  }
+
+  /**
+   * Synthesize speech through the gateway's `/v1/audio/speech` and write the audio it answers.
+   * @param request - speech model, text, and catalog parameters.
+   * @param targetPath - path the caller owns.
+   * @param signal - aborts the call.
+   * @returns the written path and size, or why nothing was written.
+   */
+  async speak(request: MediaSpeakRequest, targetPath: string, signal: AbortSignal): Promise<MediaDownloadResult> {
+    const key = await this.options.credential()
+    if (key === undefined || key === '') return { ok: false, reason: 'no-credential' }
+    const { writeFile } = await import('node:fs/promises')
+    let response: Response
+    try {
+      response = await this.options.send(new URL('/v1/audio/speech', this.options.baseURL).href, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${key}`, 'x-api-key': key, 'content-type': 'application/json' },
+        body: JSON.stringify({ ...request.params, model: request.model, input: request.input }),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(this.options.timeoutMs)]),
+      })
+      if (response.status === 401 || response.status === 403) return { ok: false, reason: 'unauthorized' }
+      if (!response.ok) return { ok: false, reason: 'rejected', detail: await errorTextOf(response) }
+      const bytes = Buffer.from(await response.arrayBuffer())
+      if (bytes.byteLength === 0) return { ok: false, reason: 'no-artifact' }
       await writeFile(targetPath, bytes)
       return { ok: true, path: targetPath, bytes: bytes.byteLength }
     } catch {

@@ -1,4 +1,5 @@
 /** Reads the generate_image result metadata the Host tool records for this card. */
+import { reviewOf, type ResultReview } from './media-result.ts'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment/types'
 
 /** One generated image the card shows. */
@@ -14,6 +15,7 @@ export interface ImageResult {
   readonly modelLabel: string
   readonly parameters: readonly { readonly key: string; readonly value: string }[]
   readonly images: readonly ImageResultItem[]
+  readonly review?: ResultReview
 }
 
 /**
@@ -24,6 +26,7 @@ export interface ImageResult {
 export function imageResultOf(meta: unknown): ImageResult | null {
   if (!isRecord(meta)) return null
   const { status, prompt, modelLabel, parameters, images } = meta
+  const review = reviewOf(meta.review)
   if (status !== 'generated' && status !== 'cancelled') return null
   if (typeof prompt !== 'string' || typeof modelLabel !== 'string') return null
   if (!isRecord(parameters) || !Array.isArray(images)) return null
@@ -32,7 +35,7 @@ export function imageResultOf(meta: unknown): ImageResult | null {
     if (typeof item.path !== 'string') return []
     return isAttachment(item.attachment) ? [{ path: item.path, attachment: item.attachment }] : [{ path: item.path }]
   })
-  return { status, prompt, modelLabel, parameters: pairs, images: items }
+  return { status, prompt, modelLabel, parameters: pairs, images: items, ...review !== undefined ? { review } : {} }
 }
 
 /**

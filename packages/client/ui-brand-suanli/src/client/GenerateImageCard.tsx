@@ -64,6 +64,9 @@ function GeneratedImages({ result, props }: { result: ImageResult; props: Genera
   return <div className={css.card}>
     <p className={css.title}>{t('image.generated', { count: result.images.length })}</p>
     <p className={css.detail}>{facts}</p>
+    {result.review !== undefined && (
+      <p className={css.detail} data-verdict={result.review.verdict}>{t(`review.${result.review.verdict}`, { reason: result.review.reason })}</p>
+    )}
     {stored.length > 0
       ? renderFactorySlot('conversation.images.content', { images: stored, loadImage, align: 'start' })
       : <ul className={css.paths}>{result.images.map(image => <li key={image.path} className={css.detail}>{image.path}</li>)}</ul>}

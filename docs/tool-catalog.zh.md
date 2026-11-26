@@ -24,7 +24,7 @@
 | `@deepseek-ai/dsh-mcp-resources` | `list_mcp_resource_templates`, `list_mcp_resources`, `read_mcp_resource` | `ctx.tools`, `ctx.mcpResources` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-experimental-browser-use-stagehand-native` | `stagehand_act`、`stagehand_extract`、`stagehand_navigate`、`stagehand_observe`、`stagehand_screenshot`、`stagehand_tabs` | `ctx.browserUse`、`ctx.agents`、`ctx.tools`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-action-cards` | `propose_action` | `ctx.tools`、`ctx.agents`、`ctx.sessionProjections`、`ctx.remoteAccess` | `tool/call`、`tool/result`、`plugin:action-cards/decision`、`user/message` | - | 只向加载过已注册卡片种类 Skill 的 Agent 声明；各种类的包注册自己的动作，个性化推荐 Bundle 提供随产品发布的种类。 |
-| `@deepseek-ai/dsh-suanli-media-tools` | `generate_image` | `ctx.tools`、`ctx.fs`、`ctx.suanliModels`、`ctx.suanliMedia`、`ctx.userQuestions`、`ctx.workingDirectory` | `tool/call`、`tool/result`、`user-questions/request` | - | - |
+| `@deepseek-ai/dsh-suanli-media-tools` | `generate_image`、`generate_music`、`generate_speech`、`generate_video` | `ctx.tools`、`ctx.fs`、`ctx.suanliModels`、`ctx.suanliMedia`、`ctx.userQuestions`、`ctx.workingDirectory` | `tool/call`、`tool/result`、`user-questions/request` | - | - |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`、`ctx.userQuestions` | `tool/call`、`tool/result after an answer or timeout`、`late user/message` | - | ask_user_question 默认保持原有阻塞行为；设置 `mode: timed` 后才启用前台超时与 pending 结果，同时问题仍可回答；timed 模式内 `timeout: -1` 让本次调用无限期阻塞。 |
 | `@deepseek-ai/dsh-tool-executor-ptc` | `run_code` | `ctx.workingDirectory (Agent executions)`、`ctx.tools`、`ctx.ptcRuntime`、`ctx.systemPrompt` | `tool/call`、`one tool/ptc-dispatch-start + tool/ptc-dispatch pair per bridged sub-call`、`tool/result` | - | PTC 执行器只向模型公开 run_code，并在运行时语言生成的 SDK 中声明其他可见能力。程序绑定按提交顺序进入共享的受守卫工具流水线；并行安全的函数体最多重叠 maxParallelSubCalls 个，嵌套结果保持与外层程序关联。最终超时时间与 maxSubCallsPerMinute 决定调用总额度；超限会终止程序。 |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`、`ctx.systemPrompt`、`ctx.agents`、`ctx.userQuestions (execution time, opportunistic)` | `tool/call`、`plan/mode inactive on an approved review`、`tool/result` | - | 规划未激活时，exit_plan_mode 仍保留在面向模型的 schema 中，这样状态转换不会在规划策略变更之外额外造成工具目录变动。其执行路径会拒绝规划模式之外的调用；在规划模式下，它通过用户交互 seam 提交计划（批准／根据反馈继续规划），批准后会在步骤边界记录规划模式已停用。 |
@@ -582,6 +582,112 @@
     "count": {
       "type": "integer",
       "description": "How many images, 1 to 4. Defaults to 1."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+源码： [`packages/llm/suanli-media-tools/src/index.ts`](../packages/llm/suanli-media-tools/src/index.ts)
+
+### `generate_music`
+
+生成一段音乐，按风格和情绪描述，可附歌词。只有用户说了是否带人声时才传 instrumental；没说由工具询问，不要先问。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "Style, mood, instruments, and tempo, in the user's language."
+    },
+    "lyrics": {
+      "type": "string",
+      "description": "Lyrics the user wrote or asked for; omit for an instrumental piece."
+    },
+    "instrumental": {
+      "type": "boolean",
+      "description": "true for no vocals, false for a song, when the user said so. Omit otherwise."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+```
+
+源码： [`packages/llm/suanli-media-tools/src/index.ts`](../packages/llm/suanli-media-tools/src/index.ts)
+
+### `generate_speech`
+
+把文本朗读出来，保存为工作区里的语音音频。传入要朗读的原文，用户说了音色时传入用户原话；缺少或不支持的音色由工具向用户询问。结果是用户在对话里播放的音频文件。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "The exact text to read aloud."
+    },
+    "voice": {
+      "type": "string",
+      "description": "Voice the user named, in their own words. Omit otherwise."
+    }
+  },
+  "required": [
+    "text"
+  ]
+}
+```
+
+源码： [`packages/llm/suanli-media-tools/src/index.ts`](../packages/llm/suanli-media-tools/src/index.ts)
+
+### `generate_video`
+
+根据文字描述生成视频片段，可选用工作区里的首帧（及尾帧）或参考图。用户给出宽高比、分辨率、时长和声音时传入用户原话（例如「竖屏」「2K」、10、true），没给就省略。缺少或不支持的参数由工具向用户询问，不要先问。渲染需要数分钟，只调用一次。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "What the clip shows and how it moves, in the user's language."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "description": "Aspect ratio in the user's words, such as \"9:16\" or \"竖屏\". Omit when the user gave none."
+    },
+    "resolution": {
+      "type": "string",
+      "description": "Resolution in the user's words, such as \"2K\". Omit when the user gave none."
+    },
+    "duration_seconds": {
+      "type": "number",
+      "description": "Length in seconds the user asked for. Omit when the user gave none."
+    },
+    "with_audio": {
+      "type": "boolean",
+      "description": "Whether the clip has sound, when the user said so. Omit otherwise."
+    },
+    "first_frame": {
+      "type": "string",
+      "description": "Workspace path of the image the clip starts from."
+    },
+    "last_frame": {
+      "type": "string",
+      "description": "Workspace path of the image the clip ends on; needs first_frame."
+    },
+    "reference_images": {
+      "type": "array",
+      "description": "Workspace paths of images whose subjects or style the clip should follow; not combined with frames.",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [

@@ -1,0 +1,45 @@
+/* generate_video / generate_music card: status line, model and parameters, the players, then actions. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+}
+
+.title {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.detail {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.video {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+  max-height: 60vh;
+  border-radius: 8px;
+  background: #000;
+}
+
+.audio {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

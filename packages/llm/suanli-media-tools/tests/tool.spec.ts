@@ -46,6 +46,7 @@ async function boot(options: { answer?: (request: AskUserQuestionRequest) => Ask
   const ctx = new Context()
   contexts.push(ctx)
   ctx.provide('suanliModels', {
+    preferences: () => ({ autoReview: false }),
     roles: () => [{
       role: 'image',
       candidates: candidates ? [{ model: 'minimax-h3-image', label: 'MiniMax H3 Image' }] : [],
