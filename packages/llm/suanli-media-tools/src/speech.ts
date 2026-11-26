@@ -61,7 +61,11 @@ async function speak(ctx: Context, args: SpeechArgs, exec: ToolExecution): Promi
   if (parameters === undefined) return { ...base, status: 'cancelled', parameters: [], media: [] }
   exec.signal.throwIfAborted()
   const { path, data } = await publishArtifact(ctx, 'Speech', cwd,
-    async target => await ctx.suanliMedia.speak({ model, input: args.text, params: parameters }, target),
+    async (target) => {
+      const spoken = await ctx.suanliMedia.speak({ model, input: args.text, params: parameters }, target)
+      exec.signal.throwIfAborted()
+      return spoken
+    },
     bytes => typeOf(bytes, 'music').extension)
   return {
     ...base,
