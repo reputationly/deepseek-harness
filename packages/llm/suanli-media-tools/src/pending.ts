@@ -247,9 +247,13 @@ export function pendingTasks(ctx: Context): PendingTasks {
     async findArtifact(cwd, path) {
       const key = artifactKey(cwd, path)
       const table = await open()
-      if (table === undefined) return artifactMemory.get(key)?.taskId
+      const freshArtifact = (record: StoredArtifact): boolean => Date.now() - record.recordedAt <= PENDING_TTL_MS
+      if (table === undefined) {
+        const record = artifactMemory.get(key)
+        return record !== undefined && freshArtifact(record) ? record.taskId : undefined
+      }
       for (const [, record] of table.artifacts.entries()) {
-        if (artifactKey(record.cwd, record.path) === key) return record.taskId
+        if (artifactKey(record.cwd, record.path) === key && freshArtifact(record)) return record.taskId
       }
       return undefined
     },
