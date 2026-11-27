@@ -51,8 +51,9 @@ jobs:
             script: package:mac:arm64:unsigned
             target: mac-arm64
             artifact: mac-arm64
-          # Intel Macs: cross-built on the Apple silicon runner, as the manual Intel package workflow does.
-          - os: macos-latest
+          # Intel Macs build on a native Intel runner: under Rosetta the packaged runtime smoke's
+          # LibreOffice conversion exceeds its timeout on hosted Apple silicon runners.
+          - os: macos-15-intel
             script: package:mac:x64:unsigned
             target: mac-x64
             artifact: mac-x64
