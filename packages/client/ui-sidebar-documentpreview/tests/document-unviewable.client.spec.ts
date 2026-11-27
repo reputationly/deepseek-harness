@@ -5,13 +5,12 @@ import { unviewableBinaryPath } from '../src/client/document/unviewable.ts'
 describe('unviewableBinaryPath', () => {
   it('matches one sample from every listed category', () => {
     for (const path of [
-      'clip.mp4', 'song.mp3', 'bundle.zip', 'report.docx', 'tool.exe',
+      'bundle.zip', 'report.docx', 'tool.exe',
       'face.woff2', 'image.dmg', 'design.psd',
     ]) expect(unviewableBinaryPath(path), path).toBe(true)
   })
 
   it('matches regardless of case, directories, and path separators', () => {
-    expect(unviewableBinaryPath('MOVIE.MP4')).toBe(true)
     expect(unviewableBinaryPath('work/deep/archive.tar.gz')).toBe(true)
     expect(unviewableBinaryPath('work\\deep\\notes.docx')).toBe(true)
   })

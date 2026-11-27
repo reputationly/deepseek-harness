@@ -8,10 +8,6 @@
  */
 import { documentFileName, matchedSuffixLength } from './suffix.ts'
 const UNVIEWABLE_BINARY_EXTENSIONS: readonly string[] = [
-  // video
-  'mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v',
-  // audio
-  'mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'wma', 'opus',
   // archives
   'zip', 'gz', 'tgz', 'bz2', 'xz', 'zst', '7z', 'rar', 'tar', 'jar',
   // office documents — `key` stays out: it collides with key/credential files
