@@ -50,10 +50,28 @@ describe('submit', () => {
     expect(calls[0]?.body).toMatchObject({ model: 'minimax-h3-2k', prompt: '走两步', metadata: { task_type: 't2v' } })
   })
 
-  it('passes reference images to the video transport', async () => {
+  it('passes reference-mode images through metadata, where r2va reads them', async () => {
     const { subject, calls } = client({ answer: () => json({ task_id: 'task-2', status: 'QUEUED' }) })
     await subject.submit({ operation: 'generate_video', model: 'ref', prompt: 'p', taskType: 'r2va', referenceImages: ['a.png', 'b.png'] }, signal)
-    expect(calls[0]?.body).toMatchObject({ image: 'a.png', images: ['a.png', 'b.png'] })
+    expect(calls[0]?.body).toMatchObject({ metadata: { task_type: 'r2va', src_ref_images: ['a.png', 'b.png'] } })
+    expect(calls[0]?.body).not.toHaveProperty('image')
+    expect(calls[0]?.body).not.toHaveProperty('images')
+  })
+
+  it('moves video catalog controls into the canonical task contract', async () => {
+    const { subject, calls } = client({ answer: () => json({ task_id: 'task-4', status: 'QUEUED' }) })
+    await subject.submit({
+      operation: 'generate_video', model: 'minimax-h3-2k', prompt: 'p', taskType: 't2v',
+      params: { duration: '10', resolution: '768P', ratio: '9:16', generate_audio: 'false', image_mode: 'text-to-video' },
+    }, signal)
+    expect(calls[0]?.body).toMatchObject({
+      duration: 10,
+      size: '768P',
+      metadata: { task_type: 't2v', aspect_ratio: '9:16', generate_audio: false, image_mode: 'text-to-video' },
+    })
+    expect(calls[0]?.body).not.toHaveProperty('metadata.duration')
+    expect(calls[0]?.body).not.toHaveProperty('metadata.resolution')
+    expect(calls[0]?.body).not.toHaveProperty('metadata.ratio')
   })
 
   it('sends the clip a continuation extends as metadata.source_video', async () => {

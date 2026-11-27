@@ -56,21 +56,59 @@ function transportOf(operation: MediaOperation): MediaTransport {
   return operation === 'generate_image' ? 'images' : 'videos'
 }
 
+function secondsOf(value: string | number | boolean): number | undefined {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : undefined
+}
+
+function booleanOf(value: string | number | boolean): unknown {
+  if (typeof value === 'boolean') return value
+  if (typeof value !== 'string') return value
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'true') return true
+  if (normalized === 'false') return false
+  return value
+}
+
 /** JSON of one submit body. */
 function bodyOf(request: MediaSubmitRequest): Record<string, unknown> {
   const references = request.referenceImages ?? []
   const images = references.length > 0 ? references : undefined
-  const metadata: Record<string, unknown> = { ...request.params ?? {} }
-  if (request.taskType !== undefined) metadata.task_type = request.taskType
-  if (request.sourceVideo !== undefined) metadata.source_video = request.sourceVideo
   if (transportOf(request.operation) === 'videos') {
+    const metadata: Record<string, unknown> = {}
+    let duration: number | undefined
+    let size: string | undefined
+    for (const [key, value] of Object.entries(request.params ?? {})) {
+      if (key === 'duration' || key === 'duration_seconds') {
+        duration = secondsOf(value) ?? duration
+      } else if (key === 'resolution' || key === 'size') {
+        const text = String(value).trim()
+        if (text !== '') size = text
+      } else if (key === 'ratio') {
+        const ratio = String(value).trim()
+        if (ratio !== '' && ratio !== 'adaptive') metadata.aspect_ratio = ratio
+      } else if (key === 'generate_audio') {
+        metadata.generate_audio = booleanOf(value)
+      } else {
+        metadata[key] = value
+      }
+    }
+    if (request.taskType !== undefined) metadata.task_type = request.taskType
+    if (request.sourceVideo !== undefined) metadata.source_video = request.sourceVideo
+    const referenceMode = request.taskType === 'r2va' || request.params?.['image_mode'] === 'reference'
+    if (referenceMode && images !== undefined) metadata.src_ref_images = [...images]
     return {
       model: request.model,
       prompt: request.prompt,
-      ...images === undefined ? {} : { image: images[0], images },
+      ...duration === undefined ? {} : { duration },
+      ...size === undefined ? {} : { size },
+      ...images === undefined || referenceMode ? {} : { image: images[0], images },
       metadata,
     }
   }
+  const metadata: Record<string, unknown> = { ...request.params ?? {} }
+  if (request.taskType !== undefined) metadata.task_type = request.taskType
+  if (request.sourceVideo !== undefined) metadata.source_video = request.sourceVideo
   return {
     model: request.model,
     prompt: request.prompt,

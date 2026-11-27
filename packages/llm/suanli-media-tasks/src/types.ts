@@ -34,7 +34,7 @@ export interface MediaSubmitRequest {
   readonly referenceImages?: readonly string[]
   /** Data URL of the clip a `video-extension` task continues. */
   readonly sourceVideo?: string
-  /** Extra gateway parameters, forwarded verbatim. */
+  /** Catalog parameters; the client maps video contract fields (`duration`, `resolution`, `ratio`) to the gateway's canonical places. */
   readonly params?: Readonly<Record<string, string | number | boolean>>
   /** Image canvas as `WIDTHxHEIGHT`; the image route reads the canvas only from this field. */
   readonly size?: string
