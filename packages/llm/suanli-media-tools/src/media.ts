@@ -282,7 +282,7 @@ async function generate(
   const { path, data } = await saveArtifact(ctx, what, url, cwd, bytes => typeOf(bytes, role).extension)
   await pending.forget(pendingKey)
   try {
-    await pending.rememberArtifact(cwd, path, taskId, data)
+    if (taskId !== '') await pending.rememberArtifact(cwd, path, taskId, data)
   } catch (error) {
     ctx.logger.warn('suanli media tools: recording artifact task %s failed: %s', taskId, String(error))
   }

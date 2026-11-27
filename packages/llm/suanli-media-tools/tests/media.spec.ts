@@ -289,6 +289,18 @@ describe('generate_video', () => {
     expect(request?.sourceVideo).toMatch(/^data:video\/mp4;base64,/u)
   })
 
+  it('does not turn a URL-only result into an empty task reference', async () => {
+    const { submit, run, cwd } = await boot()
+    submit.mockResolvedValueOnce({ ok: true, taskId: '', transport: 'videos', state: 'succeeded', url: 'https://cdn.example/v' })
+    await run('generate_video', { prompt: '小猫玩耍', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 5, with_audio: true })
+    const [file] = await readdir(join(cwd, 'generated'))
+    await run('generate_video', {
+      prompt: '接着跑', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 10, with_audio: true, source_video: `generated/${file}`,
+    })
+    const request = submit.mock.calls[1]?.[0] as { sourceVideo?: string } | undefined
+    expect(request?.sourceVideo).toMatch(/^data:video\/mp4;base64,/u)
+  })
+
   it('offers only 768P for a continued clip', async () => {
     const { ask, run, cwd } = await boot()
     await writeFile(join(cwd, 'clip.mp4'), MP4)
