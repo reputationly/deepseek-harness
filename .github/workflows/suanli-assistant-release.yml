@@ -162,10 +162,14 @@ jobs:
         with:
           pattern: installer-*
           path: artifacts
-          merge-multiple: true
       - name: Publish every target
+        # One directory per build: both Mac builds carry their own `nightly-mac.yml`, which a merged
+        # download would collapse into one feed for two architectures.
         run: |
-          node scripts/release/aurora-publish.mjs             --artifacts artifacts             --version "${{ needs.prepare.outputs.version }}"             --keep "${{ inputs.keep }}"
+          for dir in artifacts/installer-*/; do
+            node scripts/release/aurora-publish.mjs --artifacts "$dir" --version "${{ needs.prepare.outputs.version }}" --keep "${{ inputs.keep }}"
+            cp "$dir"*-latest.json artifacts/
+          done
       # Artifacts are live at this point; a CDN hiccup must not mark the release failed, but it must
       # be visible: the run shows the warning and the log carries the reason. Only the pointers are
       # refreshed: the free plan's pre-warm quota is zero, so CreatePrefetchTask would always fail.
