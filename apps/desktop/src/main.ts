@@ -276,7 +276,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
-    minWidth: 520,
+    minWidth: 400,
     minHeight: 600,
     show,
     ...(process.platform === 'win32' && primary ? {
@@ -1005,7 +1005,7 @@ async function main(): Promise<void> {
     if (window === undefined || window.isDestroyed() || event.sender !== window.webContents
       || event.senderFrame !== window.webContents.mainFrame
       || !event.senderFrame.url.startsWith(`${SCHEME}://app/`) || typeof active !== 'boolean') return
-    window.setMinimumSize(active ? 960 : 520, 600)
+    window.setMinimumSize(active ? 960 : 400, 600)
     if (active) {
       const { width, height } = window.getBounds()
       if (width < 960) window.setSize(960, height)
