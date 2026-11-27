@@ -277,6 +277,18 @@ describe('generate_video', () => {
     expect(request?.sourceVideo).toBe('task:t1')
   })
 
+  it('uploads a replaced clip instead of continuing the old task', async () => {
+    const { submit, run, cwd } = await boot()
+    await run('generate_video', { prompt: '小猫玩耍', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 5, with_audio: true })
+    const [file] = await readdir(join(cwd, 'generated'))
+    await writeFile(join(cwd, 'generated', file), Buffer.concat([MP4, Buffer.from([1])]))
+    await run('generate_video', {
+      prompt: '接着跑', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 10, with_audio: true, source_video: `generated/${file}`,
+    })
+    const request = submit.mock.calls[1]?.[0] as { sourceVideo?: string } | undefined
+    expect(request?.sourceVideo).toMatch(/^data:video\/mp4;base64,/u)
+  })
+
   it('offers only 768P for a continued clip', async () => {
     const { ask, run, cwd } = await boot()
     await writeFile(join(cwd, 'clip.mp4'), MP4)

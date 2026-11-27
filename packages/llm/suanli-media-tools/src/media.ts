@@ -282,7 +282,7 @@ async function generate(
   const { path, data } = await saveArtifact(ctx, what, url, cwd, bytes => typeOf(bytes, role).extension)
   await pending.forget(pendingKey)
   try {
-    await pending.rememberArtifact(cwd, path, taskId)
+    await pending.rememberArtifact(cwd, path, taskId, data)
   } catch (error) {
     ctx.logger.warn('suanli media tools: recording artifact task %s failed: %s', taskId, String(error))
   }
@@ -510,9 +510,9 @@ function modeName(mode: string): string {
  */
 async function readVideo(ctx: Context, pending: PendingTasks, path: string, cwd: string, signal: AbortSignal): Promise<string> {
   const target = await ctx.fs.resolve(path, { cwd, signal })
-  const taskId = await pending.findArtifact(cwd, target.displayPath)
-  if (taskId !== undefined) return `task:${taskId}`
   const data = await ctx.fs.readBytes(target, signal, MAX_SOURCE_VIDEO_BYTES)
+  const taskId = await pending.findArtifact(cwd, target.displayPath, data)
+  if (taskId !== undefined) return `task:${taskId}`
   const isMp4 = ascii(data, 4, 4) === 'ftyp'
   if (!isMp4 && !(data[0] === 0x1a && data[1] === 0x45 && data[2] === 0xdf && data[3] === 0xa3)) {
     throw new Error(`"${path}" is not an MP4 or WebM clip.`)
