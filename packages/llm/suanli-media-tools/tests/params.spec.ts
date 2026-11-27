@@ -25,5 +25,7 @@ describe('parameter wording', () => {
     expect(canvasOf({ aspect_ratio: '16:9', resolution: '4K' })).toBe('5440x3072')
     expect(canvasOf({ aspect_ratio: 'adaptive', resolution: '2K' })).toBeUndefined()
     expect(canvasOf({ aspect_ratio: '1:1' })).toBeUndefined()
+    expect(canvasOf({ size: '1024x1024' })).toBe('1024x1024')
+    expect(canvasOf({ aspect_ratio: 'adaptive', resolution: '1536X1024' })).toBe('1536x1024')
   })
 })

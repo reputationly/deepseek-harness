@@ -56,11 +56,15 @@ const CANVAS_GRID = 32
  * route reads: the area of an N×1024 square at that ratio, each side floored to 32 px, as the
  * gateway's own image playground computes it.
  * @param parameters - resolved image parameters.
+ * A resolution that already is `WIDTHxHEIGHT` is the canvas itself.
  * @returns the canvas, or undefined when the ratio is adaptive or either value is not of that form.
  */
 export function canvasOf(parameters: Readonly<Record<string, string>>): string | undefined {
+  const resolution = parameters.resolution ?? parameters.size ?? ''
+  const pixels = /^(\d+)[xX×*](\d+)$/u.exec(resolution)
+  if (pixels !== null) return `${pixels[1] ?? ''}x${pixels[2] ?? ''}`
   const ratio = /^(\d+):(\d+)$/u.exec(parameters.aspect_ratio ?? '')
-  const tier = /^(\d+)K$/u.exec(parameters.resolution ?? '')
+  const tier = /^(\d+)K$/u.exec(resolution)
   if (ratio === null || tier === null) return undefined
   const aspect = Number(ratio[1]) / Number(ratio[2])
   const base = Number(tier[1]) * 1024
