@@ -10,7 +10,7 @@ let dispose: (() => Promise<void>) | undefined
 afterEach(async () => { await dispose?.(); dispose = undefined })
 
 describe('media registration', () => {
-  it('claims common audio and video suffixes as a builtin complete-byte renderer without wrap', () => {
+  it('claims common audio and video suffixes as a builtin renderer-loaded preview without wrap', () => {
     const title = vi.fn(() => 'localized media')
     const definition = mediaBodyDefinition(title)
     expect(definition).toMatchObject({
@@ -19,7 +19,7 @@ describe('media registration', () => {
       binaryExtensions: MEDIA_EXTENSIONS,
       priority: 'builtin',
       title,
-      loading: 'bytes-complete',
+      loading: 'renderer',
       wrap: false,
     })
     expect(title).not.toHaveBeenCalled()

@@ -4,7 +4,7 @@ export const zh = {
   preview: '媒体预览：{name}',
   loading: '媒体加载中...',
   failed: '无法播放这个媒体文件',
-  unsupported: '媒体预览需要完整文件内容',
+  unsupported: '媒体预览不可用',
 } satisfies Record<string, string>
 
 /** Media renderer dictionary keys. */
@@ -15,7 +15,7 @@ export const en = {
   preview: 'Media preview: {name}',
   loading: 'Loading media...',
   failed: 'This media file could not be played.',
-  unsupported: 'Media preview requires the complete file contents.',
+  unsupported: 'Media preview is unavailable.',
 } satisfies Record<MediaPreviewKey, string>
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -30,7 +30,7 @@ export const ja = {
   preview: 'メディアプレビュー: {name}',
   loading: 'メディアを読み込み中...',
   failed: 'このメディアファイルを再生できませんでした。',
-  unsupported: 'メディアプレビューには完全なファイル内容が必要です。',
+  unsupported: 'メディアプレビューは利用できません。',
 } satisfies Record<keyof typeof en, string>
 
 export const es = {
@@ -38,7 +38,7 @@ export const es = {
   preview: 'Vista previa multimedia: {name}',
   loading: 'Cargando multimedia...',
   failed: 'Este archivo multimedia no se pudo reproducir.',
-  unsupported: 'La vista previa multimedia requiere el contenido completo del archivo.',
+  unsupported: 'La vista previa multimedia no está disponible.',
 } satisfies Record<keyof typeof en, string>
 
 export const fr = {
@@ -46,7 +46,7 @@ export const fr = {
   preview: 'Aperçu du média : {name}',
   loading: 'Chargement du média...',
   failed: 'Ce fichier multimédia n’a pas pu être lu.',
-  unsupported: 'L’aperçu multimédia nécessite le contenu complet du fichier.',
+  unsupported: 'L’aperçu multimédia est indisponible.',
 } satisfies Record<keyof typeof en, string>
 
 export const de = {
@@ -54,7 +54,7 @@ export const de = {
   preview: 'Medienvorschau: {name}',
   loading: 'Medien werden geladen...',
   failed: 'Diese Mediendatei konnte nicht wiedergegeben werden.',
-  unsupported: 'Für die Medienvorschau ist der vollständige Dateiinhalt erforderlich.',
+  unsupported: 'Die Medienvorschau ist nicht verfügbar.',
 } satisfies Record<keyof typeof en, string>
 
 export const ru = {
@@ -62,7 +62,7 @@ export const ru = {
   preview: 'Просмотр медиа: {name}',
   loading: 'Загрузка медиа...',
   failed: 'Не удалось воспроизвести этот медиафайл.',
-  unsupported: 'Для просмотра медиа требуется полное содержимое файла.',
+  unsupported: 'Просмотр медиа недоступен.',
 } satisfies Record<keyof typeof en, string>
 
 export const pt = {
@@ -70,5 +70,5 @@ export const pt = {
   preview: 'Pré-visualização de mídia: {name}',
   loading: 'Carregando mídia...',
   failed: 'Não foi possível reproduzir este arquivo de mídia.',
-  unsupported: 'A pré-visualização de mídia requer o conteúdo completo do arquivo.',
+  unsupported: 'A pré-visualização de mídia está indisponível.',
 } satisfies Record<keyof typeof en, string>

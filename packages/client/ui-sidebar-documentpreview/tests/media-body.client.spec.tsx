@@ -1,81 +1,92 @@
 // @vitest-environment jsdom
-/** Media Blob ownership, player kinds, media types, and failure states. */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+/** Media route ownership, player kinds, versioned URLs, and failure states. */
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { MediaBody, mediaTypeOf, type MediaBodyProps } from '../src/client/media/MediaBody.tsx'
+import { MediaBody, mediaTypeOf, type MediaBodyInjected, type MediaBodyProps } from '../src/client/media/MediaBody.tsx'
 import { en } from '../src/client/media/locales.ts'
 
-let createDescriptor: PropertyDescriptor | undefined
-let revokeDescriptor: PropertyDescriptor | undefined
-const create = vi.fn<(blob: Blob) => string>()
-const revoke = vi.fn<(url: string) => void>()
+afterEach(() => { cleanup() })
 
-beforeEach(() => {
-  createDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
-  revokeDescriptor = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
-  create.mockReset().mockImplementation(() => `blob:https://preview.invalid/${create.mock.calls.length}`)
-  revoke.mockReset()
-  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create })
-  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revoke })
+const statResult = (path: string, version = 'v1') => ({
+  ok: true as const,
+  value: { absolutePath: path, version, bytes: 3 },
 })
 
-afterEach(() => {
-  try { cleanup() } finally {
-    if (createDescriptor === undefined) Reflect.deleteProperty(URL, 'createObjectURL')
-    else Object.defineProperty(URL, 'createObjectURL', createDescriptor)
-    if (revokeDescriptor === undefined) Reflect.deleteProperty(URL, 'revokeObjectURL')
-    else Object.defineProperty(URL, 'revokeObjectURL', revokeDescriptor)
-    vi.restoreAllMocks()
-  }
-})
-
-function props(path = 'asset.mp3', data: Uint8Array<ArrayBuffer> = new Uint8Array([1, 2, 3])): MediaBodyProps {
-  return {
+function props(path = 'asset.mp3', revision = 1) {
+  const loaded = vi.fn<(version: string) => void>()
+  const failed = vi.fn<() => void>()
+  const statFile = vi.fn<MediaBodyInjected['statFile']>(() => Promise.resolve(statResult(`/host/media/${path}`)))
+  const value: MediaBodyProps = {
     resourceAddress: `dsh-resource://file/session/media/${path}`,
-    content: { kind: 'bytes', data },
+    content: { kind: 'renderer', revision, loaded, failed, reload: vi.fn() },
     wrap: false,
+    statFile,
     t: (key, params) => {
-      const value = (en as Record<string, string>)[key] ?? key
-      return params === undefined ? value : Object.entries(params)
-        .reduce((text, [name, replacement]) => text.replace(`{${name}}`, String(replacement)), value)
+      const text = (en as Record<string, string>)[key] ?? key
+      return params === undefined ? text : Object.entries(params)
+        .reduce((result, [name, replacement]) => result.replace(`{${name}}`, String(replacement)), text)
     },
   } as MediaBodyProps
+  return { props: value, loaded, failed, statFile }
 }
+
 
 describe('MediaBody', () => {
   it.each([
-    ['mp3', 'audio', 'audio/mpeg'],
-    ['wav', 'audio', 'audio/wav'],
-    ['m4a', 'audio', 'audio/mp4'],
-    ['mp4', 'video', 'video/mp4'],
-    ['webm', 'video', 'video/webm'],
-  ] as const)('renders .%s as %s with the %s Blob media type', async (extension, tag, mediaType) => {
-    const view = render(<MediaBody {...props(`asset.${extension}`)} />)
+    ['mp3', 'audio'],
+    ['wav', 'audio'],
+    ['m4a', 'audio'],
+    ['mp4', 'video'],
+    ['webm', 'video'],
+  ] as const)('renders .%s through the versioned file route as %s', async (extension, tag) => {
+    const fixture = props(`asset.${extension}`)
+    render(<MediaBody {...fixture.props} />)
     const player = await screen.findByLabelText(`Media preview: asset.${extension}`)
     expect(player.tagName.toLowerCase()).toBe(tag)
     expect(player.getAttribute('controls')).not.toBeNull()
-    expect(player.getAttribute('src')).toBe('blob:https://preview.invalid/1')
-    expect(create.mock.calls[0]?.[0].type).toBe(mediaType)
-    view.unmount()
-    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:https://preview.invalid/1')
+    const url = new URL(player.getAttribute('src') ?? '')
+    expect(url.pathname).toBe('/api/file')
+    expect(url.searchParams.get('path')).toBe(`/host/media/asset.${extension}`)
+    expect(url.searchParams.get('v')).toBe('v1')
+    expect(fixture.loaded).toHaveBeenCalledExactlyOnceWith('v1')
   })
 
-  it('reports decode failure and revokes replaced bytes', async () => {
-    const view = render(<MediaBody {...props()} />)
+  it('reports playback failure without revoking anything', async () => {
+    render(<MediaBody {...props().props} />)
     const player = await screen.findByLabelText('Media preview: asset.mp3')
     fireEvent.error(player)
     expect(screen.getByRole('alert').textContent).toBe(en.failed)
-    view.rerender(<MediaBody {...props('asset.mp3', new Uint8Array([4, 5, 6]))} />)
-    await screen.findByLabelText('Media preview: asset.mp3')
-    expect(revoke).toHaveBeenCalledWith('blob:https://preview.invalid/1')
   })
 
-  it('rejects text delivery and an unregistered suffix without creating a Blob', () => {
-    const view = render(<MediaBody {...props()} content={{ kind: 'text', text: 'plain', pages: [], eof: true }} />)
+  it('reports metadata failure through the renderer request', async () => {
+    const fixture = props()
+    fixture.statFile.mockResolvedValue({ ok: false, error: { code: 'workspace-file/not-found', message: 'missing', details: {} } } as never)
+    render(<MediaBody {...fixture.props} />)
+    expect((await screen.findByRole('alert')).textContent).toBe(en.failed)
+    expect(fixture.failed).toHaveBeenCalledOnce()
+    expect(fixture.loaded).not.toHaveBeenCalled()
+  })
+
+  it('loads a replacement revision with its own versioned URL', async () => {
+    const fixture = props('asset.mp4')
+    const view = render(<MediaBody {...fixture.props} />)
+    await screen.findByLabelText('Media preview: asset.mp4')
+    fixture.statFile.mockResolvedValue(statResult('/host/media/asset.mp4', 'v2'))
+    view.rerender(<MediaBody {...props('asset.mp4', 2).props} statFile={fixture.statFile} />)
+    const player = await screen.findByLabelText('Media preview: asset.mp4')
+    expect(new URL(player.getAttribute('src') ?? '').searchParams.get('v')).toBe('v2')
+    expect(fixture.statFile).toHaveBeenCalledTimes(2)
+    expect(fixture.statFile.mock.calls[0]?.[0].path).toBe('asset.mp4')
+  })
+
+  it('rejects byte delivery and an unregistered suffix without reading metadata', () => {
+    const fixture = props()
+    const byteProps = { ...fixture.props, content: { kind: 'bytes', data: new Uint8Array([1]) } as never }
+    const view = render(<MediaBody {...byteProps} />)
     expect(screen.getByRole('alert').textContent).toBe(en.unsupported)
-    view.rerender(<MediaBody {...props('asset.unknown')} />)
+    view.rerender(<MediaBody {...props('asset.unknown').props} />)
     expect(screen.getByRole('alert').textContent).toBe(en.unsupported)
-    expect(create).not.toHaveBeenCalled()
+    expect(fixture.statFile).not.toHaveBeenCalled()
   })
 
   it('matches media types case-insensitively on decoded path suffixes', () => {

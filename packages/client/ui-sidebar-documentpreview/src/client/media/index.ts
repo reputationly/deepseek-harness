@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '../index.ts'
 import type { DocumentPreviewDefinition } from '../document/registry.ts'
-import { MediaBody } from './MediaBody.tsx'
+import { MediaBody, type MediaBodyInjected } from './MediaBody.tsx'
 import { en, ja, es, fr, de, ru, pt, zh } from './locales.ts'
 
 /** Media implementation identity, shared by metadata and the keyed slot. */
@@ -23,7 +23,7 @@ export function mediaBodyDefinition(title: () => string): DocumentPreviewDefinit
     binaryExtensions: MEDIA_EXTENSIONS,
     priority: 'builtin',
     title,
-    loading: 'bytes-complete',
+    loading: 'renderer',
     wrap: false,
   }
 }
@@ -38,5 +38,8 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.documentPreviews.register(mediaBodyDefinition(() => t('title'))), 'document-media: metadata')
   ctx.effect(() => ctx.slots.inject('sidebar.right.tab.document', () => ctx.slots.register({
     name: 'sidebar.right.tab.document', key: MEDIA_BODY_ID, locale: 'sidebarMedia',
+    inject: (): MediaBodyInjected => ({
+      statFile: (file, signal) => ctx.remote.workspaceFiles.stat(file.sessionId, file.path, signal),
+    }),
   }, MediaBody)), 'document-media: body')
 }
