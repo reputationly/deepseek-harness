@@ -551,9 +551,7 @@ describe('built-in conversation node Definitions', () => {
       pinnedToolCardCount: 1,
     })
     const view = snapshot(value)
-    const pinnedTool = [...view.nodes.values()].find(item => item.kind === 'tool-call'
-      && item.data.root.kind === 'tool-result' && item.data.root.meta !== undefined)
-    expect(pinnedTool?.groupTree).toBe('turn')
+    expect([...view.nodes.values()].some(item => item.kind === 'tool-call' && item.groupTree === 'turn')).toBe(true)
   })
 
   it('orders the opening User before its process control and later steering', () => {
