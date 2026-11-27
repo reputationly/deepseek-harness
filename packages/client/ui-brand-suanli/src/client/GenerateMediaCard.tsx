@@ -69,7 +69,7 @@ function GeneratedMedia({ result, kind, props }: { result: MediaResult; kind: 'v
 }
 
 /** Where one file's bytes are: not read yet, being read, ready as an object URL, or unreadable. */
-type Loaded = { readonly state: 'idle' | 'loading' | 'failed' } | { readonly state: 'ready'; readonly url: string }
+type Loaded = { readonly state: 'idle' | 'loading' } | { readonly state: 'failed'; readonly message: string } | { readonly state: 'ready'; readonly url: string }
 
 /**
  * One saved file: a play button that reads it on demand, then the native player with fullscreen and download.
@@ -85,7 +85,10 @@ function MediaPlayer({ item, props }: { item: MediaResultItem; props: GenerateMe
     setLoaded({ state: 'loading' })
     void loadMedia(item.path, item.mediaType, AbortSignal.timeout(120_000)).then(
       (blob) => { setLoaded({ state: 'ready', url: URL.createObjectURL(blob) }) },
-      () => { setLoaded({ state: 'failed' }) },
+      (error: unknown) => {
+        console.error('generated media read failed', error)
+        setLoaded({ state: 'failed', message: error instanceof Error ? error.message : String(error) })
+      },
     )
   }, [loadMedia, item.path, item.mediaType])
   const name = baseName(item.path)
@@ -94,7 +97,7 @@ function MediaPlayer({ item, props }: { item: MediaResultItem; props: GenerateMe
     {url !== undefined && (video
       ? <video className={css.video} src={url} controls autoPlay playsInline aria-label={name} />
       : <audio className={css.audio} src={url} controls autoPlay aria-label={name} />)}
-    {loaded.state === 'failed' && <p className={css.detail}>{t('media.unreadable', { path: item.path })}</p>}
+    {loaded.state === 'failed' && <p className={css.detail}>{t('media.unreadable', { path: item.path })}: {loaded.message}</p>}
     <div className={css.actions}>
       {url === undefined && loaded.state !== 'failed' && (
         <Button size="sm" variant="primary" disabled={loaded.state === 'loading'} onClick={load}>

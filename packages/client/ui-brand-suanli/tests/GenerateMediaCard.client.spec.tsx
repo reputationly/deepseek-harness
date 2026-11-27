@@ -70,7 +70,7 @@ it('plays music through an audio player', async () => {
 it('names the file it could not read and still offers to open it', async () => {
   const { openFile } = mount({ meta: VIDEO, fail: true })
   fireEvent.click(screen.getByRole('button', { name: '播放视频' }))
-  await vi.waitFor(() => { expect(screen.getByText('无法读取 /w/generated/sunset.mp4')).toBeTruthy() })
+  await vi.waitFor(() => { expect(screen.getByText((_content, element) => element?.textContent === '无法读取 /w/generated/sunset.mp4: refused')).toBeTruthy() })
   fireEvent.click(screen.getByRole('button', { name: '打开文件' }))
   expect(openFile).toHaveBeenCalledWith('/w/generated/sunset.mp4')
 })

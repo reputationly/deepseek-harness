@@ -215,7 +215,8 @@ async function readWhole(ctx: ClientContext, sessionId: SessionId, path: string,
   const parts: Uint8Array<ArrayBuffer>[] = []
   let offset = 0
   for (;;) {
-    const answer = await ctx.remote.workspaceFiles.readBytes(sessionId, path, { range: { offset, length: MEDIA_CHUNK_BYTES } }, signal)
+    let answer = await ctx.remote.workspaceFiles.readBytes(sessionId, path, { range: { offset, length: MEDIA_CHUNK_BYTES } }, signal)
+    if (!answer.ok && offset === 0) answer = await ctx.remote.workspaceFiles.readBytes(sessionId, path, {}, signal)
     if (!answer.ok) throw new Error(answer.error.message)
     const data = new Uint8Array(answer.value.data.byteLength)
     data.set(answer.value.data)
