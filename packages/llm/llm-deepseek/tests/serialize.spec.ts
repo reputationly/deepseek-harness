@@ -482,15 +482,19 @@ describe('Messages images', () => {
   // Only the read operation is consumed by image preparation; the transport is mocked, not durable content.
   const attachments = requestImageStore(async () => version)
   const signal = new AbortController().signal
-  it('keeps image bytes inside tool results and deduplicates normalization', async () => {
+  it('keeps tool-result image bytes beside the result and deduplicates normalization', async () => {
     const history = [assistant([call()]), result('a', [image, image])]
     const prepared = await prepareImages(history, connection, model, attachments, access, signal)
     expect(prepared.versions.size).toBe(1)
     const request = serialize(options({ model }), connection, prepared.messages, prepared.versions, access)
-    expect(request.messages[1]?.content[0]).toMatchObject({ type: 'tool_result', content: [
-      { type: 'text', text: expect.stringContaining('/workspace/image.png') as string }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AQID' } },
-      { type: 'text' }, { type: 'image' },
-    ] })
+    expect(request.messages[1]?.content).toMatchObject([
+      { type: 'tool_result', content: [
+        { type: 'text', text: expect.stringContaining('/workspace/image.png') as string },
+        { type: 'text' },
+      ] },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AQID' } },
+      { type: 'image' },
+    ])
     expect(imagePricing(connection, model, access).priceImages([image])[0]?.visualTokens).toBeGreaterThan(0)
     expect(imagePricing(connection, MODEL, access).priceImages([image])[0]?.visualTokens).toBe(0)
   })

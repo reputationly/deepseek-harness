@@ -118,7 +118,18 @@ export function serialize(
     const content: WireBlock[] = message.role === 'assistant'
       ? assistant(message, options.model, onReplayDegrade)
       : message.role === 'tool'
-        ? [{ type: 'tool_result', tool_use_id: message.toolCallId, content: input(message.content), ...message.isError === undefined ? {} : { is_error: message.isError } }]
+        ? (() => {
+          const serialized = input(message.content)
+          // Some OpenAI-compatible Messages relays price inline images inside
+          // tool_result as text. The handles stay inside the result; the image
+          // blocks beside it carry the same visual content in the same user turn.
+          const text = serialized.filter((block): block is Extract<WireInput, { type: 'text' }> => block.type === 'text')
+          const images = serialized.filter((block): block is Extract<WireInput, { type: 'image' }> => block.type === 'image')
+          return [
+            { type: 'tool_result' as const, tool_use_id: message.toolCallId, content: text, ...message.isError === undefined ? {} : { is_error: message.isError } },
+            ...images,
+          ]
+        })()
         : message.content.flatMap((block): WireBlock[] => input([block]))
     if ((message.role === 'user' || message.role === 'assistant') && content.length === 0) continue
     if (message.role === 'assistant') flushSystemUpdates()

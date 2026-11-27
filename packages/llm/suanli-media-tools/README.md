@@ -18,6 +18,7 @@ Host tool plugin that generates images, videos, and music from chat with the mod
 - [Result](#result)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
 ## Why this exists
 
@@ -34,7 +35,7 @@ A user who writes "生成一张小猫玩耍的图片" in a task conversation exp
 - Reference images are workspace paths to PNG, JPEG, WebP, or GIF files, at most the entry's reference limit.
 - Video parameters are aspect ratio, resolution, duration, and sound. A question lists at most six values; a long numeric set such as 1–20 seconds is described by its range (`最长 20`), and any supported value can be typed.
 - The video mode follows the inputs: reference images use the `reference` mode, a first (and optional last) frame uses `first-last-frame` (`i2v` for one frame, `flf2v` for two), a source clip (`source_video`, MP4 or WebM up to 50 MB, no images) uses `video-extension` and travels as `metadata.source_video`, where only 768P is offered and the duration is the total length, and no image uses `text-to-video`. The selected video model is used when it offers that mode; otherwise the first catalog model that offers it is used.
-- Music asks whether the piece is instrumental (纯音乐 / 带人声) unless the call says so; lyrics go along only for a song and only when the entry takes `lyrics`.
+- Music asks whether the piece is instrumental (纯音乐 / 带人声) unless the call says so; lyrics go along only for a song and only when the entry takes `lyrics`. The prompt also travels as `instructions` in task metadata because MiniMax Music 3 arranges from that field rather than the top-level prompt.
 - Video and music wait up to 20 and 10 minutes. Stopping the call cancels the gateway task.
 - Artifacts are downloaded into a private staging directory and published under `generated/` with an exclusive create; the bytes are written only after the new file is proven to sit in the real workspace `generated/` directory, so a `generated/` replaced by a link at any moment receives no bytes outside the workspace (at most an empty file).
 
@@ -48,11 +49,11 @@ The model receives a JSON text with `status`, `model`, `parameters`, and `files`
 
 #### What the model sees
 
-The [`generate_image`, `generate_video`, `generate_music`, and `generate_speech`](../../../docs/tool-catalog.md#deepseek-aidsh-suanli-media-tools) schemas, each while the catalog has a model for its role; absent otherwise.
+The [`generate_image`, `generate_video`, `generate_music`, and `generate_speech`](../../../docs/tool-catalog.md#deepseek-aidsh-suanli-media-tools) schemas, each while the catalog has a model for its role; absent otherwise. A standing system-prompt section tells the model to answer that generation is unsupported when its tool is absent, and not to substitute local speech synthesis, shell commands, media libraries, or ffmpeg post-processing for an unavailable or failed cloud generation.
 
 #### Token effect
 
-Fixed schemas of about 300 (image), 450 (video), and 200 (music) tokens per request while registered, plus one result of about 60 tokens per call.
+Fixed schemas of about 300 (image), 450 (video), and 200 (music) tokens per request while registered, plus one standing guidance section of about 90 tokens and one result of about 60 tokens per call.
 
 #### KV Cache effect
 
@@ -61,7 +62,12 @@ The schema is prefix-stable. Registration changes only when a model of a role ap
 ## Known Limitations and Deferred Work
 
 - **Speech only through `/v1/audio/speech`** — `generate_speech` is offered only while the catalog lists a `maas-speech` entry, and synthesis is one synchronous call that a stop does not cancel at the gateway.
-- **Review is advisory and partial** — with automatic review on, the selected vision model judges whether images and videos match the request and the card shows its verdict; it never regenerates by itself. Music and videos over 20 MiB are not reviewed, and a failed review call leaves the result unreviewed.
-- **Resume needs the same call** — a video or song still rendering when the Host exits is kept in the `suanli_media_pending` storage domain for a day; the next call from the same chat with the same workspace, model, prompt, inputs, and parameters resumes that task instead of submitting again, but nothing fetches it unprompted.
+- **Review is advisory and partial** — with automatic review on, the selected vision model judges whether images and videos match the request and the card shows its verdict; it never regenerates by itself. Reviews reference the artifact URL instead of uploading another copy; music is not reviewed, and a failed review call leaves the result unreviewed.
+- **Resume is conservative** — a video or song still rendering when the Host exits is kept in the `suanli_media_pending` storage domain for a day; the next call from the same chat resumes it only for the same workspace, model, inputs, parameters, and either the same prompt or a mildly reworded retry of the same direct user message, but nothing fetches it unprompted.
 - **No progress percentage** — the call blocks until the file exists (about 36 s for a 2K image, minutes for a video), and the card shows an indeterminate progress state.
 - **Outside a Session** — a call without an Agent saves into the process working directory instead of a Session workspace.
+
+<a id="dev-note"></a>
+### Dev Note
+
+None.

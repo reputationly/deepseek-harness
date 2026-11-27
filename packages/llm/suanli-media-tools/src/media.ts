@@ -46,6 +46,9 @@ interface MusicArgs {
   readonly instrumental?: boolean | undefined
 }
 
+/** Read the exact direct-user request hash current in one Session, when projection state is available. */
+export type UserTextHashOf = (session: NonNullable<ToolExecution['agent']>['session']) => string | undefined
+
 /** What one execution resolved before submission. */
 interface Plan {
   readonly entry: CapabilityEntry
@@ -79,9 +82,10 @@ const musicDescription = 'Generate a piece of music from a description of its st
  * Build the `generate_video` definition.
  * @param ctx - plugin context.
  * @param pending - unsettled tasks a repeated call resumes.
+ * @param userTextHashOf - projected direct-user prompt-hash reader.
  * @returns the tool.
  */
-export function videoTool(ctx: Context, pending: PendingTasks) {
+export function videoTool(ctx: Context, pending: PendingTasks, userTextHashOf: UserTextHashOf) {
   return defineTool({
     name: 'generate_video',
     description: videoDescription,
@@ -105,7 +109,7 @@ export function videoTool(ctx: Context, pending: PendingTasks) {
     output: outputOf(),
     timeoutMs: VIDEO_WAIT_MS + 600_000,
     async execute(args, exec) {
-      return await generate(ctx, pending, 'Video', 'generate_video', 'video', VIDEO_WAIT_MS, args.prompt, exec,
+      return await generate(ctx, pending, userTextHashOf, 'Video', 'generate_video', 'video', VIDEO_WAIT_MS, args.prompt, exec,
         async (entries, preferred, cwd) => await planVideo(ctx, entries, preferred, cwd, args, exec.signal),
         [[ASPECT, args.aspect_ratio], [RESOLUTION, args.resolution],
           [DURATION, args.duration_seconds === undefined ? undefined : String(args.duration_seconds)],
@@ -118,9 +122,10 @@ export function videoTool(ctx: Context, pending: PendingTasks) {
  * Build the `generate_music` definition.
  * @param ctx - plugin context.
  * @param pending - unsettled tasks a repeated call resumes.
+ * @param userTextHashOf - projected direct-user prompt-hash reader.
  * @returns the tool.
  */
-export function musicTool(ctx: Context, pending: PendingTasks) {
+export function musicTool(ctx: Context, pending: PendingTasks, userTextHashOf: UserTextHashOf) {
   return defineTool({
     name: 'generate_music',
     description: musicDescription,
@@ -132,7 +137,7 @@ export function musicTool(ctx: Context, pending: PendingTasks) {
     output: outputOf(),
     timeoutMs: MUSIC_WAIT_MS + 600_000,
     async execute(args, exec) {
-      return await generate(ctx, pending, 'Music', 'generate_music', 'music', MUSIC_WAIT_MS, args.prompt, exec,
+      return await generate(ctx, pending, userTextHashOf, 'Music', 'generate_music', 'music', MUSIC_WAIT_MS, args.prompt, exec,
         (entries, preferred) => Promise.resolve(planMusic(ctx, entries, preferred, args)),
         [[INSTRUMENTAL, args.instrumental === undefined ? undefined : String(args.instrumental)]])
     },
@@ -196,6 +201,7 @@ export function outputOf() {
       parameters: Object.fromEntries(value.parameters.map(entry => [entry.key, entry.value])),
       media: value.media.map(item => ({ path: item.path, mediaType: item.mediaType })),
       ...value.review !== undefined ? { review: value.review } : {},
+      keepTurnOpen: true,
     } satisfies MediaResultMeta),
   }
 }
@@ -204,6 +210,7 @@ export function outputOf() {
  * Run one generation: plan, settle parameters, submit, wait, and save.
  * @param ctx - plugin context.
  * @param pending - unsettled tasks; an identical request resumes its task instead of submitting again.
+ * @param userTextHashOf - projected direct-user prompt-hash reader.
  * @param what - which generation, for errors.
  * @param operation - catalog operation.
  * @param role - model role whose choice is preferred.
@@ -216,7 +223,7 @@ export function outputOf() {
  * @throws When no model fits, the gateway refused, or the file could not be saved.
  */
 async function generate(
-  ctx: Context, pending: PendingTasks, what: string, operation: MediaOperation, role: 'video' | 'music', budgetMs: number, prompt: string,
+  ctx: Context, pending: PendingTasks, userTextHashOf: UserTextHashOf, what: string, operation: MediaOperation, role: 'video' | 'music', budgetMs: number, prompt: string,
   exec: ToolExecution, plan: (entries: readonly CapabilityEntry[], preferred: string | null, cwd: string) => Promise<Plan>,
   requested: readonly (readonly [ParameterKind, string | undefined])[],
 ): Promise<MediaValue> {
@@ -246,21 +253,36 @@ async function generate(
   }
   const key = fingerprint(exec.agent?.session.id ?? '', cwd, request)
   let url: string
-  let taskId = await pending.find(key)
+  const session = exec.agent?.session.id ?? ''
+  const userTextHash = exec.agent === undefined ? undefined : userTextHashOf(exec.agent.session)
+  const identity = { session, cwd, request, ...userTextHash === undefined ? {} : { userTextHash } }
+  const legacyRequest = operation === 'generate_music'
+    ? { ...request, params: Object.fromEntries(Object.entries(request.params).filter(([name]) => name !== 'instructions')) }
+    : undefined
+  const legacyKey = legacyRequest === undefined ? undefined : fingerprint(session, cwd, legacyRequest)
+  const existing = await pending.find(key)
+    ?? (legacyKey === undefined ? undefined : await pending.find(legacyKey))
+    ?? await pending.find(key, identity)
+  let taskId = existing?.taskId
+  const pendingKey = existing?.key ?? key
+  const settle = async (task: string): Promise<string> => await waitFor(
+    ctx, what, task, operation, budgetMs, exec.signal,
+    async () => { await pending.forget(pendingKey) },
+  )
   if (taskId === undefined) {
     const submitted = await ctx.suanliMedia.submit(request)
     if (!submitted.ok) throw failure(what, submitted.reason, submitted.detail)
     taskId = submitted.taskId
-    if (submitted.url === undefined) await pending.remember(key, taskId)
-    url = submitted.url ?? await waitFor(ctx, what, taskId, operation, budgetMs, exec.signal, async () => { await pending.forget(key) })
+    if (submitted.url === undefined) await pending.remember(key, taskId, identity)
+    url = submitted.url ?? await settle(taskId)
   } else {
-    url = await waitFor(ctx, what, taskId, operation, budgetMs, exec.signal, async () => { await pending.forget(key) })
+    url = await settle(taskId)
   }
   exec.signal.throwIfAborted()
   const { path, data } = await saveArtifact(ctx, what, url, cwd, bytes => typeOf(bytes, role).extension)
-  await pending.forget(key)
+  await pending.forget(pendingKey)
   const mediaType = typeOf(data, role).mediaType
-  const reviewed = role === 'video' ? await review(ctx, prompt, [{ data, mediaType }]) : undefined
+  const reviewed = role === 'video' ? await review(ctx, prompt, [{ url, mediaType }]) : undefined
   return {
     ...base,
     status: 'generated',
@@ -441,7 +463,10 @@ function planMusic(ctx: Context, entries: readonly CapabilityEntry[], preferred:
     entry,
     modelLabel: labelOf(ctx, 'music', entry),
     references: [],
-    extra: lyrics !== '' && takesLyrics && args.instrumental !== true ? { lyrics } : {},
+    extra: {
+      instructions: args.prompt,
+      ...lyrics !== '' && takesLyrics && args.instrumental !== true ? { lyrics } : {},
+    },
   }
 }
 

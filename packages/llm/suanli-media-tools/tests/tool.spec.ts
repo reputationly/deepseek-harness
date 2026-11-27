@@ -64,6 +64,13 @@ async function boot(options: { answer?: (request: AskUserQuestionRequest) => Ask
     },
   } as never)
   ctx.provide('userQuestions', { ask } as never)
+  ctx.provide('sessionProjections', {
+    register: async () => ({
+      stateOf: () => ({ textHash: null }),
+      readerFor: () => () => ({ textHash: null }),
+      dispose: async () => {},
+    }),
+  } as never)
   ctx.provide('workingDirectory', { ensure: async () => cwd } as never)
   ctx.provide('fs', {
     resolve: async (path: string, opts: { cwd: string }) => ({ path: resolve(opts.cwd, path) }),
@@ -132,6 +139,14 @@ describe('generate_image', () => {
     const { ask, run } = await boot({ answer: () => ({ answers: [{ id: 'aspect_ratio', selected: ['自适应'] }] }) })
     await run({ prompt: '小猫玩耍', resolution: '2K' })
     expect(ask.mock.calls[0]?.[0].questions.map(question => question.id)).toEqual(['aspect_ratio'])
+  })
+
+  it('puts an unsupported value before missing parameters on the question card', async () => {
+    const { ask, run } = await boot()
+    await run({ prompt: '小猫玩耍', resolution: '4K' })
+    const questions = ask.mock.calls[0]?.[0].questions ?? []
+    expect(questions[0]?.id).toBe('resolution')
+    expect(questions[0]?.question).toContain('当前不支持「4K」')
   })
 
   it('names an unsupported value and lists what is supported', async () => {

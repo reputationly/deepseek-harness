@@ -148,9 +148,10 @@ export const ChatGroupSeat = memo(function ChatGroupSeat({ groupKey, useChatGrou
   const grouped = props.usePresentation(policy => policy.stepGrouping === 'collapsed'
     || (policy.stepGrouping === 'history' && turnLocation?.status !== 'open' && !deferCollapse))
   const reason = turnLocation?.end?.data.reason.kind
+  const spec = presentation?.spec
   const alwaysOpen = presentation?.turnClosed === false || presentation?.hasInterleavedInput === true
     || reason === 'aborted' || reason === 'interrupted' || reason === 'error'
-  const spec = presentation?.spec
+    || (spec?.pinnedToolCardCount ?? 0) > 0
   const selectOpen = useCallback((state: Readonly<ChatStoreState>) => spec !== undefined
     && turnProcessOpen(state, spec, deferCollapse), [spec, deferCollapse])
   const storedOpen = props.useStore(selectOpen)
@@ -160,6 +161,9 @@ export const ChatGroupSeat = memo(function ChatGroupSeat({ groupKey, useChatGrou
     if (spec !== undefined && !alwaysOpen) props.actions.setTurnProcessOpen(spec.turn, spec.answerStep ?? 0, true)
   }, [props.actions, spec, alwaysOpen])
   const rootRef = props.useGroupAction(outerHidden, revealOuter)
+  useEffect(() => {
+    if ((spec?.pinnedToolCardCount ?? 0) > 0 && presentation?.turnClosed === true) setOpen(true)
+  }, [presentation?.turnClosed, setOpen, spec?.pinnedToolCardCount])
   // The header appears when a flat latest Turn becomes historical; it grows on the fold clock while the
   // body closes. A group whose whole Turn is folding never shows one in the frame it starts closing.
   const headerRef = useRef<HTMLDivElement>(null)

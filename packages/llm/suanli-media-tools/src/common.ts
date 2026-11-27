@@ -59,6 +59,7 @@ export async function resolveParameters(
     if (result.kind === 'ok') settled[spec.key] = result.value
     else open.push({ spec, kind, check: result })
   }
+  open = open.sort((left, right) => Number(right.check.kind === 'unsupported') - Number(left.check.kind === 'unsupported'))
   for (let round = 0; open.length > 0; round++) {
     const answer = await ask(ctx, open, exec.agent, exec.signal)
     if (answer === undefined) return undefined

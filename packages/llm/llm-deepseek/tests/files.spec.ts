@@ -47,7 +47,7 @@ function harness(config: Config = {}) {
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('Messages Files requests', () => {
-  it('keeps nested tool-result images in order and sends only Files ids with the beta header', async () => {
+  it('keeps tool-result file images beside the result and sends only Files ids with the beta header', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => success())
     vi.stubGlobal('fetch', fetchImpl)
     const h = harness()
@@ -61,10 +61,14 @@ describe('Messages Files requests', () => {
     expect(url).toBe('https://gateway.example/custom/v1/messages')
     expect(new Headers(init?.headers).get('anthropic-beta')).toBe('files-api-2025-04-14')
     const payload = JSON.parse(body(init)) as { messages: { content: unknown[] }[] }
-    expect(payload.messages[2]?.content[0]).toMatchObject({ type: 'tool_result', content: [
-      { type: 'text', text: expect.stringContaining('/workspace/image.png') as string }, { type: 'image', source: { type: 'file', file_id: 'file-a' } },
-      { type: 'text' }, { type: 'image', source: { type: 'file', file_id: 'file-a' } },
-    ] })
+    expect(payload.messages[2]?.content).toMatchObject([
+      { type: 'tool_result', content: [
+        { type: 'text', text: expect.stringContaining('/workspace/image.png') as string },
+        { type: 'text' },
+      ] },
+      { type: 'image', source: { type: 'file', file_id: 'file-a' } },
+      { type: 'image', source: { type: 'file', file_id: 'file-a' } },
+    ])
     expect(body(init)).not.toContain('base64')
   })
 

@@ -114,6 +114,7 @@ export interface TurnProcessChatData {
   readonly messageCount: number
   readonly toolCallCount: number
   readonly subagentCount: number
+  readonly pinnedToolCardCount: number
 }
 
 /**

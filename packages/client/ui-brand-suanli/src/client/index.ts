@@ -33,7 +33,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'gatewayStatus'
 
 /** Services this plugin uses: the slots and their dictionary. The Host gateway namespace is optional. */
-export const inject = ['slots', 'locale', 'remote']
+export const inject = ['slots', 'locale', 'remote', 'remote.workspaceFiles']
 
 /**
  * Fill the sidebar and blank-home brand slots with this product's artwork.
@@ -198,6 +198,8 @@ function unwrap(result: { ok: true; value: GatewayStatus } | { ok: false; error:
 
 /** Upper bound on one generated file the card reads into memory. */
 const MAX_MEDIA_BYTES = 512 * 1024 * 1024
+/** Binary-RPC responses stay small enough for the desktop multipart carrier. */
+const MEDIA_CHUNK_BYTES = 256 * 1024
 
 /**
  * Read one workspace file window by window, so files above the full-read cap still play.
@@ -213,7 +215,8 @@ async function readWhole(ctx: ClientContext, sessionId: SessionId, path: string,
   const parts: Uint8Array<ArrayBuffer>[] = []
   let offset = 0
   for (;;) {
-    const answer = await ctx.remote.workspaceFiles.readBytes(sessionId, path, { range: { offset } }, signal)
+    let answer = await ctx.remote.workspaceFiles.readBytes(sessionId, path, { range: { offset, length: MEDIA_CHUNK_BYTES } }, signal)
+    if (!answer.ok && offset === 0) answer = await ctx.remote.workspaceFiles.readBytes(sessionId, path, {}, signal)
     if (!answer.ok) throw new Error(answer.error.message)
     const data = new Uint8Array(answer.value.data.byteLength)
     data.set(answer.value.data)

@@ -4,16 +4,32 @@ import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import type { AskUserQuestionAnswer, AskUserQuestionRequest } from '@deepseek-ai/dsh-user-questions'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as plugin from '../src/index.ts'
+import { fingerprint } from '../src/pending.ts'
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
 const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(12)])
 const MP3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(13)])
+
+interface DirectUserProjectionState {
+  textHash: string | null
+}
+
+type DirectUserProjectionEvent = {
+  type: string
+  data?: { source?: { kind?: string }; content?: { type: string; text?: string }[] }
+}
+
+interface DirectUserProjectionDefinition {
+  init: () => DirectUserProjectionState
+  apply: (state: DirectUserProjectionState, event: DirectUserProjectionEvent) => DirectUserProjectionState
+}
 
 const none = { min: 0, max: 0 }
 const mode = (id: string, taskType: string, image: number, single?: string) => ({
@@ -76,6 +92,7 @@ async function boot(options: {
   const submit = vi.fn(async (_request: Record<string, unknown>) => ({ ok: true as const, taskId: 't1', transport: 'videos' as const, state: 'running' as const }))
   const wait = vi.fn(options.wait ?? (async () => ({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/v' } })))
   const cancel = vi.fn(async () => ({ ok: true }))
+  const inspect = vi.fn(async () => ({ ok: true as const, text: options.review ?? '' }))
   const ctx = new Context()
   contexts.push(ctx)
   ctx.provide('suanliModels', {
@@ -95,7 +112,7 @@ async function boot(options: {
       await writeFile(path, MP3)
       return { ok: true as const, path, bytes: MP3.byteLength }
     }),
-    inspect: vi.fn(async () => ({ ok: true, text: options.review ?? '' })),
+    inspect,
     saveArtifact: async (url: string, path: string) => {
       await options.save?.(path, cwd)
       await writeFile(path, url.endsWith('/m') ? MP3 : MP4)
@@ -103,6 +120,41 @@ async function boot(options: {
     },
   } as never)
   ctx.provide('userQuestions', { ask } as never)
+  const pendingRecords = new Map<string, Record<string, unknown>>()
+  ctx.provide('storageDomain', {
+    open: async () => ({
+      table: () => ({
+        get: (key: string) => pendingRecords.get(key),
+        entries: () => pendingRecords.entries(),
+        put: async (key: string, value: Record<string, unknown>) => { pendingRecords.set(key, value) },
+        delete: async (key: string) => pendingRecords.delete(key),
+      }),
+    }),
+  } as never)
+  const directUserTexts = new Map<string, string>()
+  let directUserProjection: DirectUserProjectionDefinition | undefined
+  const projectDirectUserEvent = (state: DirectUserProjectionState, event: DirectUserProjectionEvent): DirectUserProjectionState => {
+    if (directUserProjection === undefined) throw new Error('projection was not registered')
+    return directUserProjection.apply(state, event)
+  }
+  ctx.provide('sessionProjections', {
+    register: async (definition: DirectUserProjectionDefinition) => {
+      directUserProjection = definition
+      const stateOf = (session: { id: string }): DirectUserProjectionState => {
+        const text = directUserTexts.get(session.id)
+        const initial = definition.init()
+        return text === undefined ? initial : definition.apply(initial, {
+          type: 'user/message',
+          data: { source: { kind: 'user' }, content: [{ type: 'text', text }] },
+        })
+      }
+      return {
+        stateOf,
+        readerFor: (session: { id: string }) => () => stateOf(session),
+        dispose: async () => {},
+      }
+    },
+  } as never)
   ctx.provide('workingDirectory', { ensure: async () => cwd } as never)
   ctx.provide('fs', {
     resolve: async (path: string, opts: { cwd: string }) => ({ path: resolve(opts.cwd, path) }),
@@ -110,19 +162,49 @@ async function boot(options: {
   } as never)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(plugin)
   const run = async (
-    name: string, args: Record<string, unknown>, signal = new AbortController().signal, session = 's1',
-  ) => await executeToolFixture(ctx, {
-    callId: ToolCallId('c1'), name, arguments: args, agent: { id: 'a1', session: { id: session } } as unknown as Agent, signal,
-  })
-  return { ctx, cwd, ask, submit, wait, cancel, run }
+    name: string, args: Record<string, unknown>, signal = new AbortController().signal, session = 's1', userText = '用户原始请求',
+  ) => {
+    directUserTexts.set(session, userText)
+    return await executeToolFixture(ctx, {
+      callId: ToolCallId('c1'), name, arguments: args,
+      agent: { id: 'a1', session: { id: session } } as unknown as Agent,
+      signal,
+    })
+  }
+  return { ctx, cwd, ask, submit, wait, cancel, inspect, run, pendingRecords, projectDirectUserEvent }
 }
 
 /** Text of one result. */
 function textOf(result: { content: readonly { type: string; text?: string }[] }): string {
   return result.content.map(block => block.text ?? '').join('')
 }
+
+describe('generation guidance', () => {
+  it('tells the model not to substitute local tools for unavailable or failed cloud generation', async () => {
+    const { ctx } = await boot()
+    expect(renderPrompt(await ctx.systemPrompt.assemble())).toContain('Never substitute local operating-system speech synthesis')
+  })
+
+  it('projects only non-empty direct user text into the resume identity hash', async () => {
+    const { projectDirectUserEvent } = await boot()
+    const existing = { textHash: 'kept' }
+    expect(projectDirectUserEvent(existing, { type: 'turn/end' })).toBe(existing)
+    expect(projectDirectUserEvent(existing, {
+      type: 'user/message', data: { source: { kind: 'time-context' }, content: [{ type: 'text', text: '注入上下文' }] },
+    })).toBe(existing)
+    expect(projectDirectUserEvent(existing, {
+      type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: '  ' }] },
+    })).toBe(existing)
+    const direct = projectDirectUserEvent({ textHash: null }, {
+      type: 'user/message',
+      data: { source: { kind: 'user' }, content: [{ type: 'image' }, { type: 'text', text: '直接请求' }] },
+    })
+    expect(direct.textHash).toMatch(/^[0-9a-f]{64}$/u)
+  })
+})
 
 describe('generate_video', () => {
   it('asks only for what a 10-second portrait request leaves open, and saves an mp4', async () => {
@@ -228,6 +310,38 @@ describe('generate_video', () => {
     expect(submit).toHaveBeenCalledTimes(2)
   })
 
+  it('resumes a pending task when the model mildly rewords the same video request', async () => {
+    const { submit, wait, run } = await boot()
+    const first = { prompt: '一只毛茸茸的小猫在柔软的毯子上玩耍，伸出前爪扑向一个毛线球，活泼可爱，画面明亮温馨，特写镜头，自然光', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 1, with_audio: false }
+    const reworded = { ...first, prompt: '一只毛茸茸的橘白小猫在柔软的米色毯子上玩耍，伸爪扑向一个彩色毛线球，动作活泼，特写镜头，明亮温馨的自然光，柔和的景深' }
+    wait.mockRejectedValueOnce(new Error('the Host went away'))
+    expect((await run('generate_video', first)).isError).toBe(true)
+    expect((await run('generate_video', reworded)).isError).toBe(false)
+    expect(submit).toHaveBeenCalledTimes(1)
+    await run('generate_video', reworded)
+    expect(submit).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not attach a different video request to a pending task', async () => {
+    const { submit, wait, run } = await boot()
+    const first = { prompt: '一只毛茸茸的小猫在柔软的毯子上玩耍，伸出前爪扑向一个毛线球，活泼可爱，画面明亮温馨，特写镜头，自然光', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 1, with_audio: false }
+    const different = { ...first, prompt: '一只小狗在公园里追飞盘，画面明亮，特写镜头，自然光' }
+    wait.mockRejectedValueOnce(new Error('the Host went away'))
+    expect((await run('generate_video', first)).isError).toBe(true)
+    await run('generate_video', different)
+    expect(submit).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not resume a reworded prompt after the user changes the request', async () => {
+    const { submit, wait, run } = await boot()
+    const first = { prompt: '一只毛茸茸的小猫在柔软的毯子上玩耍，伸出前爪扑向一个毛线球，活泼可爱，画面明亮温馨，特写镜头，自然光', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 1, with_audio: false }
+    const reworded = { ...first, prompt: '一只毛茸茸的橘白小猫在柔软的米色毯子上玩耍，伸爪扑向一个彩色毛线球，动作活泼，特写镜头，明亮温馨的自然光，柔和的景深' }
+    wait.mockRejectedValueOnce(new Error('the Host went away'))
+    expect((await run('generate_video', first)).isError).toBe(true)
+    await run('generate_video', reworded, new AbortController().signal, 's1', '改成另一个视频')
+    expect(submit).toHaveBeenCalledTimes(2)
+  })
+
   it('submits anew after the call stopped its task', async () => {
     const controller = new AbortController()
     const { submit, wait, run } = await boot()
@@ -293,8 +407,9 @@ describe('generate_video', () => {
 
 describe('requirement review', () => {
   it('records the vision model verdict in the result', async () => {
-    const { run } = await boot({ review: '```json\n{"verdict":"mismatch","reason":"画面里没有海"}\n```' })
+    const { inspect, run } = await boot({ review: '```json\n{"verdict":"mismatch","reason":"画面里没有海"}\n```' })
     const result = await run('generate_video', { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true })
+    expect(inspect).toHaveBeenCalledWith(expect.objectContaining({ media: [{ kind: 'video', url: 'https://cdn.example/v' }] }))
     expect(result.meta).toMatchObject({ review: { verdict: 'mismatch', reason: '画面里没有海' } })
     expect(JSON.parse(textOf(result))).toMatchObject({ review: { verdict: 'mismatch' } })
   })
@@ -307,13 +422,27 @@ describe('requirement review', () => {
 })
 
 describe('generate_music', () => {
+  it('resumes a pre-upgrade pending song recorded before instructions joined the fingerprint', async () => {
+    const { cwd, pendingRecords, submit, run } = await boot()
+    const request = {
+      operation: 'generate_music' as const,
+      model: 'minimax-music3',
+      prompt: '轻快的钢琴曲',
+      params: { is_instrumental: 'false' },
+    }
+    pendingRecords.set(fingerprint('s1', cwd, request), { taskId: 't1', submittedAt: Date.now() })
+    const result = await run('generate_music', { prompt: '轻快的钢琴曲', instrumental: false })
+    expect(result.isError).toBe(false)
+    expect(submit).not.toHaveBeenCalled()
+  })
+
   it('asks whether the piece is instrumental and saves an mp3', async () => {
     const { ask, submit, run, wait, cwd } = await boot({ answer: () => ({ answers: [{ id: 'is_instrumental', selected: ['纯音乐'] }] }) })
     wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/m' } })
     const result = await run('generate_music', { prompt: '轻快的钢琴曲' })
     expect(result.isError).toBe(false)
     expect(ask.mock.calls[0]?.[0].questions[0]?.options?.map(option => option.label)).toEqual(['带人声', '纯音乐'])
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ operation: 'generate_music', params: { is_instrumental: 'true' } }))
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ operation: 'generate_music', params: { is_instrumental: 'true', instructions: '轻快的钢琴曲' } }))
     expect((await readdir(join(cwd, 'generated')))[0]).toMatch(/\.mp3$/u)
   })
 })
@@ -323,7 +452,7 @@ describe('generate_music lyrics', () => {
     const { submit, run, wait } = await boot({ answer: () => ({ answers: [{ id: 'is_instrumental', selected: ['纯音乐'] }] }) })
     wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/m' } })
     await run('generate_music', { prompt: '轻快的钢琴曲', lyrics: '啦啦啦' })
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ params: { is_instrumental: 'true' } }))
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ params: { is_instrumental: 'true', instructions: '轻快的钢琴曲' } }))
   })
 })
 

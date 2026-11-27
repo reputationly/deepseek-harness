@@ -21,10 +21,16 @@
       "path": "../../core/agent"
     },
     {
+      "path": "../../core/session"
+    },
+    {
       "path": "../../core/tools"
     },
     {
       "path": "../../interaction/user-questions"
+    },
+    {
+      "path": "../../session/session-projection"
     },
     {
       "path": "../../session/working-directory"

@@ -463,6 +463,7 @@ export function chatSnapshotFixture(input: {
         const name = toolCallName(call)
         return name !== null && isSubagentDelegationTool(name)
       }).length,
+      pinnedToolCardCount: 0,
     }
     const previousSpec = dataStore.get('turn-process')
     const spec = previousSpec !== undefined && sameTurnProcessSpec(previousSpec, candidate)

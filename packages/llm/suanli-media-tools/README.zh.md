@@ -18,6 +18,7 @@ Host 工具插件：在对话里用用户选定的模型生成图片、视频和
 - [结果](#result)
 - [模型体验](#model-experience)
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
 
 ## 为什么需要它 <a id="why-this-exists"></a>
 
@@ -34,7 +35,7 @@ Host 工具插件：在对话里用用户选定的模型生成图片、视频和
 - 参考图是工作区内的 PNG、JPEG、WebP 或 GIF 路径，数量不超过条目的参考图上限。
 - 视频参数有宽高比、分辨率、时长和声音。每题最多列 6 个取值；1–20 秒这样的长数字区间按范围描述（`最长 20`），任何支持的值都可以手填。
 - 视频玩法按输入决定：有参考图用 `reference`，有首帧（可加尾帧）用 `first-last-frame`（一帧为 `i2v`，两帧为 `flf2v`），有源视频（`source_video`，不超过 50 MB 的 MP4 或 WebM，不能同时给图片）用 `video-extension`，作为 `metadata.source_video` 提交，此时只提供 768P，时长是续写后的总时长；没有图片用 `text-to-video`。选定的视频模型支持该玩法时用它，否则用目录里第一个支持的模型。
-- 生音乐在调用没说明时询问是否纯音乐（纯音乐 / 带人声）；只有带人声且条目接受 `lyrics` 时才传歌词。
+- 生音乐在调用没说明时询问是否纯音乐（纯音乐 / 带人声）；只有带人声且条目接受 `lyrics` 时才传歌词。提示词还会作为任务 metadata 里的 `instructions` 提交，因为 MiniMax Music 3 根据这个字段编曲，而不是只看顶层 prompt。
 - 视频最多等 20 分钟，音乐最多等 10 分钟。停止调用会取消网关任务。
 - 产物先下载到私有暂存目录，再以独占创建的方式发布到 `generated/`；只有确认新文件确实位于工作区里真实的 `generated/` 目录后才写入内容，所以 `generated/` 任何时候被换成链接，工作区外都收不到内容（最多留下一个空文件）。
 
@@ -48,11 +49,11 @@ Host 工具插件：在对话里用用户选定的模型生成图片、视频和
 
 #### 模型看到什么 <a id="what-the-model-sees"></a>
 
-目录里有对应角色模型时的 [`generate_image`、`generate_video`、`generate_music`、`generate_speech`](../../../docs/tool-catalog.zh.md#deepseek-aidsh-suanli-media-tools) schema；没有时不出现。
+目录里有对应角色模型时的 [`generate_image`、`generate_video`、`generate_music`、`generate_speech`](../../../docs/tool-catalog.zh.md#deepseek-aidsh-suanli-media-tools) schema；没有时不出现。固定系统提示词会告诉模型：工具不存在时回答当前不支持该生成能力，不能用本机语音合成、shell 命令、媒体库或 ffmpeg 后处理来替代不可用或失败的云端生成。
 
 #### Token 影响 <a id="token-effect"></a>
 
-注册期间每次请求固定约 300（生图）、450（生视频）、200（生音乐）token 的 schema，每次调用另有约 60 token 的结果。
+注册期间每次请求固定约 300（生图）、450（生视频）、200（生音乐）token 的 schema，另有一段约 90 token 的固定生成规则；每次调用还有约 60 token 的结果。
 
 #### KV Cache 影响 <a id="kv-cache-effect"></a>
 
@@ -61,7 +62,12 @@ schema 前缀稳定。只有某个角色的模型在目录中出现或消失时�
 ## 已知限制与后续工作 <a id="known-limitations-and-deferred-work"></a>
 
 - **语音只走 `/v1/audio/speech`**：目录里有 `maas-speech` 条目时才提供 `generate_speech`；合成是一次同步调用，按停止不会在网关取消。
-- **审核只是提示，且不全覆盖**：开启自动审核时，所选多模态识别模型判断图片和视频是否符合要求，卡片显示结论，不会自动重新生成。音乐和超过 20 MiB 的视频不审核，审核调用失败时结果保持未审核。
-- **续取要同样的调用**：Host 退出时仍在渲染的视频或音乐会在 `suanli_media_pending` 存储域里保留一天；下次在同一对话里以相同的工作区、模型、提示词、素材和参数调用时，续取这个任务而不重新提交，但不会自动去取。
+- **审核只是提示，且不全覆盖**：开启自动审核时，所选多模态识别模型判断图片和视频是否符合要求，卡片显示结论，不会自动重新生成。审核通过 artifact URL 引用文件，不再上传第二份；音乐不审核，审核调用失败时结果保持未审核。
+- **续取是保守的**：Host 退出时仍在渲染的视频或音乐会在 `suanli_media_pending` 存储域里保留一天；下次在同一对话里，只有工作区、模型、素材、参数相同，并且提示词相同或只是同一条直接用户消息的轻微改写重试时，才续取这个任务而不重新提交，但不会自动去取。
 - **没有进度百分比**：调用会阻塞到文件生成完成（2K 图片约 36 秒，视频需数分钟），卡片显示不确定进度。
 - **Session 之外**：没有 Agent 的调用保存到进程工作目录，而不是 Session 工作区。
+
+<a id="dev-note"></a>
+### 开发备注
+
+无。
