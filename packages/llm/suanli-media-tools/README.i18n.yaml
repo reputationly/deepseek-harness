@@ -12,8 +12,8 @@
   en: be45974faf1560c8
   zh: 8ffeb87f4413709d
 /deepseek-ai-dsh-suanli-media-tools/table-of-contents:
-  en: 9631c674d4a464a1
-  zh: a93d338835e8164a
+  en: 7400665fe6028f8f
+  zh: ec2ae85213ec5ef0
 /deepseek-ai-dsh-suanli-media-tools/why-this-exists:
   en: 710a3decc3c0db42
   zh: e15fd8c9781b1bbe
@@ -39,5 +39,8 @@
   en: 3928237df57453cb
   zh: 3615faf10a145847
 /deepseek-ai-dsh-suanli-media-tools/known-limitations-and-deferred-work:
-  en: ec1d57ed0a217c3c
-  zh: 753f4c9279ea2909
+  en: f12d32d9683f5cac
+  zh: 65d01aa33a1c3d88
+/deepseek-ai-dsh-suanli-media-tools/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

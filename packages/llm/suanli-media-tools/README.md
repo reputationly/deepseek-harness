@@ -18,6 +18,7 @@ Host tool plugin that generates images, videos, and music from chat with the mod
 - [Result](#result)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
 ## Why this exists
 
@@ -65,3 +66,8 @@ The schema is prefix-stable. Registration changes only when a model of a role ap
 - **Resume is conservative** — a video or song still rendering when the Host exits is kept in the `suanli_media_pending` storage domain for a day; the next call from the same chat resumes it only for the same workspace, model, inputs, parameters, and either the same prompt or a mildly reworded retry of the same direct user message, but nothing fetches it unprompted.
 - **No progress percentage** — the call blocks until the file exists (about 36 s for a 2K image, minutes for a video), and the card shows an indeterminate progress state.
 - **Outside a Session** — a call without an Agent saves into the process working directory instead of a Session workspace.
+
+<a id="dev-note"></a>
+### Dev Note
+
+None.
