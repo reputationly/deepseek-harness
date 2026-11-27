@@ -17,7 +17,7 @@ import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import { BrandMark, BrandName } from './Brand.tsx'
 import type { GatewayStatusFace } from './ConnectionPill.tsx'
 import { CatalogSyncRow, type CatalogSyncOutcome } from './CatalogSyncRow.tsx'
-import { GenerateImageCard, type OpenInCreative } from './GenerateImageCard.tsx'
+import { GenerateImageCard, type GenerateImageCardInjected, type OpenInCreative } from './GenerateImageCard.tsx'
 import { GenerateMediaCard, type MediaLoader } from './GenerateMediaCard.tsx'
 import { ModelRolesRow, type ModelRoleView, type ModelRolesView } from './ModelRolesRow.tsx'
 import { de, en, es, fr, ja, pt, ru, zh, type GatewayStatusKey } from './locales.ts'
@@ -75,14 +75,18 @@ export function apply(ctx: ClientContext): void {
     t: TranslateNS<'gatewayStatus'>
   }) => createElement(ModelRolesRow, { load: props.load, select: props.select, setAutoReview: props.setAutoReview, t: props.t })))
   // Images generated from chat render inline, with download, prompt copy, and regenerate.
-  // 「在创作中打开」 hands the images to the creative workbench when that plugin is loaded.
+  // 「拿去精修」 hands the images to the creative workbench's image-to-image page while that workbench is on.
+  const creative = (): CreativeFace | undefined => ctx.get('suanliCreative') as CreativeFace | undefined
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
     name: 'tool.call.toolview', key: 'generate_image', locale: NS,
-    inject: (): { openInCreative: OpenInCreative } => ({
-      openInCreative: (input) => {
-        const creative = ctx.get('suanliCreative') as CreativeFace | undefined
-        return creative?.openImages(input) ?? false
+    inject: (): GenerateImageCardInjected => ({
+      hooks: {
+        creativeReady: {
+          getSnapshot: () => creative()?.ready?.getSnapshot() ?? false,
+          subscribe: listener => creative()?.ready?.subscribe(listener) ?? (() => {}),
+        },
       },
+      openInCreative: input => creative()?.openImages(input) ?? false,
     }),
   }, GenerateImageCard))
   // Videos and music play inline once the user asks; the bytes come from the call's own Session workspace.
@@ -160,6 +164,8 @@ async function readRoles(remote: ClientContext['remote']['suanliModels']): Promi
 /** The part of the creative workbench's Client service the image card calls. */
 interface CreativeFace {
   openImages: OpenInCreative
+  /** Absent on workbench releases before the image-to-image hand-off. */
+  ready?: { getSnapshot: () => boolean; subscribe: (listener: () => void) => () => void }
 }
 
 function catalogService(ctx: ClientContext): ClientContext['remote']['suanliModels'] {

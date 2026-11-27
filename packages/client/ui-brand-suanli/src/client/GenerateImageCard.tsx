@@ -4,14 +4,14 @@ import {
   Button, IconCheckOutlineRegular, IconCopyOutlineRegular, IconDownloadOutlineRegular, IconRefreshOutlineRegular,
   TextShimmer, useClipboardCopy,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsRenderFactories, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsRenderFactories, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { imageResultOf, type ImageResult } from './image-result.ts'
 import css from './GenerateImageCard.module.css'
 
 
 /** Props the keyed toolview entry receives. */
-/** Images handed to the creative workbench's gallery. */
+/** Images handed to the creative workbench as image-to-image references. */
 export interface CreativeImages {
   prompt: string
   model: string
@@ -21,9 +21,15 @@ export interface CreativeImages {
 /** @returns false when the creative workbench is not loaded or is switched off. */
 export type OpenInCreative = (input: CreativeImages) => boolean
 
-export type GenerateImageCardProps = ToolCallViewProps & PropsRenderFactories & {
-  t: TranslateNS<'gatewayStatus'>
+/** What the card reaches the creative workbench through. */
+export interface GenerateImageCardInjected {
+  /** True while the creative workbench is loaded and switched on. */
+  hooks: { creativeReady: HostObservable<boolean> }
   openInCreative: OpenInCreative
+}
+
+export type GenerateImageCardProps = ToolCallViewProps & PropsRenderFactories & InjectFace<GenerateImageCardInjected> & {
+  t: TranslateNS<'gatewayStatus'>
 }
 
 /**
@@ -55,7 +61,8 @@ export function GenerateImageCard(props: GenerateImageCardProps) {
  * @returns the images with their actions.
  */
 function GeneratedImages({ result, props }: { result: ImageResult; props: GenerateImageCardProps }) {
-  const { t, loadImage, inputActions, renderFactorySlot, openInCreative: open } = props
+  const { t, loadImage, inputActions, renderFactorySlot, openInCreative: open, useCreativeReady } = props
+  const creativeReady = useCreativeReady(ready => ready)
   const copy = useClipboardCopy(result.prompt)
   const stored = result.images.flatMap(image => (
     image.attachment === undefined ? [] : [{ attachment: image.attachment, label: baseName(image.path) }]
@@ -97,7 +104,7 @@ function GeneratedImages({ result, props }: { result: ImageResult; props: Genera
         {copy.copied ? t('image.copied') : t('image.copy-prompt')}
       </Button>
       <Button size="sm" icon={<IconRefreshOutlineRegular />} onClick={regenerate}>{t('image.regenerate')}</Button>
-      {stored.length > 0 && <Button size="sm" onClick={openInCreative}>{t('image.open-in-creative')}</Button>}
+      {stored.length > 0 && creativeReady && <Button size="sm" onClick={openInCreative}>{t('image.refine')}</Button>}
     </div>
     {creativeMissing && <p className={css.detail} role="status">{t('image.creative-unavailable')}</p>}
   </div>

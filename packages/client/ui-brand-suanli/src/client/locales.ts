@@ -11,7 +11,7 @@ export type GatewayStatusKey =
   | 'catalog.failed' | 'catalog.count'
   | 'class.chat' | 'class.vision-image' | 'class.vision-video' | 'class.image-generate' | 'class.image-edit' | 'class.video-generate' | 'class.video-first-last-frame' | 'class.video-reference' | 'class.music-generate' | 'class.speech-generate' | 'class.other' | 'catalog.capability-title' | 'catalog.capability-missing'
   | 'roles.title' | 'roles.description' | 'roles.loading' | 'roles.failed' | 'roles.chat' | 'roles.vision' | 'roles.image' | 'roles.video' | 'roles.music' | 'roles.speech' | 'roles.chat-hint' | 'roles.default' | 'roles.unavailable' | 'roles.review' | 'roles.review-description'
-  | 'image.generating' | 'image.generated' | 'image.cancelled' | 'image.failed' | 'image.download' | 'image.copy-prompt' | 'image.copied' | 'image.regenerate' | 'image.regenerate-request' | 'image.open-in-creative' | 'image.creative-unavailable'
+  | 'image.generating' | 'image.generated' | 'image.cancelled' | 'image.failed' | 'image.download' | 'image.copy-prompt' | 'image.copied' | 'image.regenerate' | 'image.regenerate-request' | 'image.refine' | 'image.creative-unavailable'
   | 'video.generating' | 'video.generated' | 'video.failed' | 'video.regenerate-request' | 'music.generating' | 'music.generated' | 'music.failed' | 'music.regenerate-request' | 'speech.generating' | 'speech.generated' | 'speech.failed' | 'speech.regenerate-request' | 'media.play-video' | 'media.play-audio' | 'media.loading' | 'media.open' | 'media.unreadable' | 'review.match' | 'review.partial' | 'review.mismatch'
 
 /** English copy. */
@@ -73,7 +73,7 @@ export const en: Record<GatewayStatusKey, string> = {
   'image.copied': 'Copied',
   'image.regenerate': 'Regenerate',
   'image.regenerate-request': 'Generate the image again with the same requirements: {prompt} ({settings})',
-  'image.open-in-creative': 'Open in Creative',
+  'image.refine': 'Refine in Creative',
   'image.creative-unavailable': 'Creative is not enabled.',
   'video.generating': 'Generating video…',
   'video.generated': 'Video generated',
@@ -156,7 +156,7 @@ export const zh: Record<GatewayStatusKey, string> = {
   'image.copied': '已复制',
   'image.regenerate': '重新生成',
   'image.regenerate-request': '按同样的要求重新生成图片：{prompt}（{settings}）',
-  'image.open-in-creative': '在创作中打开',
+  'image.refine': '拿去精修',
   'image.creative-unavailable': '「创作」未启用。',
   'video.generating': '正在生成视频…',
   'video.generated': '视频已生成',
@@ -239,7 +239,7 @@ export const ja: Record<GatewayStatusKey, string> = {
   'image.copied': 'コピーしました',
   'image.regenerate': '再生成',
   'image.regenerate-request': '同じ条件で画像をもう一度生成してください：{prompt}（{settings}）',
-  'image.open-in-creative': 'クリエイトで開く',
+  'image.refine': 'クリエイトで仕上げる',
   'image.creative-unavailable': 'クリエイトが有効になっていません。',
   'video.generating': '動画を生成中…',
   'video.generated': '動画を生成しました',
@@ -322,7 +322,7 @@ export const es: Record<GatewayStatusKey, string> = {
   'image.copied': 'Copiado',
   'image.regenerate': 'Regenerar',
   'image.regenerate-request': 'Genera la imagen de nuevo con los mismos requisitos: {prompt} ({settings})',
-  'image.open-in-creative': 'Abrir en Creación',
+  'image.refine': 'Retocar en Creación',
   'image.creative-unavailable': 'Creación no está activada.',
   'video.generating': 'Generando vídeo…',
   'video.generated': 'Vídeo generado',
@@ -405,7 +405,7 @@ export const fr: Record<GatewayStatusKey, string> = {
   'image.copied': 'Copié',
   'image.regenerate': 'Régénérer',
   'image.regenerate-request': 'Génère de nouveau l’image avec les mêmes exigences : {prompt} ({settings})',
-  'image.open-in-creative': 'Ouvrir dans Création',
+  'image.refine': 'Retoucher dans Création',
   'image.creative-unavailable': 'Création n’est pas activé.',
   'video.generating': 'Génération de la vidéo…',
   'video.generated': 'Vidéo générée',
@@ -488,7 +488,7 @@ export const de: Record<GatewayStatusKey, string> = {
   'image.copied': 'Kopiert',
   'image.regenerate': 'Neu erzeugen',
   'image.regenerate-request': 'Erzeuge das Bild erneut mit denselben Vorgaben: {prompt} ({settings})',
-  'image.open-in-creative': 'In Kreativ öffnen',
+  'image.refine': 'In Kreativ verfeinern',
   'image.creative-unavailable': 'Kreativ ist nicht aktiviert.',
   'video.generating': 'Video wird generiert…',
   'video.generated': 'Video generiert',
@@ -571,7 +571,7 @@ export const ru: Record<GatewayStatusKey, string> = {
   'image.copied': 'Скопировано',
   'image.regenerate': 'Создать заново',
   'image.regenerate-request': 'Создай изображение заново с теми же требованиями: {prompt} ({settings})',
-  'image.open-in-creative': 'Открыть в «Творчестве»',
+  'image.refine': 'Доработать в «Творчестве»',
   'image.creative-unavailable': '«Творчество» не включено.',
   'video.generating': 'Генерация видео…',
   'video.generated': 'Видео создано',
@@ -654,7 +654,7 @@ export const pt: Record<GatewayStatusKey, string> = {
   'image.copied': 'Copiado',
   'image.regenerate': 'Gerar novamente',
   'image.regenerate-request': 'Gere a imagem novamente com os mesmos requisitos: {prompt} ({settings})',
-  'image.open-in-creative': 'Abrir em Criação',
+  'image.refine': 'Retocar em Criação',
   'image.creative-unavailable': 'Criação não está ativada.',
   'video.generating': 'Gerando vídeo…',
   'video.generated': 'Vídeo gerado',
