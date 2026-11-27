@@ -33,7 +33,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'gatewayStatus'
 
 /** Services this plugin uses: the slots and their dictionary. The Host gateway namespace is optional. */
-export const inject = ['slots', 'locale', 'remote']
+export const inject = ['slots', 'locale', 'remote', 'remote.workspaceFiles']
 
 /**
  * Fill the sidebar and blank-home brand slots with this product's artwork.
