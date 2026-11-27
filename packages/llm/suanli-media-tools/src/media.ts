@@ -46,6 +46,9 @@ interface MusicArgs {
   readonly instrumental?: boolean | undefined
 }
 
+/** Read the exact direct-user request hash current in one Session, when projection state is available. */
+export type UserTextHashOf = (session: NonNullable<ToolExecution['agent']>['session']) => string | undefined
+
 /** What one execution resolved before submission. */
 interface Plan {
   readonly entry: CapabilityEntry
@@ -79,9 +82,10 @@ const musicDescription = 'Generate a piece of music from a description of its st
  * Build the `generate_video` definition.
  * @param ctx - plugin context.
  * @param pending - unsettled tasks a repeated call resumes.
+ * @param userTextHashOf - projected direct-user prompt-hash reader.
  * @returns the tool.
  */
-export function videoTool(ctx: Context, pending: PendingTasks) {
+export function videoTool(ctx: Context, pending: PendingTasks, userTextHashOf: UserTextHashOf) {
   return defineTool({
     name: 'generate_video',
     description: videoDescription,
@@ -105,7 +109,7 @@ export function videoTool(ctx: Context, pending: PendingTasks) {
     output: outputOf(),
     timeoutMs: VIDEO_WAIT_MS + 600_000,
     async execute(args, exec) {
-      return await generate(ctx, pending, 'Video', 'generate_video', 'video', VIDEO_WAIT_MS, args.prompt, exec,
+      return await generate(ctx, pending, userTextHashOf, 'Video', 'generate_video', 'video', VIDEO_WAIT_MS, args.prompt, exec,
         async (entries, preferred, cwd) => await planVideo(ctx, entries, preferred, cwd, args, exec.signal),
         [[ASPECT, args.aspect_ratio], [RESOLUTION, args.resolution],
           [DURATION, args.duration_seconds === undefined ? undefined : String(args.duration_seconds)],
@@ -118,9 +122,10 @@ export function videoTool(ctx: Context, pending: PendingTasks) {
  * Build the `generate_music` definition.
  * @param ctx - plugin context.
  * @param pending - unsettled tasks a repeated call resumes.
+ * @param userTextHashOf - projected direct-user prompt-hash reader.
  * @returns the tool.
  */
-export function musicTool(ctx: Context, pending: PendingTasks) {
+export function musicTool(ctx: Context, pending: PendingTasks, userTextHashOf: UserTextHashOf) {
   return defineTool({
     name: 'generate_music',
     description: musicDescription,
@@ -132,7 +137,7 @@ export function musicTool(ctx: Context, pending: PendingTasks) {
     output: outputOf(),
     timeoutMs: MUSIC_WAIT_MS + 600_000,
     async execute(args, exec) {
-      return await generate(ctx, pending, 'Music', 'generate_music', 'music', MUSIC_WAIT_MS, args.prompt, exec,
+      return await generate(ctx, pending, userTextHashOf, 'Music', 'generate_music', 'music', MUSIC_WAIT_MS, args.prompt, exec,
         (entries, preferred) => Promise.resolve(planMusic(ctx, entries, preferred, args)),
         [[INSTRUMENTAL, args.instrumental === undefined ? undefined : String(args.instrumental)]])
     },
@@ -205,6 +210,7 @@ export function outputOf() {
  * Run one generation: plan, settle parameters, submit, wait, and save.
  * @param ctx - plugin context.
  * @param pending - unsettled tasks; an identical request resumes its task instead of submitting again.
+ * @param userTextHashOf - projected direct-user prompt-hash reader.
  * @param what - which generation, for errors.
  * @param operation - catalog operation.
  * @param role - model role whose choice is preferred.
@@ -217,7 +223,7 @@ export function outputOf() {
  * @throws When no model fits, the gateway refused, or the file could not be saved.
  */
 async function generate(
-  ctx: Context, pending: PendingTasks, what: string, operation: MediaOperation, role: 'video' | 'music', budgetMs: number, prompt: string,
+  ctx: Context, pending: PendingTasks, userTextHashOf: UserTextHashOf, what: string, operation: MediaOperation, role: 'video' | 'music', budgetMs: number, prompt: string,
   exec: ToolExecution, plan: (entries: readonly CapabilityEntry[], preferred: string | null, cwd: string) => Promise<Plan>,
   requested: readonly (readonly [ParameterKind, string | undefined])[],
 ): Promise<MediaValue> {
@@ -248,7 +254,8 @@ async function generate(
   const key = fingerprint(exec.agent?.session.id ?? '', cwd, request)
   let url: string
   const session = exec.agent?.session.id ?? ''
-  const identity = { session, cwd, request }
+  const userTextHash = exec.agent === undefined ? undefined : userTextHashOf(exec.agent.session)
+  const identity = { session, cwd, request, ...userTextHash === undefined ? {} : { userTextHash } }
   const legacyRequest = operation === 'generate_music'
     ? { ...request, params: Object.fromEntries(Object.entries(request.params).filter(([name]) => name !== 'instructions')) }
     : undefined

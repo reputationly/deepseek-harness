@@ -17,6 +17,7 @@ const taskSchema = z.object({
   operation: z.string().optional(),
   model: z.string().optional(),
   prompt: z.string().optional(),
+  userTextHash: z.string().optional(),
   taskType: z.string().optional(),
   requestHash: z.string().optional(),
 })
@@ -49,6 +50,8 @@ export interface PendingIdentity {
   readonly session: string
   readonly cwd: string
   readonly request: MediaSubmitRequest
+  /** Hash of the exact user message that initiated the generation, when the Session is readable. */
+  readonly userTextHash?: string
 }
 
 /** Unsettled tasks of the media tools. */
@@ -120,6 +123,8 @@ function rewordedMatch(record: StoredTask, identity: PendingIdentity): boolean {
     && record.model === request.model
     && (record.taskType ?? null) === (request.taskType ?? null)
     && record.requestHash === requestHash(request)
+    && record.userTextHash !== undefined
+    && record.userTextHash === identity.userTextHash
     && record.prompt !== undefined
     && promptSimilarity(record.prompt, request.prompt) >= REWORDED_PROMPT_SIMILARITY
 }
@@ -132,6 +137,7 @@ function storedIdentity(identity: PendingIdentity): Omit<StoredTask, 'taskId' | 
     operation: request.operation,
     model: request.model,
     prompt: request.prompt,
+    ...identity.userTextHash === undefined ? {} : { userTextHash: identity.userTextHash },
     ...request.taskType === undefined ? {} : { taskType: request.taskType },
     requestHash: requestHash(request),
   }

@@ -17,6 +17,20 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(12)])
 const MP3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(13)])
 
+interface DirectUserProjectionState {
+  textHash: string | null
+}
+
+type DirectUserProjectionEvent = {
+  type: string
+  data?: { source?: { kind?: string }; content?: { type: string; text?: string }[] }
+}
+
+interface DirectUserProjectionDefinition {
+  init: () => DirectUserProjectionState
+  apply: (state: DirectUserProjectionState, event: DirectUserProjectionEvent) => DirectUserProjectionState
+}
+
 const none = { min: 0, max: 0 }
 const mode = (id: string, taskType: string, image: number, single?: string) => ({
   id, label: { zh: id, en: id }, taskType, ...single !== undefined ? { taskTypeIfSingleImage: single } : {},
@@ -117,6 +131,30 @@ async function boot(options: {
       }),
     }),
   } as never)
+  const directUserTexts = new Map<string, string>()
+  let directUserProjection: DirectUserProjectionDefinition | undefined
+  const projectDirectUserEvent = (state: DirectUserProjectionState, event: DirectUserProjectionEvent): DirectUserProjectionState => {
+    if (directUserProjection === undefined) throw new Error('projection was not registered')
+    return directUserProjection.apply(state, event)
+  }
+  ctx.provide('sessionProjections', {
+    register: async (definition: DirectUserProjectionDefinition) => {
+      directUserProjection = definition
+      const stateOf = (session: { id: string }): DirectUserProjectionState => {
+        const text = directUserTexts.get(session.id)
+        const initial = definition.init()
+        return text === undefined ? initial : definition.apply(initial, {
+          type: 'user/message',
+          data: { source: { kind: 'user' }, content: [{ type: 'text', text }] },
+        })
+      }
+      return {
+        stateOf,
+        readerFor: (session: { id: string }) => () => stateOf(session),
+        dispose: async () => {},
+      }
+    },
+  } as never)
   ctx.provide('workingDirectory', { ensure: async () => cwd } as never)
   ctx.provide('fs', {
     resolve: async (path: string, opts: { cwd: string }) => ({ path: resolve(opts.cwd, path) }),
@@ -127,11 +165,16 @@ async function boot(options: {
   await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(plugin)
   const run = async (
-    name: string, args: Record<string, unknown>, signal = new AbortController().signal, session = 's1',
-  ) => await executeToolFixture(ctx, {
-    callId: ToolCallId('c1'), name, arguments: args, agent: { id: 'a1', session: { id: session } } as unknown as Agent, signal,
-  })
-  return { ctx, cwd, ask, submit, wait, cancel, inspect, run, pendingRecords }
+    name: string, args: Record<string, unknown>, signal = new AbortController().signal, session = 's1', userText = '用户原始请求',
+  ) => {
+    directUserTexts.set(session, userText)
+    return await executeToolFixture(ctx, {
+      callId: ToolCallId('c1'), name, arguments: args,
+      agent: { id: 'a1', session: { id: session } } as unknown as Agent,
+      signal,
+    })
+  }
+  return { ctx, cwd, ask, submit, wait, cancel, inspect, run, pendingRecords, projectDirectUserEvent }
 }
 
 /** Text of one result. */
@@ -143,6 +186,23 @@ describe('generation guidance', () => {
   it('tells the model not to substitute local tools for unavailable or failed cloud generation', async () => {
     const { ctx } = await boot()
     expect(renderPrompt(await ctx.systemPrompt.assemble())).toContain('Never substitute local operating-system speech synthesis')
+  })
+
+  it('projects only non-empty direct user text into the resume identity hash', async () => {
+    const { projectDirectUserEvent } = await boot()
+    const existing = { textHash: 'kept' }
+    expect(projectDirectUserEvent(existing, { type: 'turn/end' })).toBe(existing)
+    expect(projectDirectUserEvent(existing, {
+      type: 'user/message', data: { source: { kind: 'time-context' }, content: [{ type: 'text', text: '注入上下文' }] },
+    })).toBe(existing)
+    expect(projectDirectUserEvent(existing, {
+      type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: '  ' }] },
+    })).toBe(existing)
+    const direct = projectDirectUserEvent({ textHash: null }, {
+      type: 'user/message',
+      data: { source: { kind: 'user' }, content: [{ type: 'image' }, { type: 'text', text: '直接请求' }] },
+    })
+    expect(direct.textHash).toMatch(/^[0-9a-f]{64}$/u)
   })
 })
 
@@ -269,6 +329,16 @@ describe('generate_video', () => {
     wait.mockRejectedValueOnce(new Error('the Host went away'))
     expect((await run('generate_video', first)).isError).toBe(true)
     await run('generate_video', different)
+    expect(submit).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not resume a reworded prompt after the user changes the request', async () => {
+    const { submit, wait, run } = await boot()
+    const first = { prompt: '一只毛茸茸的小猫在柔软的毯子上玩耍，伸出前爪扑向一个毛线球，活泼可爱，画面明亮温馨，特写镜头，自然光', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 1, with_audio: false }
+    const reworded = { ...first, prompt: '一只毛茸茸的橘白小猫在柔软的米色毯子上玩耍，伸爪扑向一个彩色毛线球，动作活泼，特写镜头，明亮温馨的自然光，柔和的景深' }
+    wait.mockRejectedValueOnce(new Error('the Host went away'))
+    expect((await run('generate_video', first)).isError).toBe(true)
+    await run('generate_video', reworded, new AbortController().signal, 's1', '改成另一个视频')
     expect(submit).toHaveBeenCalledTimes(2)
   })
 

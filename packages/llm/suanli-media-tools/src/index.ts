@@ -7,20 +7,24 @@
  * @module @deepseek-ai/dsh-suanli-media-tools
  */
 
+import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { CapabilityEntry } from '@deepseek-ai/dsh-suanli-model-catalog/types'
 import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
+import { z as zod } from 'zod'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-suanli-model-catalog'
 import type {} from '@deepseek-ai/dsh-suanli-media-tasks'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-projection'
 import { speechTool } from './speech.ts'
 import { review } from './review.ts'
 import { failure, outputDirectory, resolveParameters, saveArtifact, workspaceOf } from './common.ts'
-import { musicTool, videoTool } from './media.ts'
+import { musicTool, videoTool, type UserTextHashOf } from './media.ts'
 import { pendingTasks } from './pending.ts'
 import { ASPECT, RESOLUTION, canvasOf } from './params.ts'
 import type { GeneratedImage, ImageResultMeta } from './types.ts'
@@ -33,7 +37,30 @@ export interface Config {}
 export const Config: z<Config> = z.object({})
 
 export const name = 'suanli-media-tools'
-export const inject = ['tools', 'systemPrompt', 'fs', 'suanliModels', 'suanliMedia', 'userQuestions', 'workingDirectory']
+export const inject = [
+  'tools', 'systemPrompt', 'fs', 'suanliModels', 'suanliMedia', 'userQuestions', 'workingDirectory', 'sessionProjections',
+]
+
+const latestDirectUserStateSchema = zod.object({ textHash: zod.string().nullable() }).strict()
+
+/** Hash of the latest direct user prompt, projected from the log without synchronous event scans. */
+const latestDirectUserProjection = {
+  key: 'suanliMediaLatestDirectUser',
+  stateVersion: 1,
+  stateSchema: latestDirectUserStateSchema,
+  init: () => ({ textHash: null }),
+  apply: latestDirectUserProjectionApply,
+}
+
+/** Fold one event into the latest direct-user projection. */
+function latestDirectUserProjectionApply(
+  state: zod.infer<typeof latestDirectUserStateSchema>,
+  event: SessionEvent,
+): zod.infer<typeof latestDirectUserStateSchema> {
+  if (event.type !== 'user/message' || event.data.source.kind !== 'user') return state
+  const text = event.data.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n').trim()
+  return text === '' ? state : { textHash: createHash('sha256').update(text).digest('hex') }
+}
 
 /** Longest wait for one image. */
 const IMAGE_WAIT_MS = 180_000
@@ -79,17 +106,19 @@ interface ImageArgs {
  * Register `generate_image` while the catalog offers an image model.
  * @param ctx - plugin context.
  */
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<void> {
   ctx.effect(() => ctx.systemPrompt.section({
     name: 'suanli-media-tools:generation-tools',
     order: 9000,
     text: generationGuidance,
   }), 'suanli-media-tools.section()')
   const pending = pendingTasks(ctx)
+  const latestDirectUser = await ctx.sessionProjections.register(latestDirectUserProjection)
+  const userTextHashOf: UserTextHashOf = session => latestDirectUser.stateOf(session).textHash ?? undefined
   const tools = [
     { role: 'image', build: imageTool },
-    { role: 'video', build: (c: Context) => videoTool(c, pending) },
-    { role: 'music', build: (c: Context) => musicTool(c, pending) },
+    { role: 'video', build: (c: Context) => videoTool(c, pending, userTextHashOf) },
+    { role: 'music', build: (c: Context) => musicTool(c, pending, userTextHashOf) },
     { role: 'speech', build: speechTool },
   ] as const
   const registered = new Map<string, () => void>()

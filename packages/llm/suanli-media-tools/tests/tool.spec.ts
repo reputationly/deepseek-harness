@@ -64,6 +64,13 @@ async function boot(options: { answer?: (request: AskUserQuestionRequest) => Ask
     },
   } as never)
   ctx.provide('userQuestions', { ask } as never)
+  ctx.provide('sessionProjections', {
+    register: async () => ({
+      stateOf: () => ({ textHash: null }),
+      readerFor: () => () => ({ textHash: null }),
+      dispose: async () => {},
+    }),
+  } as never)
   ctx.provide('workingDirectory', { ensure: async () => cwd } as never)
   ctx.provide('fs', {
     resolve: async (path: string, opts: { cwd: string }) => ({ path: resolve(opts.cwd, path) }),
