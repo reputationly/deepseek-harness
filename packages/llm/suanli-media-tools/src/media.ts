@@ -247,8 +247,15 @@ async function generate(
   }
   const key = fingerprint(exec.agent?.session.id ?? '', cwd, request)
   let url: string
-  const identity = { session: exec.agent?.session.id ?? '', cwd, request }
-  const existing = await pending.find(key, identity)
+  const session = exec.agent?.session.id ?? ''
+  const identity = { session, cwd, request }
+  const legacyRequest = operation === 'generate_music'
+    ? { ...request, params: Object.fromEntries(Object.entries(request.params).filter(([name]) => name !== 'instructions')) }
+    : undefined
+  const legacyKey = legacyRequest === undefined ? undefined : fingerprint(session, cwd, legacyRequest)
+  const existing = await pending.find(key)
+    ?? (legacyKey === undefined ? undefined : await pending.find(legacyKey))
+    ?? await pending.find(key, identity)
   let taskId = existing?.taskId
   const pendingKey = existing?.key ?? key
   const settle = async (task: string): Promise<string> => await waitFor(

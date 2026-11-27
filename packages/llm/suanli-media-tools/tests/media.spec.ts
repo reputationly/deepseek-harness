@@ -11,6 +11,7 @@ import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import type { AskUserQuestionAnswer, AskUserQuestionRequest } from '@deepseek-ai/dsh-user-questions'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as plugin from '../src/index.ts'
+import { fingerprint } from '../src/pending.ts'
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
 const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(12)])
@@ -105,6 +106,17 @@ async function boot(options: {
     },
   } as never)
   ctx.provide('userQuestions', { ask } as never)
+  const pendingRecords = new Map<string, Record<string, unknown>>()
+  ctx.provide('storageDomain', {
+    open: async () => ({
+      table: () => ({
+        get: (key: string) => pendingRecords.get(key),
+        entries: () => pendingRecords.entries(),
+        put: async (key: string, value: Record<string, unknown>) => { pendingRecords.set(key, value) },
+        delete: async (key: string) => pendingRecords.delete(key),
+      }),
+    }),
+  } as never)
   ctx.provide('workingDirectory', { ensure: async () => cwd } as never)
   ctx.provide('fs', {
     resolve: async (path: string, opts: { cwd: string }) => ({ path: resolve(opts.cwd, path) }),
@@ -119,7 +131,7 @@ async function boot(options: {
   ) => await executeToolFixture(ctx, {
     callId: ToolCallId('c1'), name, arguments: args, agent: { id: 'a1', session: { id: session } } as unknown as Agent, signal,
   })
-  return { ctx, cwd, ask, submit, wait, cancel, inspect, run }
+  return { ctx, cwd, ask, submit, wait, cancel, inspect, run, pendingRecords }
 }
 
 /** Text of one result. */
@@ -340,6 +352,20 @@ describe('requirement review', () => {
 })
 
 describe('generate_music', () => {
+  it('resumes a pre-upgrade pending song recorded before instructions joined the fingerprint', async () => {
+    const { cwd, pendingRecords, submit, run } = await boot()
+    const request = {
+      operation: 'generate_music' as const,
+      model: 'minimax-music3',
+      prompt: '轻快的钢琴曲',
+      params: { is_instrumental: 'false' },
+    }
+    pendingRecords.set(fingerprint('s1', cwd, request), { taskId: 't1', submittedAt: Date.now() })
+    const result = await run('generate_music', { prompt: '轻快的钢琴曲', instrumental: false })
+    expect(result.isError).toBe(false)
+    expect(submit).not.toHaveBeenCalled()
+  })
+
   it('asks whether the piece is instrumental and saves an mp3', async () => {
     const { ask, submit, run, wait, cwd } = await boot({ answer: () => ({ answers: [{ id: 'is_instrumental', selected: ['纯音乐'] }] }) })
     wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/m' } })
