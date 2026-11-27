@@ -23,8 +23,9 @@ const META = {
   images: [{ path: '/w/generated/cat.png', attachment: ATTACHMENT }],
 }
 
-function mount(over: { phase?: 'start' | 'result'; meta?: unknown; isError?: boolean; text?: string; creative?: boolean } = {}) {
+function mount(over: { phase?: 'start' | 'result'; meta?: unknown; isError?: boolean; text?: string; creative?: boolean; ready?: boolean } = {}) {
   const openInCreative = vi.fn(() => over.creative ?? true)
+  const useCreativeReady = (select: (ready: boolean) => boolean) => select(over.ready ?? true)
   const inputActions = { setDraft: vi.fn(), submit: vi.fn() }
   const renderFactorySlot = vi.fn((_name: string, input: { images: readonly { label?: string }[] }) =>
     <div data-testid="gallery">{input.images.map(image => image.label).join(',')}</div>)
@@ -35,7 +36,7 @@ function mount(over: { phase?: 'start' | 'result'; meta?: unknown; isError?: boo
     meta: over.meta, subCalls: [],
   }
   const props = {
-    phase: over.phase ?? 'result', block, t, inputActions, renderFactorySlot, loadImage, openInCreative,
+    phase: over.phase ?? 'result', block, t, inputActions, renderFactorySlot, loadImage, openInCreative, useCreativeReady,
   } as unknown as GenerateImageCardProps
   render(<GenerateImageCard {...props} />)
   return { inputActions, renderFactorySlot, loadImage, openInCreative }
@@ -75,7 +76,7 @@ it('downloads each stored image through the authorized loader', async () => {
 it('hands the stored images to the creative workbench', async () => {
   const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/png' } }))
   const { openInCreative } = mount({ meta: META })
-  fireEvent.click(screen.getByRole('button', { name: '在创作中打开' }))
+  fireEvent.click(screen.getByRole('button', { name: '拿去精修' }))
   await vi.waitFor(() => { expect(openInCreative).toHaveBeenCalledTimes(1) })
   expect(openInCreative).toHaveBeenCalledWith({ prompt: '小猫玩耍', model: 'MiniMax H3 Image', images: [{ b64: 'AQID', mime: 'image/png' }] })
   expect(screen.queryByText('「创作」未启用。')).toBeNull()
@@ -85,9 +86,14 @@ it('hands the stored images to the creative workbench', async () => {
 it('says so when the creative workbench is not enabled', async () => {
   const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new Uint8Array([1]), { headers: { 'content-type': 'image/png' } }))
   mount({ meta: META, creative: false })
-  fireEvent.click(screen.getByRole('button', { name: '在创作中打开' }))
+  fireEvent.click(screen.getByRole('button', { name: '拿去精修' }))
   expect(await screen.findByText('「创作」未启用。')).toBeTruthy()
   fetchSpy.mockRestore()
+})
+
+it('offers no refine button while the creative workbench is off', () => {
+  mount({ meta: META, ready: false })
+  expect(screen.queryByRole('button', { name: '拿去精修' })).toBeNull()
 })
 
 it('lists saved paths when no image reference was stored', () => {

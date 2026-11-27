@@ -26,7 +26,7 @@ kind: "package-reference"
 | `sidebar.brand.name` | 文字标，以及其后的网关连接灯 |
 | `conversation.hero.brand.mark` | 空首页上的标志 |
 | `settings.models.footer` | 目录刷新行：从本部署的网关同步选择器里的模型 |
-| `tool.call.toolview`（`generate_image`、`generate_video`、`generate_music`、`generate_speech`） | 对话生成卡片：图片走附件画廊，「在创作中打开」在装载了创作工作台时交给 Client 服务 `suanliCreative`（未装载时卡片提示未启用）；视频和音乐在用户点击播放时按窗口从 Session 工作区读取，再用原生播放器展示 |
+| `tool.call.toolview`（`generate_image`、`generate_video`、`generate_music`、`generate_speech`） | 对话生成卡片：图片走附件画廊，「拿去精修」把图片交给 Client 服务 `suanliCreative`，作为图生图的参考图；创作工作台开启时才显示这个按钮；视频和音乐在用户点击播放时按窗口从 Session 工作区读取，再用原生播放器展示 |
 
 空首页的 `conversation.hero.frame` 图层保持空闲，因此标志背后不绘制任何装饰。
 
