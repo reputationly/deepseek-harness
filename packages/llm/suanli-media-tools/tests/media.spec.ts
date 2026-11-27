@@ -90,7 +90,7 @@ async function boot(options: {
   const cwd = await mkdtemp(join(tmpdir(), 'suanli-media-video-'))
   dirs.push(cwd)
   const ask = vi.fn(async (request: AskUserQuestionRequest) => options.answer?.(request) ?? { answers: [] })
-  const submit = vi.fn(async (_request: Record<string, unknown>) => ({ ok: true as const, taskId: 't1', transport: 'videos' as const, state: 'running' as const }))
+  const submit = vi.fn(async (_request: Record<string, unknown>): Promise<MediaSubmitResult> => ({ ok: true, taskId: 't1', transport: 'videos', state: 'running' }))
   const wait = vi.fn(options.wait ?? (async () => ({ ok: true, status: { taskId: 't1', state: 'running', url: 'https://cdn.example/v' } })))
   const cancel = vi.fn(async () => ({ ok: true }))
   const inspect = vi.fn(async () => ({ ok: true as const, text: options.review ?? '' }))
