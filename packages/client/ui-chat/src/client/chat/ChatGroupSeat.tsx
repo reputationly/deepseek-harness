@@ -161,6 +161,9 @@ export const ChatGroupSeat = memo(function ChatGroupSeat({ groupKey, useChatGrou
     if (spec !== undefined && !alwaysOpen) props.actions.setTurnProcessOpen(spec.turn, spec.answerStep ?? 0, true)
   }, [props.actions, spec, alwaysOpen])
   const rootRef = props.useGroupAction(outerHidden, revealOuter)
+  useEffect(() => {
+    if ((spec?.pinnedToolCardCount ?? 0) > 0 && presentation?.turnClosed === true) setOpen(true)
+  }, [presentation?.turnClosed, setOpen, spec?.pinnedToolCardCount])
   // The header appears when a flat latest Turn becomes historical; it grows on the fold clock while the
   // body closes. A group whose whole Turn is folding never shows one in the frame it starts closing.
   const headerRef = useRef<HTMLDivElement>(null)
