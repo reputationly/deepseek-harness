@@ -196,6 +196,7 @@ export function outputOf() {
       parameters: Object.fromEntries(value.parameters.map(entry => [entry.key, entry.value])),
       media: value.media.map(item => ({ path: item.path, mediaType: item.mediaType })),
       ...value.review !== undefined ? { review: value.review } : {},
+      keepTurnOpen: true,
     } satisfies MediaResultMeta),
   }
 }

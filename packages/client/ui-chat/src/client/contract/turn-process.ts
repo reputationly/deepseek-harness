@@ -15,8 +15,8 @@ export interface TurnProcessSpec {
   readonly toolCallCount: number
   /** Tool calls whose configured name identifies a subagent delegation. */
   readonly subagentCount: number
-  /** Generation calls whose result card must remain available after the Turn settles. */
-  readonly mediaGenerationCount: number
+  /** Tool results whose card must remain available after the Turn settles. */
+  readonly pinnedToolCardCount: number
 }
 
 /**
@@ -35,7 +35,7 @@ export function sameTurnProcessSpec(left: TurnProcessSpec, right: TurnProcessSpe
     && left.messageCount === right.messageCount
     && left.toolCallCount === right.toolCallCount
     && left.subagentCount === right.subagentCount
-    && left.mediaGenerationCount === right.mediaGenerationCount
+    && left.pinnedToolCardCount === right.pinnedToolCardCount
 }
 
 /**
@@ -59,5 +59,5 @@ export function turnProcessAlwaysOpen(node: ChatNode | undefined): boolean {
   const reason = location.turn.end?.data.reason.kind
   const spec = location.turn.data.get('turn-process') as TurnProcessSpec | undefined
   return location.turn.status === 'open' || reason === 'aborted' || reason === 'interrupted' || reason === 'error'
-    || (spec?.mediaGenerationCount ?? 0) > 0
+    || (spec?.pinnedToolCardCount ?? 0) > 0
 }

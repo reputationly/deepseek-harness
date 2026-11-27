@@ -527,7 +527,7 @@ describe('built-in conversation node Definitions', () => {
         turn: 1, step: 1, callId: 'call-read', name: 'read', arguments: '{}',
       }),
       at(5, 'tool/result', {
-        turn: 1, step: 1, message: toolResult('call-read', 'read done'),
+        turn: 1, step: 1, message: toolResult('call-read', 'read done'), meta: { keepTurnOpen: true },
       }, { surfaceOp: 'append' }),
       at(6, 'tool/call', {
         turn: 1, step: 1, callId: 'call-subagent', name: 'subagent_fork', arguments: '{}',
@@ -548,6 +548,7 @@ describe('built-in conversation node Definitions', () => {
       messageCount: 1,
       toolCallCount: 1,
       subagentCount: 1,
+      pinnedToolCardCount: 1,
     })
   })
 

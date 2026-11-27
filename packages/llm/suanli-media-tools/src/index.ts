@@ -16,6 +16,7 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-suanli-model-catalog'
 import type {} from '@deepseek-ai/dsh-suanli-media-tasks'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 import { speechTool } from './speech.ts'
 import { review } from './review.ts'
 import { failure, outputDirectory, resolveParameters, saveArtifact, workspaceOf } from './common.ts'
@@ -32,7 +33,7 @@ export interface Config {}
 export const Config: z<Config> = z.object({})
 
 export const name = 'suanli-media-tools'
-export const inject = ['tools', 'fs', 'suanliModels', 'suanliMedia', 'userQuestions', 'workingDirectory']
+export const inject = ['tools', 'systemPrompt', 'fs', 'suanliModels', 'suanliMedia', 'userQuestions', 'workingDirectory']
 
 /** Longest wait for one image. */
 const IMAGE_WAIT_MS = 180_000
@@ -40,6 +41,12 @@ const IMAGE_WAIT_MS = 180_000
 const MAX_COUNT = 4
 /** Largest reference image read from the workspace. */
 const MAX_REFERENCE_BYTES = 20 * 1024 * 1024
+
+const generationGuidance = 'When the user asks to generate an image, video, music, or speech, use the matching '
+  + 'generate_* tool when it is available. If that tool is unavailable, tell the user the capability is not '
+  + 'supported by the current model catalog. Never substitute local operating-system speech synthesis, shell commands, '
+  + 'media libraries, or manual post-processing for an unavailable or failed cloud generation tool. Do not alter a '
+  + 'generated artifact with ffmpeg or another local tool unless the user explicitly asks for local editing after generation.'
 
 const description = 'Generate images from a text description, optionally guided by reference images. '
   + 'Pass the user\'s own words for aspect ratio and resolution when they give them (for example "竖屏", "4K"); '
@@ -73,6 +80,11 @@ interface ImageArgs {
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
+  ctx.effect(() => ctx.systemPrompt.section({
+    name: 'suanli-media-tools:generation-tools',
+    order: 9000,
+    text: generationGuidance,
+  }), 'suanli-media-tools.section()')
   const pending = pendingTasks(ctx)
   const tools = [
     { role: 'image', build: imageTool },
@@ -175,6 +187,7 @@ function imageTool(ctx: Context) {
           ...image.attachment !== undefined ? { attachment: image.attachment } : {},
         })),
         ...value.review !== undefined ? { review: value.review } : {},
+        keepTurnOpen: true,
       } satisfies Omit<ImageResultMeta, 'images'> & { images: readonly { path: string; attachment?: Attachment }[] }),
     },
     timeoutMs: IMAGE_WAIT_MS * MAX_COUNT + 600_000,

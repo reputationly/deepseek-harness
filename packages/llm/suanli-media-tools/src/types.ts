@@ -49,6 +49,8 @@ export interface ImageResultMeta {
   readonly images: readonly GeneratedImage[]
   /** The vision model's requirement review, when review is on and succeeded. */
   readonly review?: Review
+  /** Keep the result card outside completed-Turn process folding. */
+  readonly keepTurnOpen?: true
 }
 
 /** One saved video or audio file. */
@@ -75,4 +77,6 @@ export interface MediaResultMeta {
   readonly media: readonly GeneratedMedia[]
   /** The vision model's requirement review, when review is on and succeeded. */
   readonly review?: Review
+  /** Keep the result card outside completed-Turn process folding. */
+  readonly keepTurnOpen?: true
 }

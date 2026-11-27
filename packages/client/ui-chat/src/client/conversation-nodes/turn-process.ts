@@ -36,7 +36,7 @@ interface TurnProcessState {
   readonly messageCount: number
   readonly toolCallCount: number
   readonly subagentCount: number
-  readonly mediaGenerationCount: number
+  readonly pinnedToolCardCount: number
 }
 
 type ConversationEvent = Parameters<ConversationNodeDefinition['match']>[0]
@@ -144,7 +144,7 @@ function fallbackState(context: ConversationNodeContext<TurnProcessState>): Turn
     messageCount: 0,
     toolCallCount: 0,
     subagentCount: 0,
-    mediaGenerationCount: 0,
+    pinnedToolCardCount: 0,
   }
   for (const match of context.matches) state = updateProcessState(state, match.event)
   return state
@@ -175,7 +175,7 @@ function processSpec(state: TurnProcessState, turn: TurnLocation): TurnProcessSp
         .reduce((total, [, count]) => total + count, 0),
     toolCallCount: state.toolCallCount,
     subagentCount: state.subagentCount,
-    mediaGenerationCount: state.mediaGenerationCount,
+    pinnedToolCardCount: state.pinnedToolCardCount,
   }
   if (answer === null) {
     return {
@@ -210,8 +210,9 @@ function processSpec(state: TurnProcessState, turn: TurnLocation): TurnProcessSp
   }
 }
 
-function isMediaGenerationTool(name: string): boolean {
-  return name === 'generate_image' || name === 'generate_video' || name === 'generate_music' || name === 'generate_speech'
+function pinsToolCard(meta: unknown): boolean {
+  return typeof meta === 'object' && meta !== null && !Array.isArray(meta)
+    && (meta as Record<string, unknown>).keepTurnOpen === true
 }
 
 function updateProcessState(state: TurnProcessState, event: ConversationEvent): TurnProcessState {
@@ -229,8 +230,10 @@ function updateProcessState(state: TurnProcessState, event: ConversationEvent): 
       ...current,
       toolCallCount: current.toolCallCount + (subagent ? 0 : 1),
       subagentCount: current.subagentCount + (subagent ? 1 : 0),
-      mediaGenerationCount: current.mediaGenerationCount + (isMediaGenerationTool(event.data.name) ? 1 : 0),
     }
+  }
+  if (event.type === 'tool/result' && pinsToolCard(event.data.meta)) {
+    current = { ...current, pinnedToolCardCount: current.pinnedToolCardCount + 1 }
   }
   const evidence = processEvidence(event)
   if (evidence === undefined) return current
@@ -282,6 +285,7 @@ export const turnProcessDefinition: ConversationNodeDefinition<TurnProcessState>
       messageCount: 0,
       toolCallCount: 0,
       subagentCount: 0,
+      pinnedToolCardCount: 0,
     }
   },
   update: (context, match) => updateProcessState(context.state, match.event),
@@ -308,7 +312,7 @@ export const turnProcessDefinition: ConversationNodeDefinition<TurnProcessState>
       && current.data.messageCount === state.messageCount
       && current.data.toolCallCount === state.toolCallCount
       && current.data.subagentCount === state.subagentCount
-      && current.data.mediaGenerationCount === state.mediaGenerationCount
+      && current.data.pinnedToolCardCount === state.pinnedToolCardCount
       && turn.status !== 'closed'
       && latestStep?.status !== 'closed') return previous
     const spec = processSpec(state, turn)
@@ -337,7 +341,7 @@ export const turnProcessDefinition: ConversationNodeDefinition<TurnProcessState>
       && current.data.messageCount === state.messageCount
       && current.data.toolCallCount === state.toolCallCount
       && current.data.subagentCount === state.subagentCount
-      && current.data.mediaGenerationCount === state.mediaGenerationCount
+      && current.data.pinnedToolCardCount === state.pinnedToolCardCount
       && turn.status !== 'closed'
       && turn.steps.at(-1)?.status !== 'closed'
       && current.location === (context.start?.location ?? context.matches[0]?.location)) return current

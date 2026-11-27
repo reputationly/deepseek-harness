@@ -4,9 +4,10 @@ import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import type { AskUserQuestionAnswer, AskUserQuestionRequest } from '@deepseek-ai/dsh-user-questions'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as plugin from '../src/index.ts'
@@ -110,6 +111,7 @@ async function boot(options: {
   } as never)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(plugin)
   const run = async (
     name: string, args: Record<string, unknown>, signal = new AbortController().signal, session = 's1',
@@ -123,6 +125,13 @@ async function boot(options: {
 function textOf(result: { content: readonly { type: string; text?: string }[] }): string {
   return result.content.map(block => block.text ?? '').join('')
 }
+
+describe('generation guidance', () => {
+  it('tells the model not to substitute local tools for unavailable or failed cloud generation', async () => {
+    const { ctx } = await boot()
+    expect(renderPrompt(await ctx.systemPrompt.assemble())).toContain('Never substitute local operating-system speech synthesis')
+  })
+})
 
 describe('generate_video', () => {
   it('asks only for what a 10-second portrait request leaves open, and saves an mp4', async () => {
