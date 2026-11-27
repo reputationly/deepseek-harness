@@ -9,6 +9,7 @@ import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import type { AskUserQuestionAnswer, AskUserQuestionRequest } from '@deepseek-ai/dsh-user-questions'
+import type { MediaSubmitResult } from '@deepseek-ai/dsh-suanli-media-tasks/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as plugin from '../src/index.ts'
 import { fingerprint } from '../src/pending.ts'
@@ -292,7 +293,7 @@ describe('generate_video', () => {
 
   it('does not turn a URL-only result into an empty task reference', async () => {
     const { submit, run, cwd } = await boot()
-    submit.mockResolvedValueOnce({ ok: true, taskId: '', transport: 'videos', state: 'running', url: 'https://cdn.example/v' })
+    submit.mockResolvedValueOnce({ ok: true, taskId: '', transport: 'videos', state: 'running', url: 'https://cdn.example/v' } as MediaSubmitResult)
     await run('generate_video', { prompt: '小猫玩耍', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 5, with_audio: true })
     const [file] = await readdir(join(cwd, 'generated'))
     await run('generate_video', {
