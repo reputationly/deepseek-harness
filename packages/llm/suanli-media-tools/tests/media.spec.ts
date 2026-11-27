@@ -238,6 +238,28 @@ describe('generate_video', () => {
     expect(submit).toHaveBeenCalledTimes(2)
   })
 
+  it('resumes a pending task when the model mildly rewords the same video request', async () => {
+    const { submit, wait, run } = await boot()
+    const first = { prompt: '一只毛茸茸的小猫在柔软的毯子上玩耍，伸出前爪扑向一个毛线球，活泼可爱，画面明亮温馨，特写镜头，自然光', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 1, with_audio: false }
+    const reworded = { ...first, prompt: '一只毛茸茸的橘白小猫在柔软的米色毯子上玩耍，伸爪扑向一个彩色毛线球，动作活泼，特写镜头，明亮温馨的自然光，柔和的景深' }
+    wait.mockRejectedValueOnce(new Error('the Host went away'))
+    expect((await run('generate_video', first)).isError).toBe(true)
+    expect((await run('generate_video', reworded)).isError).toBe(false)
+    expect(submit).toHaveBeenCalledTimes(1)
+    await run('generate_video', reworded)
+    expect(submit).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not attach a different video request to a pending task', async () => {
+    const { submit, wait, run } = await boot()
+    const first = { prompt: '一只毛茸茸的小猫在柔软的毯子上玩耍，伸出前爪扑向一个毛线球，活泼可爱，画面明亮温馨，特写镜头，自然光', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 1, with_audio: false }
+    const different = { ...first, prompt: '一只小狗在公园里追飞盘，画面明亮，特写镜头，自然光' }
+    wait.mockRejectedValueOnce(new Error('the Host went away'))
+    expect((await run('generate_video', first)).isError).toBe(true)
+    await run('generate_video', different)
+    expect(submit).toHaveBeenCalledTimes(2)
+  })
+
   it('submits anew after the call stopped its task', async () => {
     const controller = new AbortController()
     const { submit, wait, run } = await boot()

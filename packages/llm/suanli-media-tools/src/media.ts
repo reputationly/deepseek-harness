@@ -247,19 +247,26 @@ async function generate(
   }
   const key = fingerprint(exec.agent?.session.id ?? '', cwd, request)
   let url: string
-  let taskId = await pending.find(key)
+  const identity = { session: exec.agent?.session.id ?? '', cwd, request }
+  const existing = await pending.find(key, identity)
+  let taskId = existing?.taskId
+  const pendingKey = existing?.key ?? key
+  const settle = async (task: string): Promise<string> => await waitFor(
+    ctx, what, task, operation, budgetMs, exec.signal,
+    async () => { await pending.forget(pendingKey) },
+  )
   if (taskId === undefined) {
     const submitted = await ctx.suanliMedia.submit(request)
     if (!submitted.ok) throw failure(what, submitted.reason, submitted.detail)
     taskId = submitted.taskId
-    if (submitted.url === undefined) await pending.remember(key, taskId)
-    url = submitted.url ?? await waitFor(ctx, what, taskId, operation, budgetMs, exec.signal, async () => { await pending.forget(key) })
+    if (submitted.url === undefined) await pending.remember(key, taskId, identity)
+    url = submitted.url ?? await settle(taskId)
   } else {
-    url = await waitFor(ctx, what, taskId, operation, budgetMs, exec.signal, async () => { await pending.forget(key) })
+    url = await settle(taskId)
   }
   exec.signal.throwIfAborted()
   const { path, data } = await saveArtifact(ctx, what, url, cwd, bytes => typeOf(bytes, role).extension)
-  await pending.forget(key)
+  await pending.forget(pendingKey)
   const mediaType = typeOf(data, role).mediaType
   const reviewed = role === 'video' ? await review(ctx, prompt, [{ url, mediaType }]) : undefined
   return {
