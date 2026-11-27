@@ -25,6 +25,7 @@ The platform's capability catalog names generation operations that the chat rout
 ## Transport rules
 
 - Submission answers either with a finished artifact (an image endpoint may answer synchronously) or with a task id; both are reported as one result.
+- Video catalog controls are normalized into the unified task contract: duration and resolution become top-level `duration`/`size`, ratio becomes `metadata.aspect_ratio`, and reference-mode images become `metadata.src_ref_images`.
 - Status words normalize to `running`, `succeeded`, or `failed`; `SUCCESS`/`succeeded` and `FAILURE`/`failed` are the gateway's own vocabulary.
 - A wait ends at the caller's deadline with `timed-out` and leaves the task running; only an explicit `cancel` asks the gateway to stop it.
 - A caller cancellation stops the wait without a gateway call.
