@@ -441,7 +441,10 @@ function planMusic(ctx: Context, entries: readonly CapabilityEntry[], preferred:
     entry,
     modelLabel: labelOf(ctx, 'music', entry),
     references: [],
-    extra: lyrics !== '' && takesLyrics && args.instrumental !== true ? { lyrics } : {},
+    extra: {
+      instructions: args.prompt,
+      ...lyrics !== '' && takesLyrics && args.instrumental !== true ? { lyrics } : {},
+    },
   }
 }
 

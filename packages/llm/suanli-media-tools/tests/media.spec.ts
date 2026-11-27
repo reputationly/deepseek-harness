@@ -313,7 +313,7 @@ describe('generate_music', () => {
     const result = await run('generate_music', { prompt: '轻快的钢琴曲' })
     expect(result.isError).toBe(false)
     expect(ask.mock.calls[0]?.[0].questions[0]?.options?.map(option => option.label)).toEqual(['带人声', '纯音乐'])
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ operation: 'generate_music', params: { is_instrumental: 'true' } }))
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ operation: 'generate_music', params: { is_instrumental: 'true', instructions: '轻快的钢琴曲' } }))
     expect((await readdir(join(cwd, 'generated')))[0]).toMatch(/\.mp3$/u)
   })
 })
@@ -323,7 +323,7 @@ describe('generate_music lyrics', () => {
     const { submit, run, wait } = await boot({ answer: () => ({ answers: [{ id: 'is_instrumental', selected: ['纯音乐'] }] }) })
     wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/m' } })
     await run('generate_music', { prompt: '轻快的钢琴曲', lyrics: '啦啦啦' })
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ params: { is_instrumental: 'true' } }))
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ params: { is_instrumental: 'true', instructions: '轻快的钢琴曲' } }))
   })
 })
 
