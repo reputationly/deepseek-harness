@@ -75,6 +75,7 @@ function bodyOf(request: MediaSubmitRequest): Record<string, unknown> {
     model: request.model,
     prompt: request.prompt,
     n: 1,
+    ...request.size === undefined ? {} : { size: request.size },
     ...images === undefined ? {} : { image: images },
     metadata,
   }

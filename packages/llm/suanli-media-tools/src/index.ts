@@ -21,7 +21,7 @@ import { review } from './review.ts'
 import { failure, outputDirectory, resolveParameters, saveArtifact, workspaceOf } from './common.ts'
 import { musicTool, videoTool } from './media.ts'
 import { pendingTasks } from './pending.ts'
-import { ASPECT, RESOLUTION } from './params.ts'
+import { ASPECT, RESOLUTION, canvasOf } from './params.ts'
 import type { GeneratedImage, ImageResultMeta } from './types.ts'
 
 export type * from './types.ts'
@@ -240,12 +240,14 @@ async function submitOne(
   ctx: Context,
   request: { model: string; prompt: string; references: readonly string[]; parameters: Readonly<Record<string, string>> },
 ): Promise<string> {
+  const size = canvasOf(request.parameters)
   const submitted = await ctx.suanliMedia.submit({
     operation: 'generate_image',
     model: request.model,
     prompt: request.prompt,
     ...request.references.length > 0 ? { referenceImages: request.references } : {},
     params: request.parameters,
+    ...size === undefined ? {} : { size },
   })
   if (!submitted.ok) throw failure('Image', submitted.reason, submitted.detail)
   if (submitted.url !== undefined) return submitted.url
