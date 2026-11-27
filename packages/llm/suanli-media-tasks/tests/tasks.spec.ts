@@ -74,6 +74,34 @@ describe('submit', () => {
     expect(calls[0]?.body).not.toHaveProperty('metadata.ratio')
   })
 
+  it('keeps adaptive ratio and invalid canonical controls out of the video contract', async () => {
+    const { subject, calls } = client({ answer: () => json({ task_id: 'task-5', status: 'QUEUED' }) })
+    await subject.submit({
+      operation: 'generate_video', model: 'm', prompt: 'p',
+      params: { duration: '0', resolution: ' ', ratio: 'adaptive', generate_audio: true },
+    }, signal)
+    expect(calls[0]?.body).not.toHaveProperty('duration')
+    expect(calls[0]?.body).not.toHaveProperty('size')
+    expect(calls[0]?.body).toMatchObject({ metadata: { generate_audio: true } })
+    expect(calls[0]?.body).not.toHaveProperty('metadata.aspect_ratio')
+  })
+
+  it('accepts numeric duration and preserves unknown audio option values', async () => {
+    const { subject, calls } = client({ answer: () => json({ task_id: 'task-6', status: 'QUEUED' }) })
+    await subject.submit({ operation: 'generate_video', model: 'm', prompt: 'p', params: { duration: 6.6, generate_audio: 1 } }, signal)
+    await subject.submit({ operation: 'generate_video', model: 'm', prompt: 'p', params: { duration: true, generate_audio: 'sometimes' } }, signal)
+    expect(calls[0]?.body).toMatchObject({ duration: 7, metadata: { generate_audio: 1 } })
+    expect(calls[1]?.body).not.toHaveProperty('duration')
+    expect(calls[1]?.body).toMatchObject({ metadata: { generate_audio: 'sometimes' } })
+  })
+
+  it('detects reference mode from the catalog image_mode as well as the task type', async () => {
+    const { subject, calls } = client({ answer: () => json({ task_id: 'task-7', status: 'QUEUED' }) })
+    await subject.submit({ operation: 'generate_video', model: 'm', prompt: 'p', referenceImages: ['ref.png'], params: { image_mode: 'reference' } }, signal)
+    expect(calls[0]?.body).toMatchObject({ metadata: { image_mode: 'reference', src_ref_images: ['ref.png'] } })
+    expect(calls[0]?.body).not.toHaveProperty('image')
+  })
+
   it('sends the clip a continuation extends as metadata.source_video', async () => {
     const { subject, calls } = client({ answer: () => json({ task_id: 'task-3', status: 'QUEUED' }) })
     await subject.submit({ operation: 'generate_video', model: 'ext', prompt: 'p', taskType: 'continuation', sourceVideo: 'data:video/mp4;base64,AA==' }, signal)
