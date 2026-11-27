@@ -25,6 +25,7 @@ Host Remote 命名空间：通过网关的 OpenAI 兼容任务接口提交、轮
 ## 传输规则 <a id="transport-rules"></a>
 
 - 提交要么直接返回产物（图像端点可能同步返回），要么返回任务 id；两者都以同一个结果上报。
+- 视频目录参数会归一到统一任务契约：时长与分辨率进入顶层 `duration`/`size`，宽高比进入 `metadata.aspect_ratio`，参考玩法的图片进入 `metadata.src_ref_images`。
 - 状态词归一化为 `running`、`succeeded`、`failed`；`SUCCESS`/`succeeded` 与 `FAILURE`/`failed` 是网关自己的词表。
 - 等待在调用方给的截止时间以 `timed-out` 结束，任务继续跑；只有显式 `cancel` 才会让网关停下它。
 - 调用方取消会停止等待，不产生网关调用。
