@@ -77,6 +77,7 @@ async function boot(options: {
   const submit = vi.fn(async (_request: Record<string, unknown>) => ({ ok: true as const, taskId: 't1', transport: 'videos' as const, state: 'running' as const }))
   const wait = vi.fn(options.wait ?? (async () => ({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/v' } })))
   const cancel = vi.fn(async () => ({ ok: true }))
+  const inspect = vi.fn(async () => ({ ok: true as const, text: options.review ?? '' }))
   const ctx = new Context()
   contexts.push(ctx)
   ctx.provide('suanliModels', {
@@ -96,7 +97,7 @@ async function boot(options: {
       await writeFile(path, MP3)
       return { ok: true as const, path, bytes: MP3.byteLength }
     }),
-    inspect: vi.fn(async () => ({ ok: true, text: options.review ?? '' })),
+    inspect,
     saveArtifact: async (url: string, path: string) => {
       await options.save?.(path, cwd)
       await writeFile(path, url.endsWith('/m') ? MP3 : MP4)
@@ -118,7 +119,7 @@ async function boot(options: {
   ) => await executeToolFixture(ctx, {
     callId: ToolCallId('c1'), name, arguments: args, agent: { id: 'a1', session: { id: session } } as unknown as Agent, signal,
   })
-  return { ctx, cwd, ask, submit, wait, cancel, run }
+  return { ctx, cwd, ask, submit, wait, cancel, inspect, run }
 }
 
 /** Text of one result. */
@@ -302,8 +303,9 @@ describe('generate_video', () => {
 
 describe('requirement review', () => {
   it('records the vision model verdict in the result', async () => {
-    const { run } = await boot({ review: '```json\n{"verdict":"mismatch","reason":"画面里没有海"}\n```' })
+    const { inspect, run } = await boot({ review: '```json\n{"verdict":"mismatch","reason":"画面里没有海"}\n```' })
     const result = await run('generate_video', { prompt: '海边日落', aspect_ratio: '16:9', resolution: '2K', duration_seconds: 5, with_audio: true })
+    expect(inspect).toHaveBeenCalledWith(expect.objectContaining({ media: [{ kind: 'video', url: 'https://cdn.example/v' }] }))
     expect(result.meta).toMatchObject({ review: { verdict: 'mismatch', reason: '画面里没有海' } })
     expect(JSON.parse(textOf(result))).toMatchObject({ review: { verdict: 'mismatch' } })
   })

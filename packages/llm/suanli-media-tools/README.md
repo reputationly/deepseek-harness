@@ -61,7 +61,7 @@ The schema is prefix-stable. Registration changes only when a model of a role ap
 ## Known Limitations and Deferred Work
 
 - **Speech only through `/v1/audio/speech`** — `generate_speech` is offered only while the catalog lists a `maas-speech` entry, and synthesis is one synchronous call that a stop does not cancel at the gateway.
-- **Review is advisory and partial** — with automatic review on, the selected vision model judges whether images and videos match the request and the card shows its verdict; it never regenerates by itself. Music and videos over 20 MiB are not reviewed, and a failed review call leaves the result unreviewed.
+- **Review is advisory and partial** — with automatic review on, the selected vision model judges whether images and videos match the request and the card shows its verdict; it never regenerates by itself. Reviews reference the artifact URL instead of uploading another copy; music is not reviewed, and a failed review call leaves the result unreviewed.
 - **Resume needs the same call** — a video or song still rendering when the Host exits is kept in the `suanli_media_pending` storage domain for a day; the next call from the same chat with the same workspace, model, prompt, inputs, and parameters resumes that task instead of submitting again, but nothing fetches it unprompted.
 - **No progress percentage** — the call blocks until the file exists (about 36 s for a 2K image, minutes for a video), and the card shows an indeterminate progress state.
 - **Outside a Session** — a call without an Agent saves into the process working directory instead of a Session workspace.

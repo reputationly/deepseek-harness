@@ -223,14 +223,14 @@ async function generateImage(ctx: Context, args: ImageArgs, exec: ToolExecution)
 
   await outputDirectory(cwd)
   const images: Saved[] = []
-  const files: { data: Uint8Array; mediaType: string }[] = []
+  const files: { url: string; mediaType: string }[] = []
   for (let index = 0; index < count; index++) {
     exec.signal.throwIfAborted()
     const url = await submitOne(ctx, { model, prompt: args.prompt, references, parameters })
     exec.signal.throwIfAborted()
     const { saved, data } = await saveOne(ctx, url, cwd)
     images.push(saved)
-    files.push({ data, mediaType: sniff(data) ?? 'image/png' })
+    files.push({ url, mediaType: sniff(data) ?? 'image/png' })
   }
   const reviewed = await review(ctx, args.prompt, files)
   return {

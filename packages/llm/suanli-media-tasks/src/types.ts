@@ -84,12 +84,12 @@ export type MediaCancelResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: MediaFailureReason; readonly detail?: string }
 
-/** One file a vision model looks at, inlined as a data URL. */
+/** One file a vision model looks at. */
 export interface MediaInspectInput {
   /** Whether the chat request carries it as an image or a video part. */
   readonly kind: 'image' | 'video'
-  /** `data:<type>;base64,...` of the file. */
-  readonly dataUrl: string
+  /** Artifact URL or `data:<type>;base64,...` URL the chat endpoint can read. */
+  readonly url: string
 }
 
 /** One question to a vision model about generated files. */

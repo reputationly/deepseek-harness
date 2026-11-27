@@ -242,7 +242,7 @@ export class MediaTaskClient {
 
   /**
    * Ask a vision model one question about generated files through the gateway's chat endpoint.
-   * @param request - vision model, instruction, and the inlined files.
+   * @param request - vision model, instruction, and the files at URLs the chat endpoint can read.
    * @param signal - aborts the call.
    * @returns the answer text, or why there is none.
    */
@@ -250,8 +250,8 @@ export class MediaTaskClient {
     const content = [
       { type: 'text', text: request.instruction },
       ...request.media.map(item => item.kind === 'image'
-        ? { type: 'image_url', image_url: { url: item.dataUrl } }
-        : { type: 'video_url', video_url: { url: item.dataUrl } }),
+        ? { type: 'image_url', image_url: { url: item.url } }
+        : { type: 'video_url', video_url: { url: item.url } }),
     ]
     const answer = await this.call('POST', '/v1/chat/completions', {
       model: request.model, stream: false, temperature: 0, messages: [{ role: 'user', content }],

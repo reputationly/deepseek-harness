@@ -134,6 +134,14 @@ describe('generate_image', () => {
     expect(ask.mock.calls[0]?.[0].questions.map(question => question.id)).toEqual(['aspect_ratio'])
   })
 
+  it('puts an unsupported value before missing parameters on the question card', async () => {
+    const { ask, run } = await boot()
+    await run({ prompt: '小猫玩耍', resolution: '4K' })
+    const questions = ask.mock.calls[0]?.[0].questions ?? []
+    expect(questions[0]?.id).toBe('resolution')
+    expect(questions[0]?.question).toContain('当前不支持「4K」')
+  })
+
   it('names an unsupported value and lists what is supported', async () => {
     const { ask, submit, run } = await boot({
       answer: () => ({ answers: [{ id: 'aspect_ratio', selected: ['1:1'] }, { id: 'resolution', selected: ['2K'] }] }),

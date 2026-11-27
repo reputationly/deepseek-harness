@@ -261,7 +261,7 @@ async function generate(
   const { path, data } = await saveArtifact(ctx, what, url, cwd, bytes => typeOf(bytes, role).extension)
   await pending.forget(key)
   const mediaType = typeOf(data, role).mediaType
-  const reviewed = role === 'video' ? await review(ctx, prompt, [{ data, mediaType }]) : undefined
+  const reviewed = role === 'video' ? await review(ctx, prompt, [{ url, mediaType }]) : undefined
   return {
     ...base,
     status: 'generated',
