@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ASPECT, RESOLUTION, check, normalizeAspect, normalizeResolution } from '../src/params.ts'
+import { ASPECT, RESOLUTION, canvasOf, check, normalizeAspect, normalizeResolution } from '../src/params.ts'
 
 describe('parameter wording', () => {
   it('renames what users say without changing the value', () => {
@@ -17,5 +17,13 @@ describe('parameter wording', () => {
     expect(check(spec, RESOLUTION, '超清4K')).toEqual({ kind: 'unsupported', requested: '超清4K' })
     expect(check(spec, RESOLUTION, undefined)).toEqual({ kind: 'missing' })
     expect(check({ ...spec, key: 'aspect_ratio', options: ['adaptive', '9:16'] }, ASPECT, '竖屏')).toEqual({ kind: 'ok', value: '9:16' })
+  })
+
+  it('computes the canvas the image route reads from ratio and resolution', () => {
+    expect(canvasOf({ aspect_ratio: '3:2', resolution: '2K' })).toBe('2496x1664')
+    expect(canvasOf({ aspect_ratio: '1:1', resolution: '2K' })).toBe('2048x2048')
+    expect(canvasOf({ aspect_ratio: '16:9', resolution: '4K' })).toBe('5440x3072')
+    expect(canvasOf({ aspect_ratio: 'adaptive', resolution: '2K' })).toBeUndefined()
+    expect(canvasOf({ aspect_ratio: '1:1' })).toBeUndefined()
   })
 })

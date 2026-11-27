@@ -29,6 +29,7 @@ A user who writes "生成一张小猫玩耍的图片" in a task conversation exp
 - The user's own words are normalized first: `竖屏` → `9:16`, `横屏` → `16:9`, `方图` → `1:1`, `4k`/`超清4K` → `4K`, `10秒` → `10`.
 - Missing and unsupported parameters are asked together in one question card. Each question lists the catalog's values with the default first; an unsupported value is named (`当前不支持「4K」`) and the supported values are listed.
 - Arguments the model supplies directly are validated by the same rules, so a model that passes an unsupported value still produces the question card.
+- An image is submitted with the canvas the image route reads: `size` = the area of an N×1024 square at the chosen ratio (`2K` + `3:2` → `2496x1664`), sides floored to 32 px, the same rule as the gateway's image playground. `adaptive` sends no `size`, so the model frames the image.
 - A skipped or cancelled card submits nothing. A custom answer that is still unsupported is asked once more; a second unsupported answer fails the call.
 - Reference images are workspace paths to PNG, JPEG, WebP, or GIF files, at most the entry's reference limit.
 - Video parameters are aspect ratio, resolution, duration, and sound. A question lists at most six values; a long numeric set such as 1–20 seconds is described by its range (`最长 20`), and any supported value can be typed.

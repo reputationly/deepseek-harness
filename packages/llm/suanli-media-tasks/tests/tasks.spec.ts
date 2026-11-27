@@ -62,6 +62,12 @@ describe('submit', () => {
     expect(calls[0]?.body).toMatchObject({ metadata: { task_type: 'continuation', source_video: 'data:video/mp4;base64,AA==' } })
   })
 
+  it('sends the image canvas at the top level, where the image route reads it', async () => {
+    const { subject, calls } = client({ answer: () => json({ data: [{ b64_json: 'AA==' }] }) })
+    await subject.submit({ operation: 'generate_image', model: 'h3', prompt: 'p', params: { aspect_ratio: '3:2' }, size: '2496x1664' }, signal)
+    expect(calls[0]?.body).toMatchObject({ size: '2496x1664', metadata: { aspect_ratio: '3:2' } })
+  })
+
   it('accepts a synchronous image answer as a finished artifact', async () => {
     const { subject, calls } = client({ answer: () => json({ data: [{ url: 'https://cdn.example/a.png' }] }) })
     await expect(subject.submit({ operation: 'generate_image', model: 'minimax-h3-image', prompt: '猫' }, signal))

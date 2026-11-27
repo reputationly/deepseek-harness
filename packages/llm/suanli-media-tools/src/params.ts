@@ -48,6 +48,28 @@ export function normalizeResolution(raw: string): string {
   return raw.replace(RESOLUTION_DECORATION, '').toUpperCase()
 }
 
+/** Pixel grid of the gateway's image canvases. */
+const CANVAS_GRID = 32
+
+/**
+ * Turn the catalog's aspect ratio and `NK` resolution into the `WIDTHxHEIGHT` canvas the image
+ * route reads: the area of an N×1024 square at that ratio, each side floored to 32 px, as the
+ * gateway's own image playground computes it.
+ * @param parameters - resolved image parameters.
+ * @returns the canvas, or undefined when the ratio is adaptive or either value is not of that form.
+ */
+export function canvasOf(parameters: Readonly<Record<string, string>>): string | undefined {
+  const ratio = /^(\d+):(\d+)$/u.exec(parameters.aspect_ratio ?? '')
+  const tier = /^(\d+)K$/u.exec(parameters.resolution ?? '')
+  if (ratio === null || tier === null) return undefined
+  const aspect = Number(ratio[1]) / Number(ratio[2])
+  const base = Number(tier[1]) * 1024
+  if (!(aspect > 0) || base <= 0) return undefined
+  const height = Math.sqrt(base * base / aspect)
+  const floor = (side: number): number => Math.max(CANVAS_GRID, Math.floor(side / CANVAS_GRID) * CANVAS_GRID)
+  return `${String(floor(aspect * height))}x${String(floor(height))}`
+}
+
 /** Aspect ratio of an image. */
 export const ASPECT: ParameterKind = { keys: ['aspect_ratio', 'ratio'], label: '宽高比', normalize: normalizeAspect }
 /** Resolution tier of an image. */

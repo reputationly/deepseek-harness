@@ -96,6 +96,7 @@ describe('generate_image', () => {
     expect(ask).not.toHaveBeenCalled()
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({
       operation: 'generate_image', model: 'minimax-h3-image', prompt: '小猫玩耍', params: { aspect_ratio: '9:16', resolution: '2K' },
+      size: '1536x2720',
     }))
     const files = await readdir(join(cwd, 'generated'))
     expect(files).toHaveLength(1)

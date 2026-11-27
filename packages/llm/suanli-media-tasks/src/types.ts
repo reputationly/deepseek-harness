@@ -36,6 +36,8 @@ export interface MediaSubmitRequest {
   readonly sourceVideo?: string
   /** Extra gateway parameters, forwarded verbatim. */
   readonly params?: Readonly<Record<string, string | number | boolean>>
+  /** Image canvas as `WIDTHxHEIGHT`; the image route reads the canvas only from this field. */
+  readonly size?: string
 }
 
 /** Terminal or in-flight state of one task. */
