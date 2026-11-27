@@ -66,6 +66,7 @@ suanli-assistant/
     latest.json                        # current version, size and sha256
     latest/suanli-assistant-*.dmg/.zip  # fixed filenames, replaced on release
     versions/<version>/...             # immutable rollback/differential files
+  darwin-x64/                          # Intel Macs, same layout as darwin-arm64
   win32-x64/
     nightly.yml
     latest.json

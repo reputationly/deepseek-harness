@@ -51,6 +51,11 @@ jobs:
             script: package:mac:arm64:unsigned
             target: mac-arm64
             artifact: mac-arm64
+          # Intel Macs: cross-built on the Apple silicon runner, as the manual Intel package workflow does.
+          - os: macos-latest
+            script: package:mac:x64:unsigned
+            target: mac-x64
+            artifact: mac-x64
           - os: windows-latest
             script: package:win:x64:unsigned
             target: win-x64
@@ -119,7 +124,7 @@ jobs:
           path: ${{ runner.temp }}/suanli-package-cache
           key: ${{ steps.download-cache.outputs.cache-primary-key }}
       - name: Prepare the update payload
-        if: matrix.target == 'mac-arm64'
+        if: startsWith(matrix.target, 'mac-')
         env:
           R2_ACCOUNT_ID: unused
           R2_BUCKET: unused
@@ -157,10 +162,14 @@ jobs:
         with:
           pattern: installer-*
           path: artifacts
-          merge-multiple: true
       - name: Publish every target
+        # One directory per build: both Mac builds carry their own `nightly-mac.yml`, which a merged
+        # download would collapse into one feed for two architectures.
         run: |
-          node scripts/release/aurora-publish.mjs             --artifacts artifacts             --version "${{ needs.prepare.outputs.version }}"             --keep "${{ inputs.keep }}"
+          for dir in artifacts/installer-*/; do
+            node scripts/release/aurora-publish.mjs --artifacts "$dir" --version "${{ needs.prepare.outputs.version }}" --keep "${{ inputs.keep }}"
+            cp "$dir"*-latest.json artifacts/
+          done
       # Artifacts are live at this point; a CDN hiccup must not mark the release failed, but it must
       # be visible: the run shows the warning and the log carries the reason. Only the pointers are
       # refreshed: the free plan's pre-warm quota is zero, so CreatePrefetchTask would always fail.
@@ -174,6 +183,7 @@ jobs:
         run: |
           node scripts/release/eo-cache.mjs \
             --index artifacts/darwin-arm64-latest.json \
+            --index artifacts/darwin-x64-latest.json \
             --index artifacts/win32-x64-latest.json
       # 国内源站是自己维护的副本：这里敲一下让它立刻同步新版本，而不是等 15 分钟的定时器。
       # 没有配置这两个 secret 时整步跳过，发布照常成功。
@@ -189,7 +199,7 @@ jobs:
       - name: Verify the published pointers
         run: |
           version="${{ needs.prepare.outputs.version }}"
-          for target in darwin-arm64:nightly-mac.yml win32-x64:nightly.yml; do
+          for target in darwin-arm64:nightly-mac.yml darwin-x64:nightly-mac.yml win32-x64:nightly.yml; do
             dir="${target%%:*}"; feed="${target##*:}"
             # The bucket is read through a CDN: a pointer published seconds ago can still answer
             # with the previous release until its own short lifetime runs out.

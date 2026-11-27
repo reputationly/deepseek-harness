@@ -7,6 +7,7 @@
  *   suanli-assistant/darwin-arm64/latest.json                             <- version/size/hash of the current build
  *   suanli-assistant/darwin-arm64/latest/<stable name>                    <- stable download URL, bytes float
  *   suanli-assistant/darwin-arm64/versions/<version>/<installer>          <- immutable, one directory per build
+ *   suanli-assistant/darwin-x64/...                                       <- Intel Macs, same layout as darwin-arm64
  *   suanli-assistant/win32-x64/nightly.yml
  *   suanli-assistant/win32-x64/latest.json
  *   suanli-assistant/win32-x64/versions/<version>/<installer>
