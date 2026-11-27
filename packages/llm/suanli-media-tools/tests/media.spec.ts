@@ -121,14 +121,18 @@ async function boot(options: {
   } as never)
   ctx.provide('userQuestions', { ask } as never)
   const pendingRecords = new Map<string, Record<string, unknown>>()
+  const artifactRecords = new Map<string, Record<string, unknown>>()
   ctx.provide('storageDomain', {
     open: async () => ({
-      table: () => ({
+      table: (name: string) => name === 'artifacts' ? {
+        entries: () => artifactRecords.entries(),
+        put: async (key: string, value: Record<string, unknown>) => { artifactRecords.set(key, value) },
+      } : {
         get: (key: string) => pendingRecords.get(key),
         entries: () => pendingRecords.entries(),
         put: async (key: string, value: Record<string, unknown>) => { pendingRecords.set(key, value) },
         delete: async (key: string) => pendingRecords.delete(key),
-      }),
+      },
     }),
   } as never)
   const directUserTexts = new Map<string, string>()
@@ -157,8 +161,8 @@ async function boot(options: {
   } as never)
   ctx.provide('workingDirectory', { ensure: async () => cwd } as never)
   ctx.provide('fs', {
-    resolve: async (path: string, opts: { cwd: string }) => ({ path: resolve(opts.cwd, path) }),
-    readBytes: async (target: { path: string }) => new Uint8Array(await readFile(target.path)),
+    resolve: async (path: string, opts: { cwd: string }) => ({ targetKey: resolve(opts.cwd, path), displayPath: resolve(opts.cwd, path) }),
+    readBytes: async (target: { displayPath: string }) => new Uint8Array(await readFile(target.displayPath)),
   } as never)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -260,6 +264,17 @@ describe('generate_video', () => {
     const request = submit.mock.calls[0]?.[0] as { model?: string; taskType?: string; sourceVideo?: string } | undefined
     expect(request).toMatchObject({ model: 'minimax-h3-ext', taskType: 'continuation', params: { resolution: '768P' } })
     expect(request?.sourceVideo).toMatch(/^data:video\/mp4;base64,/u)
+  })
+
+  it('continues a previously generated clip by gateway task reference', async () => {
+    const { submit, run, cwd } = await boot()
+    await run('generate_video', { prompt: '小猫玩耍', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 5, with_audio: true })
+    const [file] = await readdir(join(cwd, 'generated'))
+    await run('generate_video', {
+      prompt: '接着跑', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 10, with_audio: true, source_video: `generated/${file}`,
+    })
+    const request = submit.mock.calls[1]?.[0] as { sourceVideo?: string } | undefined
+    expect(request?.sourceVideo).toBe('task:t1')
   })
 
   it('offers only 768P for a continued clip', async () => {

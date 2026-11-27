@@ -1,5 +1,6 @@
 /** Gateway tasks a call submitted and has not settled, kept across Host restarts so a repeated call resumes the task. */
 import { createHash } from 'node:crypto'
+import { resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-storage-domain'
@@ -8,6 +9,13 @@ import { z } from 'zod'
 
 /** Oldest task a repeated call still resumes; the gateway drops task results after about a day. */
 const PENDING_TTL_MS = 24 * 60 * 60_000
+
+const artifactSchema = z.object({
+  taskId: z.string(),
+  cwd: z.string(),
+  path: z.string(),
+  recordedAt: z.number(),
+})
 
 const taskSchema = z.object({
   taskId: z.string(),
@@ -24,6 +32,7 @@ const taskSchema = z.object({
 
 /** One unsettled task. */
 type StoredTask = z.infer<typeof taskSchema>
+type StoredArtifact = z.infer<typeof artifactSchema>
 
 /**
  * Domain of unsettled tasks, keyed by the request fingerprint. `backup-and-skip` drops a record this
@@ -34,7 +43,7 @@ export const pendingTasksDomain = defineDomain({
   name: 'suanli_media_pending',
   version: 1,
   invalidRecords: 'backup-and-skip',
-  tables: { tasks: domainTable(taskSchema) },
+  tables: { tasks: domainTable(taskSchema), artifacts: domainTable(artifactSchema) },
 })
 
 /** The table operations the store needs. */
@@ -43,6 +52,11 @@ interface TaskTable {
   entries(): IterableIterator<[string, StoredTask]>
   put(key: string, value: StoredTask): Promise<void>
   delete(key: string): Promise<boolean>
+}
+
+interface ArtifactTable {
+  entries(): IterableIterator<[string, StoredArtifact]>
+  put(key: string, value: StoredArtifact): Promise<void>
 }
 
 /** Session and submission identity kept with a pending task. */
@@ -75,6 +89,20 @@ export interface PendingTasks {
    * @param key - request fingerprint.
    */
   forget(key: string): Promise<void>
+  /**
+   * Remember which gateway task produced one workspace artifact.
+   * @param cwd - session workspace.
+   * @param path - absolute artifact path.
+   * @param taskId - gateway task id.
+   */
+  rememberArtifact(cwd: string, path: string, taskId: string): Promise<void>
+  /**
+   * Find the gateway task that produced one workspace artifact.
+   * @param cwd - session workspace.
+   * @param path - absolute artifact path.
+   * @returns the task id, or undefined for an external or copied file.
+   */
+  findArtifact(cwd: string, path: string): Promise<string | undefined>
 }
 
 /** Prompts above this character-bigram similarity are the same request rephrased by the model, not a new task. */
@@ -166,14 +194,21 @@ export function fingerprint(session: string, cwd: string, request: MediaSubmitRe
  * @param ctx - plugin context.
  * @returns the store.
  */
+function artifactKey(cwd: string, path: string): string {
+  const normalize = (value: string): string => process.platform === 'win32' ? value.toLowerCase() : value
+  return `${normalize(resolve(cwd))}\n${normalize(resolve(path))}`
+}
+
 export function pendingTasks(ctx: Context): PendingTasks {
   const memory = new Map<string, StoredTask>()
-  let opened: Promise<TaskTable | undefined> | undefined
-  const open = async (): Promise<TaskTable | undefined> => await (opened ??= (async () => {
+  const artifactMemory = new Map<string, StoredArtifact>()
+  let opened: Promise<{ tasks: TaskTable; artifacts: ArtifactTable } | undefined> | undefined
+  const open = async (): Promise<{ tasks: TaskTable; artifacts: ArtifactTable } | undefined> => await (opened ??= (async () => {
     const facility = ctx.get('storageDomain')
     if (facility === undefined) return undefined
     try {
-      return (await facility.open(pendingTasksDomain)).table('tasks')
+      const domain = await facility.open(pendingTasksDomain)
+      return { tasks: domain.table('tasks'), artifacts: domain.table('artifacts') }
     } catch (error) {
       ctx.logger.warn('suanli media tools: unsettled tasks are unavailable (%s); keeping them in memory', String(error))
       return undefined
@@ -182,7 +217,7 @@ export function pendingTasks(ctx: Context): PendingTasks {
   return {
     async find(key, identity) {
       const table = await open()
-      const entries = [...(table === undefined ? memory.entries() : table.entries())]
+      const entries = [...(table === undefined ? memory.entries() : table.tasks.entries())]
       const fresh = (record: StoredTask): boolean => Date.now() - record.submittedAt <= PENDING_TTL_MS
       const exact = entries.find(([itemKey]) => itemKey === key)?.[1]
       if (exact !== undefined && fresh(exact)) return { key, taskId: exact.taskId }
@@ -195,12 +230,28 @@ export function pendingTasks(ctx: Context): PendingTasks {
       const table = await open()
       const record = { taskId, submittedAt: Date.now(), ...identity === undefined ? {} : storedIdentity(identity) }
       if (table === undefined) memory.set(key, record)
-      else await table.put(key, record)
+      else await table.tasks.put(key, record)
     },
     async forget(key) {
       const table = await open()
       if (table === undefined) memory.delete(key)
-      else await table.delete(key)
+      else await table.tasks.delete(key)
+    },
+    async rememberArtifact(cwd, path, taskId) {
+      const key = artifactKey(cwd, path)
+      const record = { taskId, cwd: resolve(cwd), path: resolve(path), recordedAt: Date.now() }
+      const table = await open()
+      if (table === undefined) artifactMemory.set(key, record)
+      else await table.artifacts.put(key, record)
+    },
+    async findArtifact(cwd, path) {
+      const key = artifactKey(cwd, path)
+      const table = await open()
+      if (table === undefined) return artifactMemory.get(key)?.taskId
+      for (const [, record] of table.artifacts.entries()) {
+        if (artifactKey(record.cwd, record.path) === key) return record.taskId
+      }
+      return undefined
     },
   }
 }
