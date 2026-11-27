@@ -90,7 +90,7 @@ async function boot(options: {
   dirs.push(cwd)
   const ask = vi.fn(async (request: AskUserQuestionRequest) => options.answer?.(request) ?? { answers: [] })
   const submit = vi.fn(async (_request: Record<string, unknown>) => ({ ok: true as const, taskId: 't1', transport: 'videos' as const, state: 'running' as const }))
-  const wait = vi.fn(options.wait ?? (async () => ({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/v' } })))
+  const wait = vi.fn(options.wait ?? (async () => ({ ok: true, status: { taskId: 't1', state: 'running', url: 'https://cdn.example/v' } })))
   const cancel = vi.fn(async () => ({ ok: true }))
   const inspect = vi.fn(async () => ({ ok: true as const, text: options.review ?? '' }))
   const ctx = new Context()
@@ -281,6 +281,7 @@ describe('generate_video', () => {
     const { submit, run, cwd } = await boot()
     await run('generate_video', { prompt: '小猫玩耍', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 5, with_audio: true })
     const [file] = await readdir(join(cwd, 'generated'))
+    if (file === undefined) throw new Error('generated clip missing')
     await writeFile(join(cwd, 'generated', file), Buffer.concat([MP4, Buffer.from([1])]))
     await run('generate_video', {
       prompt: '接着跑', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 10, with_audio: true, source_video: `generated/${file}`,
@@ -291,7 +292,7 @@ describe('generate_video', () => {
 
   it('does not turn a URL-only result into an empty task reference', async () => {
     const { submit, run, cwd } = await boot()
-    submit.mockResolvedValueOnce({ ok: true, taskId: '', transport: 'videos', state: 'succeeded', url: 'https://cdn.example/v' })
+    submit.mockResolvedValueOnce({ ok: true, taskId: '', transport: 'videos', state: 'running', url: 'https://cdn.example/v' })
     await run('generate_video', { prompt: '小猫玩耍', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 5, with_audio: true })
     const [file] = await readdir(join(cwd, 'generated'))
     await run('generate_video', {
@@ -477,7 +478,7 @@ describe('generate_music', () => {
 
   it('asks whether the piece is instrumental and saves an mp3', async () => {
     const { ask, submit, run, wait, cwd } = await boot({ answer: () => ({ answers: [{ id: 'is_instrumental', selected: ['纯音乐'] }] }) })
-    wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/m' } })
+    wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'running', url: 'https://cdn.example/m' } })
     const result = await run('generate_music', { prompt: '轻快的钢琴曲' })
     expect(result.isError).toBe(false)
     expect(ask.mock.calls[0]?.[0].questions[0]?.options?.map(option => option.label)).toEqual(['带人声', '纯音乐'])
@@ -489,7 +490,7 @@ describe('generate_music', () => {
 describe('generate_music lyrics', () => {
   it('drops the lyrics when the user chooses an instrumental piece', async () => {
     const { submit, run, wait } = await boot({ answer: () => ({ answers: [{ id: 'is_instrumental', selected: ['纯音乐'] }] }) })
-    wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/m' } })
+    wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'running', url: 'https://cdn.example/m' } })
     await run('generate_music', { prompt: '轻快的钢琴曲', lyrics: '啦啦啦' })
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ params: { is_instrumental: 'true', instructions: '轻快的钢琴曲' } }))
   })
