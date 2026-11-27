@@ -32,7 +32,7 @@ ROOT = os.environ.get("SUANLI_SYNC_ROOT", "/srv/downloads/suanli-assistant")
 # 直接取 R2 的自定义域名，而不是走 CDN：同步是我们自己的后台流量，没必要绕一圈
 # （走 CDN 时请求会先到本机源站、再触发回退到 R2，白白多一跳，还占用 CDN 额度）。
 BASE = os.environ.get("SUANLI_SYNC_BASE", "https://aijisuan.kdns.fr/suanli-assistant")
-TARGETS = ("win32-x64", "darwin-arm64")
+TARGETS = ("win32-x64", "darwin-arm64", "darwin-x64")
 STATE = os.path.join(ROOT, ".state.json")
 LOCK = "/var/lock/suanli-installer-sync.lock"
 
