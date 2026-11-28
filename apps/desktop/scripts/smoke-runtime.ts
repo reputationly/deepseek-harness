@@ -14,7 +14,8 @@ import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
 const OFFICE_SMOKE_TIMEOUT_MS = 120_000
-const OFFICE_OPERATIONS_TIMEOUT_MS = 420_000
+// One request covers converter startup and response handling in addition to the engine deadline.
+const OFFICE_REQUEST_TIMEOUT_MS = OFFICE_SMOKE_TIMEOUT_MS + 60_000
 const OFFICE_SMOKE_PROFILE_PATCH = `- id: webserver
   config:
     host: 127.0.0.1
@@ -140,44 +141,55 @@ export function apply(ctx) {
       }
     } }))
   for (const input of ${JSON.stringify(inputs)}) {
+    const bytes = Buffer.from(input.bytes, 'base64')
+    const source = (operation) => ({ key: 'desktop-smoke-' + operation + '-' + input.extension, version: 'fixture', bytes: bytes.length,
+      async read() { return { bytes, version: 'fixture' } } })
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-office/' + input.extension,
       async handler(_request, response) {
         try {
-          const bytes = Buffer.from(input.bytes, 'base64')
-          const result = await ctx.officeKit.convert({ extension: input.extension, priority: 'foreground',
-            source: { key: 'desktop-smoke-' + input.extension, version: 'fixture', bytes: bytes.length,
-              async read() { return { bytes, version: 'fixture' } } } })
+          const result = await ctx.officeKit.convert({ extension: input.extension, priority: 'foreground', source: source('pdf') })
           response.end(Buffer.from(result.pdf))
         } catch (error) {
           response.statusCode = 500
           response.end(inspect(error, { depth: 5 }))
         }
       } }))
-    ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-office-operations/' + input.extension,
+    ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-office-images/' + input.extension,
       async handler(_request, response) {
         try {
-          const bytes = Buffer.from(input.bytes, 'base64')
-          const source = (operation) => ({ key: 'desktop-smoke-' + operation + '-' + input.extension, version: 'fixture', bytes: bytes.length,
-            async read() { return { bytes, version: 'fixture' } } })
           const rendered = await ctx.officeKit.renderImages({ extension: input.extension, source: source('images'),
             maxImages: 4, maxPixels: 16777216, maxDimension: 8192, maxBytes: 64 * 1024 * 1024 })
-          const format = { docx: 'odt', xlsx: 'ods', pptx: 'odp' }[input.extension]
-          const converted = await ctx.officeKit.convertTo({ extension: input.extension, format,
-            source: source('convert'), output: { owner: 'desktop-smoke', name: 'converted.' + format } })
-          const recalculated = input.extension === 'xlsx'
-            ? await ctx.officeKit.recalculate({ extension: 'xlsx', format: 'xlsx', source: source('recalculate'),
-              output: { owner: 'desktop-smoke', name: 'recalculated.xlsx' } })
-            : undefined
-          response.end(JSON.stringify({
-            images: rendered.images.map(image => Buffer.from(image.png.subarray(0, 8)).toString('hex')),
-            converted: (await readFile(converted.path)).subarray(0, 4).toString('hex'),
-            recalculated: recalculated === undefined ? null : (await readFile(recalculated.path)).subarray(0, 4).toString('hex'),
-          }))
+          response.end(JSON.stringify(rendered.images.map(image => Buffer.from(image.png.subarray(0, 8)).toString('hex'))))
         } catch (error) {
           response.statusCode = 500
           response.end(inspect(error, { depth: 5 }))
         }
       } }))
+    ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-office-convert/' + input.extension,
+      async handler(_request, response) {
+        try {
+          const format = { docx: 'odt', xlsx: 'ods', pptx: 'odp' }[input.extension]
+          const converted = await ctx.officeKit.convertTo({ extension: input.extension, format,
+            source: source('convert'), output: { owner: 'desktop-smoke', name: 'converted.' + format } })
+          response.end((await readFile(converted.path)).subarray(0, 4).toString('hex'))
+        } catch (error) {
+          response.statusCode = 500
+          response.end(inspect(error, { depth: 5 }))
+        }
+      } }))
+    if (input.extension === 'xlsx') {
+      ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-office-recalculate/' + input.extension,
+        async handler(_request, response) {
+          try {
+            const recalculated = await ctx.officeKit.recalculate({ extension: 'xlsx', format: 'xlsx', source: source('recalculate'),
+              output: { owner: 'desktop-smoke', name: 'recalculated.xlsx' } })
+            response.end((await readFile(recalculated.path)).subarray(0, 4).toString('hex'))
+          } catch (error) {
+            response.statusCode = 500
+            response.end(inspect(error, { depth: 5 }))
+          }
+        } }))
+    }
   }
 }
 `)
@@ -220,7 +232,7 @@ export function apply(ctx) {
     console.log('desktop runtime: packaged Office skills listed and loaded')
     for (const { extension } of inputs) {
       const converted = await fetch(new URL(`/desktop-smoke-office/${extension}`, ready.url), {
-        headers: { cookie }, signal: AbortSignal.timeout(120_000),
+        headers: { cookie }, signal: AbortSignal.timeout(OFFICE_REQUEST_TIMEOUT_MS),
       })
       if (!converted.ok) throw new Error(`desktop runtime: ${extension} conversion failed: ${await converted.text()}`)
       const pdf = Buffer.from(await converted.arrayBuffer())
@@ -230,15 +242,29 @@ export function apply(ctx) {
       }
     }
     for (const { extension } of inputs) {
-      const operations = await fetch(new URL(`/desktop-smoke-office-operations/${extension}`, ready.url), {
-        headers: { cookie }, signal: AbortSignal.timeout(OFFICE_OPERATIONS_TIMEOUT_MS),
+      const images = await fetch(new URL(`/desktop-smoke-office-images/${extension}`, ready.url), {
+        headers: { cookie }, signal: AbortSignal.timeout(OFFICE_REQUEST_TIMEOUT_MS),
       })
-      if (!operations.ok) throw new Error(`desktop runtime: ${extension} Office operations failed: ${await operations.text()}`)
-      const result = await operations.json() as { images: string[]; converted: string; recalculated: string | null }
+      if (!images.ok) throw new Error(`desktop runtime: ${extension} image rendering failed: ${await images.text()}`)
+      const imageSignatures = await images.json() as string[]
+      const converted = await fetch(new URL(`/desktop-smoke-office-convert/${extension}`, ready.url), {
+        headers: { cookie }, signal: AbortSignal.timeout(OFFICE_REQUEST_TIMEOUT_MS),
+      })
+      if (!converted.ok) throw new Error(`desktop runtime: ${extension} Office conversion failed: ${await converted.text()}`)
+      const convertedSignature = await converted.text()
+      let recalculatedSignature: string | null = null
+      if (extension === 'xlsx') {
+        const recalculated = await fetch(new URL(`/desktop-smoke-office-recalculate/${extension}`, ready.url), {
+          headers: { cookie }, signal: AbortSignal.timeout(OFFICE_REQUEST_TIMEOUT_MS),
+        })
+        if (!recalculated.ok) throw new Error(`desktop runtime: ${extension} Office recalculation failed: ${await recalculated.text()}`)
+        recalculatedSignature = await recalculated.text()
+      }
       // PNG images, then ZIP containers for OpenDocument and XLSX outputs.
-      if (result.images.length === 0 || result.images.some(signature => signature !== '89504e470d0a1a0a')
-        || result.converted !== '504b0304' || (extension === 'xlsx' ? result.recalculated !== '504b0304' : result.recalculated !== null)) {
-        throw new Error(`desktop runtime: invalid ${extension} Office operation output: ${JSON.stringify(result)}`)
+      if (imageSignatures.length === 0 || imageSignatures.some(signature => signature !== '89504e470d0a1a0a')
+        || convertedSignature !== '504b0304' || (extension === 'xlsx' ? recalculatedSignature !== '504b0304' : recalculatedSignature !== null)) {
+        throw new Error(`desktop runtime: invalid ${extension} Office operation output: ${JSON.stringify({
+          images: imageSignatures, converted: convertedSignature, recalculated: recalculatedSignature })}`)
       }
     }
     console.log('desktop runtime: DOCX, XLSX, PPTX to PDF, image rendering, conversion, and recalculation passed')
