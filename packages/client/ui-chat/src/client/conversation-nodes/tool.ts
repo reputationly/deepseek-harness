@@ -346,9 +346,13 @@ export const toolDefinition: ConversationNodeDefinition<ToolState> = {
     const visibility = preparing && interruptedAt !== undefined ? 'hidden' : 'visible'
     const location = contextLocation(context)
     const data = current?.data.root === projected ? current.data : { root: projected } satisfies ToolChatData
+    const pinned = 'kind' in projected && projected.kind === 'tool-result'
+      && typeof projected.meta === 'object' && projected.meta !== null && !Array.isArray(projected.meta)
+      && (projected.meta as Record<string, unknown>).keepTurnOpen === true
+    const groupTree = pinned ? 'turn' as const : undefined
     if (current?.data === data && current.anchorSeq === anchor
-      && current.visibility === visibility && current.location === location) return current
-    return chatNode(context, 'tool-call', anchor, data, { visibility, location })
+      && current.visibility === visibility && current.location === location && current.groupTree === groupTree) return current
+    return chatNode(context, 'tool-call', anchor, data, { visibility, location, groupTree })
   },
 }
 

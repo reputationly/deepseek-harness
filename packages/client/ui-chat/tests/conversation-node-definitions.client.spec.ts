@@ -550,6 +550,8 @@ describe('built-in conversation node Definitions', () => {
       subagentCount: 1,
       pinnedToolCardCount: 1,
     })
+    const view = snapshot(value)
+    expect([...view.nodes.values()].some(item => item.kind === 'tool-call' && item.groupTree === 'turn')).toBe(true)
   })
 
   it('orders the opening User before its process control and later steering', () => {
