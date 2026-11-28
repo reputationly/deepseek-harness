@@ -1537,7 +1537,7 @@ describe('desktop main startup', () => {
     listener(event, true)
     expect(window.setSize).not.toHaveBeenCalled()
     listener(event, false)
-    expect(window.setMinimumSize).toHaveBeenLastCalledWith(520, 600)
+    expect(window.setMinimumSize).toHaveBeenLastCalledWith(400, 600)
     expect(window.setSize).not.toHaveBeenCalled()
   })
 
