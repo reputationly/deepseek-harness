@@ -62,7 +62,7 @@ async function boot(options: {
     resolve: async (ref: string) => ref === 'AURORA_API_KEY'
       ? (credential === '' ? undefined : { value: credential })
       : undefined,
-    set: async (ref: string, value: string) => { if (ref === 'AURORA_API_KEY') { credential = value; credentialWrites.push(value) } },
+    set: async (ref: string, value: string) => { if (ref === 'AURORA_API_KEY') { credential = value; credentialWrites.push(value); ctx.emit('credentials/reference-updated', credentialRef('AURORA_API_KEY')) } },
   })
   const mutations: unknown[] = []
   let models = options.models

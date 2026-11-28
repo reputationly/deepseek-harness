@@ -113,6 +113,20 @@ describe('MediaCatalogSync', () => {
     expect(written).toEqual([])
   })
 
+  it('keeps an explicitly committed generation when an older refresh finishes later', async () => {
+    let finish: (response: Response) => void = () => {}
+    const { subject, committed } = harness({ answer: () => new Promise<Response>((resolve) => { finish = resolve }) })
+    const refreshing = subject.refresh()
+    await vi.waitFor(() => { expect(finish).not.toBeUndefined() })
+    const validated: MediaCatalogRecord = { version: 'validated', fetchedAt: 2, entries: entriesOf([entry()]), ...EMPTY_CHAT }
+    await subject.commit(validated)
+    finish(json(hilo({ version: 'stale' })))
+    await refreshing
+    expect(subject.current().version).toBe('validated')
+    expect(subject.current().entries).toHaveLength(1)
+    expect(committed.map(record => record.version)).toEqual(['validated'])
+  })
+
   it('joins concurrent refreshes into one request', async () => {
     const { subject, send } = harness({})
     await Promise.all([subject.refresh(), subject.refresh(), subject.refresh()])

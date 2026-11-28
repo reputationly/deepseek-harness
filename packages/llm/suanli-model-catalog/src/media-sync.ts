@@ -74,6 +74,7 @@ export class MediaCatalogSync {
   private snapshot: MediaCatalogSnapshot
   private chat: Pick<MediaCatalogRecord, 'text' | 'defaults'> = { text: [], defaults: { chat: null, multimodal: null } }
   private pending: Promise<MediaCatalogSnapshot> | undefined
+  private invalidation = 0
 
   constructor(private readonly inputs: MediaCatalogSyncInputs) {
     this.snapshot = { status: 'loading', version: null, fetchedAt: null, entries: [] }
@@ -128,6 +129,7 @@ export class MediaCatalogSync {
    * @returns the snapshot after the commit.
    */
   async commit(record: MediaCatalogRecord): Promise<MediaCatalogSnapshot> {
+    this.invalidation += 1
     const previous = this.snapshot
     const fresh = record.version === null || record.version !== previous.version
     if (fresh) {
@@ -155,6 +157,7 @@ export class MediaCatalogSync {
 
   /** Read one generation and commit it when it is usable. */
   private async read(): Promise<MediaCatalogSnapshot> {
+    const invalidation = this.invalidation
     let response: Response
     try {
       response = await this.inputs.send(new URL(this.inputs.catalogPath, this.inputs.origin).href, {
@@ -185,6 +188,7 @@ export class MediaCatalogSync {
     const record: MediaCatalogRecord = {
       version: decoded.version, fetchedAt: this.inputs.now(), entries: decoded.entries, text: decoded.text, defaults: decoded.defaults,
     }
+    if (invalidation !== this.invalidation) return this.snapshot
     return await this.commit(record)
   }
 }

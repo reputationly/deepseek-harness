@@ -88,6 +88,7 @@ export class SuanliModelCatalogService extends TypertRemoteService {
   /** Snapshot served before the durable store is open and the first read has settled. */
   private readonly pending: MediaCatalogSnapshot = { status: 'loading', version: null, fetchedAt: null, entries: [] }
   private mediaSync: MediaCatalogSync | undefined
+  private skipCredentialRefresh = false
   private cache: { close(): Promise<void> } | undefined
   private rolesCache: { close(): Promise<void> } | undefined
 
@@ -116,6 +117,10 @@ export class SuanliModelCatalogService extends TypertRemoteService {
     })
     ctx.on('credentials/reference-updated', (ref) => {
       if (ref !== this.ref) return
+      if (this.skipCredentialRefresh) {
+        this.skipCredentialRefresh = false
+        return
+      }
       void this.refreshMedia()
     })
     // Boot does not wait for the gateway: the durable generation serves the first render.
@@ -215,10 +220,13 @@ export class SuanliModelCatalogService extends TypertRemoteService {
     if (!check.ok || record === undefined) return check
     if (this.mediaSync === undefined) return { ok: false, reason: 'write-failed' }
     if (candidate !== undefined && candidate !== '') {
+      this.skipCredentialRefresh = true
       try {
         await this.ctx.credentials.set(this.ref, candidate)
       } catch {
         return { ok: false, reason: 'write-failed' }
+      } finally {
+        queueMicrotask(() => { this.skipCredentialRefresh = false })
       }
     }
     await this.mediaSync.commit(record)
