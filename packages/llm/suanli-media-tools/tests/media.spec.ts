@@ -9,6 +9,7 @@ import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import type { AskUserQuestionAnswer, AskUserQuestionRequest } from '@deepseek-ai/dsh-user-questions'
+import type { MediaSubmitResult } from '@deepseek-ai/dsh-suanli-media-tasks/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as plugin from '../src/index.ts'
 import { fingerprint } from '../src/pending.ts'
@@ -89,8 +90,8 @@ async function boot(options: {
   const cwd = await mkdtemp(join(tmpdir(), 'suanli-media-video-'))
   dirs.push(cwd)
   const ask = vi.fn(async (request: AskUserQuestionRequest) => options.answer?.(request) ?? { answers: [] })
-  const submit = vi.fn(async (_request: Record<string, unknown>) => ({ ok: true as const, taskId: 't1', transport: 'videos' as const, state: 'running' as const }))
-  const wait = vi.fn(options.wait ?? (async () => ({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/v' } })))
+  const submit = vi.fn(async (_request: Record<string, unknown>): Promise<MediaSubmitResult> => ({ ok: true, taskId: 't1', transport: 'videos', state: 'running' }))
+  const wait = vi.fn(options.wait ?? (async () => ({ ok: true, status: { taskId: 't1', state: 'running', url: 'https://cdn.example/v' } })))
   const cancel = vi.fn(async () => ({ ok: true }))
   const inspect = vi.fn(async () => ({ ok: true as const, text: options.review ?? '' }))
   const ctx = new Context()
@@ -121,14 +122,18 @@ async function boot(options: {
   } as never)
   ctx.provide('userQuestions', { ask } as never)
   const pendingRecords = new Map<string, Record<string, unknown>>()
+  const artifactRecords = new Map<string, Record<string, unknown>>()
   ctx.provide('storageDomain', {
     open: async () => ({
-      table: () => ({
+      table: (name: string) => name === 'artifacts' ? {
+        entries: () => artifactRecords.entries(),
+        put: async (key: string, value: Record<string, unknown>) => { artifactRecords.set(key, value) },
+      } : {
         get: (key: string) => pendingRecords.get(key),
         entries: () => pendingRecords.entries(),
         put: async (key: string, value: Record<string, unknown>) => { pendingRecords.set(key, value) },
         delete: async (key: string) => pendingRecords.delete(key),
-      }),
+      },
     }),
   } as never)
   const directUserTexts = new Map<string, string>()
@@ -157,8 +162,8 @@ async function boot(options: {
   } as never)
   ctx.provide('workingDirectory', { ensure: async () => cwd } as never)
   ctx.provide('fs', {
-    resolve: async (path: string, opts: { cwd: string }) => ({ path: resolve(opts.cwd, path) }),
-    readBytes: async (target: { path: string }) => new Uint8Array(await readFile(target.path)),
+    resolve: async (path: string, opts: { cwd: string }) => ({ targetKey: resolve(opts.cwd, path), displayPath: resolve(opts.cwd, path) }),
+    readBytes: async (target: { displayPath: string }) => new Uint8Array(await readFile(target.displayPath)),
   } as never)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -259,6 +264,42 @@ describe('generate_video', () => {
     })
     const request = submit.mock.calls[0]?.[0] as { model?: string; taskType?: string; sourceVideo?: string } | undefined
     expect(request).toMatchObject({ model: 'minimax-h3-ext', taskType: 'continuation', params: { resolution: '768P' } })
+    expect(request?.sourceVideo).toMatch(/^data:video\/mp4;base64,/u)
+  })
+
+  it('continues a previously generated clip by gateway task reference', async () => {
+    const { submit, run, cwd } = await boot()
+    await run('generate_video', { prompt: '小猫玩耍', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 5, with_audio: true })
+    const [file] = await readdir(join(cwd, 'generated'))
+    await run('generate_video', {
+      prompt: '接着跑', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 10, with_audio: true, source_video: `generated/${file}`,
+    })
+    const request = submit.mock.calls[1]?.[0] as { sourceVideo?: string } | undefined
+    expect(request?.sourceVideo).toBe('task:t1')
+  })
+
+  it('uploads a replaced clip instead of continuing the old task', async () => {
+    const { submit, run, cwd } = await boot()
+    await run('generate_video', { prompt: '小猫玩耍', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 5, with_audio: true })
+    const [file] = await readdir(join(cwd, 'generated'))
+    if (file === undefined) throw new Error('generated clip missing')
+    await writeFile(join(cwd, 'generated', file), Buffer.concat([MP4, Buffer.from([1])]))
+    await run('generate_video', {
+      prompt: '接着跑', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 10, with_audio: true, source_video: `generated/${file}`,
+    })
+    const request = submit.mock.calls[1]?.[0] as { sourceVideo?: string } | undefined
+    expect(request?.sourceVideo).toMatch(/^data:video\/mp4;base64,/u)
+  })
+
+  it('does not turn a URL-only result into an empty task reference', async () => {
+    const { submit, run, cwd } = await boot()
+    submit.mockResolvedValueOnce({ ok: true, taskId: '', transport: 'videos', state: 'running', url: 'https://cdn.example/v' } as MediaSubmitResult)
+    await run('generate_video', { prompt: '小猫玩耍', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 5, with_audio: true })
+    const [file] = await readdir(join(cwd, 'generated'))
+    await run('generate_video', {
+      prompt: '接着跑', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 10, with_audio: true, source_video: `generated/${file}`,
+    })
+    const request = submit.mock.calls[1]?.[0] as { sourceVideo?: string } | undefined
     expect(request?.sourceVideo).toMatch(/^data:video\/mp4;base64,/u)
   })
 
@@ -438,7 +479,7 @@ describe('generate_music', () => {
 
   it('asks whether the piece is instrumental and saves an mp3', async () => {
     const { ask, submit, run, wait, cwd } = await boot({ answer: () => ({ answers: [{ id: 'is_instrumental', selected: ['纯音乐'] }] }) })
-    wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/m' } })
+    wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'running', url: 'https://cdn.example/m' } })
     const result = await run('generate_music', { prompt: '轻快的钢琴曲' })
     expect(result.isError).toBe(false)
     expect(ask.mock.calls[0]?.[0].questions[0]?.options?.map(option => option.label)).toEqual(['带人声', '纯音乐'])
@@ -450,7 +491,7 @@ describe('generate_music', () => {
 describe('generate_music lyrics', () => {
   it('drops the lyrics when the user chooses an instrumental piece', async () => {
     const { submit, run, wait } = await boot({ answer: () => ({ answers: [{ id: 'is_instrumental', selected: ['纯音乐'] }] }) })
-    wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'succeeded', url: 'https://cdn.example/m' } })
+    wait.mockResolvedValue({ ok: true, status: { taskId: 't1', state: 'running', url: 'https://cdn.example/m' } })
     await run('generate_music', { prompt: '轻快的钢琴曲', lyrics: '啦啦啦' })
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ params: { is_instrumental: 'true', instructions: '轻快的钢琴曲' } }))
   })

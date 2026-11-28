@@ -110,7 +110,7 @@ export function videoTool(ctx: Context, pending: PendingTasks, userTextHashOf: U
     timeoutMs: VIDEO_WAIT_MS + 600_000,
     async execute(args, exec) {
       return await generate(ctx, pending, userTextHashOf, 'Video', 'generate_video', 'video', VIDEO_WAIT_MS, args.prompt, exec,
-        async (entries, preferred, cwd) => await planVideo(ctx, entries, preferred, cwd, args, exec.signal),
+        async (entries, preferred, cwd) => await planVideo(ctx, pending, entries, preferred, cwd, args, exec.signal),
         [[ASPECT, args.aspect_ratio], [RESOLUTION, args.resolution],
           [DURATION, args.duration_seconds === undefined ? undefined : String(args.duration_seconds)],
           [AUDIO, args.with_audio === undefined ? undefined : String(args.with_audio)]])
@@ -281,6 +281,11 @@ async function generate(
   exec.signal.throwIfAborted()
   const { path, data } = await saveArtifact(ctx, what, url, cwd, bytes => typeOf(bytes, role).extension)
   await pending.forget(pendingKey)
+  try {
+    if (taskId !== '') await pending.rememberArtifact(cwd, path, taskId, data)
+  } catch (error) {
+    ctx.logger.warn('suanli media tools: recording artifact task %s failed: %s', taskId, String(error))
+  }
   const mediaType = typeOf(data, role).mediaType
   const reviewed = role === 'video' ? await review(ctx, prompt, [{ url, mediaType }]) : undefined
   return {
@@ -384,7 +389,8 @@ async function waitFor(
  * @throws When the inputs conflict, no model offers the mode, or the inputs exceed it.
  */
 async function planVideo(
-  ctx: Context, entries: readonly CapabilityEntry[], preferred: string | null, cwd: string, args: VideoArgs, signal: AbortSignal,
+  ctx: Context, pending: PendingTasks, entries: readonly CapabilityEntry[], preferred: string | null, cwd: string,
+  args: VideoArgs, signal: AbortSignal,
 ): Promise<Plan> {
   {
     const references = args.reference_images ?? []
@@ -416,7 +422,7 @@ async function planVideo(
       modelLabel: labelOf(ctx, 'video', entry),
       ...taskType !== undefined ? { taskType } : {},
       references: await readImages(ctx, images, cwd, signal),
-      ...source !== undefined ? { sourceVideo: await readVideo(ctx, source, cwd, signal) } : {},
+      ...source !== undefined ? { sourceVideo: await readVideo(ctx, pending, source, cwd, signal) } : {},
       extra: hasMode && mode !== undefined ? { image_mode: mode.id } : {},
     }
   }
@@ -499,12 +505,14 @@ function modeName(mode: string): string {
  * @param path - workspace path.
  * @param cwd - session workspace.
  * @param signal - call cancellation.
- * @returns its data URL.
+ * @returns its gateway task reference when this tool produced it, otherwise its data URL.
  * @throws When the file is not an MP4 or WebM clip.
  */
-async function readVideo(ctx: Context, path: string, cwd: string, signal: AbortSignal): Promise<string> {
+async function readVideo(ctx: Context, pending: PendingTasks, path: string, cwd: string, signal: AbortSignal): Promise<string> {
   const target = await ctx.fs.resolve(path, { cwd, signal })
   const data = await ctx.fs.readBytes(target, signal, MAX_SOURCE_VIDEO_BYTES)
+  const taskId = await pending.findArtifact(cwd, target.displayPath, data)
+  if (taskId !== undefined) return `task:${taskId}`
   const isMp4 = ascii(data, 4, 4) === 'ftyp'
   if (!isMp4 && !(data[0] === 0x1a && data[1] === 0x45 && data[2] === 0xdf && data[3] === 0xa3)) {
     throw new Error(`"${path}" is not an MP4 or WebM clip.`)
