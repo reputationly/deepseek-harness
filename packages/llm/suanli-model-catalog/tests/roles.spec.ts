@@ -22,6 +22,15 @@ describe('deriveRoles', () => {
     ])
   })
 
+  it('prefers the enhanced image pipeline as the implicit fallback while keeping an explicit choice', () => {
+    const entries = [
+      { id: 'generate_image:raw', operation: 'generate_image', model: 'minimax-h3-image', displayName: { zh: '裸模型', en: 'Raw' }, description: { zh: '', en: '' }, transport: { kind: 'images' }, limits: { maxReferenceImages: 0, maxDurationSeconds: 0, maxInputBytes: 0 }, default: true },
+      { id: 'generate_image:enhanced', operation: 'generate_image', model: 'minimax-h3-image-enhanced', displayName: { zh: '增强', en: 'Enhanced' }, description: { zh: '', en: '' }, transport: { kind: 'images' }, limits: { maxReferenceImages: 0, maxDurationSeconds: 0, maxInputBytes: 0 }, default: false },
+    ]
+    expect(deriveRoles(entries, [], { chat: null, multimodal: null }, {}).find(state => state.role === 'image')?.fallback).toBe('minimax-h3-image-enhanced')
+    expect(deriveRoles(entries, [], { chat: null, multimodal: null }, { image: 'minimax-h3-image' }).find(state => state.role === 'image')?.selected).toBe('minimax-h3-image')
+  })
+
   it('keeps only image or video understanding models as vision candidates', () => {
     const vision = rolesOf(hilo({ text: [{ id: 'plain', platformModel: 'plain' }, { id: 'eye', platformModel: 'eye', supportsVideo: true }], defaults: {} }))
       .find(state => state.role === 'vision')

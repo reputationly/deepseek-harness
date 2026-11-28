@@ -30,7 +30,6 @@ describe('Shipped profile templates', () => {
           '@michengai/dsh-im-connect',
           '@michengai/dsh-codex-pet',
           '@q253595422/dsh-imagegen-video',
-          '@deepseek-ai/dsh-experimental-voice-input-bundle',
           '@deepseek-ai/dsh-experimental-session-search',
         ],
       },
