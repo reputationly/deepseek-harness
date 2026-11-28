@@ -9,9 +9,16 @@ describe('fileMediaUrl', () => {
       expect(url.searchParams.get('path')).toBe(path)
     },
   )
-  it.each(['image.png', '//host/image.png', '\\\\host\\image.png', '/work/\u0000.png', '/work/\n.png'])(
-    'rejects a non-local or invalid path %s', (path) => {
+  it.each(['image.png', '/work/\u0000.png', '/work/\n.png'])(
+    'rejects a relative or invalid path %s', (path) => {
       expect(fileMediaUrl('https://host/', path)).toBeUndefined()
+    },
+  )
+  it.each(['//host/share/image.png', '\\\\host\\share\\image.png'])(
+    'preserves the network-share path %s', (path) => {
+      const url = new URL(fileMediaUrl('https://host/tools/dsh/', path)!)
+      expect(url.pathname).toBe('/tools/dsh/api/file')
+      expect(url.searchParams.get('path')).toBe(path)
     },
   )
   it.each(['dsh-app://app/', 'dsh-app://app/index.html'])(

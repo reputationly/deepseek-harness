@@ -119,6 +119,6 @@ export function relativizeToCwd(text: string, cwd: string | undefined): string {
  */
 export function fileMediaUrl(base: string, path: string): string | undefined {
   if ((!/^https?:/u.test(base) && !base.startsWith('dsh-app://app/')) || !isAbsoluteWorkspacePath(path)
-    || /^[/\\]{2}/u.test(path) || /[\u0000-\u001f\u007f]/u.test(path)) return undefined
+    || /[\u0000-\u001f\u007f]/u.test(path)) return undefined
   return new URL(`api/file?path=${encodeURIComponent(path)}`, base).href
 }

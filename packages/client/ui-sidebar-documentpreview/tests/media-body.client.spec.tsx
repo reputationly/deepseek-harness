@@ -51,6 +51,14 @@ describe('MediaBody', () => {
     expect(fixture.loaded).toHaveBeenCalledExactlyOnceWith('v1')
   })
 
+  it('uses a Windows network-share Host path as the media source', async () => {
+    const fixture = props()
+    fixture.statFile.mockResolvedValue(statResult('\\\\host\\share\\asset.mp3'))
+    render(<MediaBody {...fixture.props} />)
+    const player = await screen.findByLabelText('Media preview: asset.mp3')
+    expect(new URL(player.getAttribute('src') ?? '').searchParams.get('path')).toBe('\\\\host\\share\\asset.mp3')
+  })
+
   it('reports playback failure without revoking anything', async () => {
     render(<MediaBody {...props().props} />)
     const player = await screen.findByLabelText('Media preview: asset.mp3')
