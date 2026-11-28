@@ -271,7 +271,7 @@ export function apply(ctx: ClientContext): void {
     ctx.slots.register({ name: 'settings.trigger', locale: NS }, TriggerContent))
   ctx.slots.inject('settings.header', () =>
     ctx.slots.register({ name: 'settings.header', locale: NS }, HeaderContent))
-  if (documentInjected !== undefined) {
+  if (documentInjected !== undefined && process.env.DSH_CLIENT_TITLE !== '蒜狸小助手') {
     ctx.slots.inject('settings.action', () => ctx.slots.register({
       name: 'settings.action',
       id: 'open-document',

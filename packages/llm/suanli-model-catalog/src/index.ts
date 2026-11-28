@@ -27,10 +27,11 @@ import { classMembers } from './capabilities.ts'
 import { domainCatalogStore, mediaCatalogDomain, memoryCatalogStore } from './domain.ts'
 import { asGatewayCapability } from './media.ts'
 import { MediaCatalogSync, type MediaCatalogRecord, type MediaCatalogStore } from './media-sync.ts'
+import { decodeHiloCatalog } from './hilo.ts'
 import { deriveRoles, domainRoleStore, memoryRoleStore, modelRolesDomain, MODEL_ROLES, type RoleStore } from './roles.ts'
 import type {
   CatalogEntry, CatalogSyncResult, ClassMembers, GatewayCapability, MediaCatalogSnapshot, MediaGatewayEndpoint,
-  MediaPreferences, ModelRole, ModelRoleState, ModelSyncResult,
+  LockedCatalogCheck, MediaPreferences, ModelRole, ModelRoleState, ModelSyncResult,
 } from './types.ts'
 import { mergeCatalog } from './sync.ts'
 import { DEFAULT_CATALOG_PATH, DEFAULT_CATALOG_TIMEOUT_MS } from './defaults.ts'
@@ -205,6 +206,80 @@ export class SuanliModelCatalogService extends TypertRemoteService {
     await this.roleStore.choose(role, model)
     this.ctx.emit('suanli-model-catalog/roles-updated')
     return this.roles()
+  }
+
+  /**
+   * Validate a candidate gateway key and decode the fixed model catalog without storing the key.
+   * @param input - candidate key; when absent or blank, the already stored credential is used.
+   * @returns the fixed roles when both validation and catalog decoding succeed.
+   */
+  @Remote
+  async testLockedConfig(input: { key?: string }): Promise<LockedCatalogCheck> {
+    const key = await this.keyForCheck(input.key)
+    if (key === undefined) return { ok: false, reason: 'missing-key' }
+    return await this.readLockedConfig(key)
+  }
+
+  /**
+   * Validate a key and catalog first, then store the credential and refresh the running catalog.
+   * @param input - candidate key; when absent or blank, the already stored credential is validated and kept.
+   * @returns the fixed roles after a successful save, or the failure before any write.
+   */
+  @Remote
+  async saveLockedConfig(input: { key?: string }): Promise<LockedCatalogCheck> {
+    const candidate = input.key?.trim()
+    const key = await this.keyForCheck(input.key)
+    if (key === undefined) return { ok: false, reason: 'missing-key' }
+    const checked = await this.readLockedConfig(key)
+    if (!checked.ok) return checked
+    if (candidate !== undefined && candidate !== '') {
+      try {
+        await this.ctx.credentials.set(this.ref, candidate)
+      } catch {
+        return { ok: false, reason: 'write-failed' }
+      }
+    }
+    await this.refreshMedia()
+    return { ...checked, saved: true }
+  }
+
+  /** Resolve the key a locked check uses without exposing it to callers. */
+  private async keyForCheck(candidate: string | undefined): Promise<string | undefined> {
+    const typed = candidate?.trim()
+    if (typed !== undefined && typed !== '') return typed
+    return (await this.ctx.credentials.resolve(this.ref))?.value
+  }
+
+  /** Validate one key against the OpenAI-compatible listing, then decode the locked catalog. */
+  private async readLockedConfig(key: string): Promise<LockedCatalogCheck> {
+    const headers = { accept: 'application/json', authorization: `Bearer ${key}`, 'x-api-key': key }
+    let listing: Response
+    try {
+      listing = await this.send(new URL('/v1/models', this.origin).href, { headers, signal: AbortSignal.timeout(this.timeoutMs) })
+    } catch {
+      return { ok: false, reason: 'unreachable' }
+    }
+    if (listing.status === 401 || listing.status === 403) return { ok: false, reason: 'unauthorized' }
+    if (!listing.ok) return { ok: false, reason: 'unreachable' }
+
+    let response: Response
+    try {
+      response = await this.send(new URL(this.catalogPath, this.origin).href, { headers, signal: AbortSignal.timeout(this.timeoutMs) })
+    } catch {
+      return { ok: false, reason: 'unreachable' }
+    }
+    if (response.status === 401 || response.status === 403) return { ok: false, reason: 'unauthorized' }
+    if (!response.ok) return { ok: false, reason: 'unreachable' }
+    let payload: unknown
+    try {
+      payload = await response.json()
+    } catch {
+      return { ok: false, reason: 'invalid-catalog' }
+    }
+    const decoded = decodeHiloCatalog(payload)
+    if (decoded === undefined) return { ok: false, reason: 'invalid-catalog' }
+    if (decoded.entries.length === 0 && decoded.text.length === 0) return { ok: false, reason: 'empty-catalog' }
+    return { ok: true, roles: deriveRoles(decoded.entries, decoded.text, decoded.defaults, {}) }
   }
 
   /**

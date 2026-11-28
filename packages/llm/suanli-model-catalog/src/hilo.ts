@@ -210,6 +210,7 @@ export function decodeHiloCatalog(payload: unknown): DecodedHiloCatalog | undefi
       supportsImage: item.supportsImage === true,
       supportsVideo: item.supportsVideo === true,
       supportsAudio: item.supportsAudio === true,
+      ...text(item.reasoningEffort) === undefined ? {} : { reasoningEffort: text(item.reasoningEffort) },
     })
   }
   const roles = record(source.defaults)

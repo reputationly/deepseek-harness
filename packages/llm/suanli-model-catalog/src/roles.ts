@@ -38,8 +38,18 @@ export function deriveRoles(
   defaults: HiloDefaults,
   choices: RoleChoices,
 ): ModelRoleState[] {
-  const chatModels = text.map(model => ({ model: model.model, label: model.label }))
-  const vision = text.filter(model => model.supportsImage || model.supportsVideo).map(model => ({ model: model.model, label: model.label }))
+  const chatModels = text.map(model => ({
+    model: model.model,
+    label: model.label,
+    ...model.reasoningEffort === undefined ? {} : { reasoningEffort: model.reasoningEffort },
+  }))
+  const vision = text
+    .filter(model => model.supportsImage || model.supportsVideo)
+    .map(model => ({
+      model: model.model,
+      label: model.label,
+      ...model.reasoningEffort === undefined ? {} : { reasoningEffort: model.reasoningEffort },
+    }))
   const state = (role: ModelRole, candidates: readonly ModelRoleCandidate[], preferred: string | null): ModelRoleState => {
     const chosen = role === 'chat' ? undefined : choices[role]
     const has = (model: string | null | undefined): model is string =>

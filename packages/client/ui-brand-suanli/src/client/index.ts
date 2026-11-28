@@ -16,10 +16,10 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { GatewayStatus } from '@deepseek-ai/dsh-api-gateway-status/types'
 import { BrandMark, BrandName } from './Brand.tsx'
 import type { GatewayStatusFace } from './ConnectionPill.tsx'
-import { CatalogSyncRow, type CatalogSyncOutcome } from './CatalogSyncRow.tsx'
 import { GenerateImageCard, type GenerateImageCardInjected, type OpenInCreative } from './GenerateImageCard.tsx'
 import { GenerateMediaCard, type MediaLoader } from './GenerateMediaCard.tsx'
-import { ModelRolesRow, type ModelRoleView, type ModelRolesView } from './ModelRolesRow.tsx'
+import { ModelRolesRow, type ModelRolesView } from './ModelRolesRow.tsx'
+import { LockedKeyCard } from './LockedKeyCard.tsx'
 import { de, en, es, fr, ja, pt, ru, zh, type GatewayStatusKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -43,25 +43,11 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { en, zh, ja, es, fr, de, ru, pt }), 'brand: connection dictionaries')
   ctx.slots.inject('conversation.hero.brand.mark', () =>
     ctx.slots.register({ name: 'conversation.hero.brand.mark' }, BrandMark))
-  // The model catalog the picker offers comes from this deployment's gateway; a deployment
-  // that mounts no catalog row keeps the pinned list, and the button reports instead.
-  ctx.slots.inject('settings.models.footer', () => ctx.slots.register({
-    name: 'settings.models.footer', id: 'model-catalog-sync', order: 50, locale: NS,
-    inject: () => ({
-      refresh: async (): Promise<CatalogSyncOutcome> => await refreshCatalog(catalogService(ctx)),
-    }),
-  }, (props: ModelsFooterOwnerProps & { refresh: () => Promise<CatalogSyncOutcome>; t: TranslateNS<'gatewayStatus'> }) =>
-    createElement(CatalogSyncRow, { refresh: props.refresh, t: props.t })))
   // One gateway key calls every role; the user only picks which catalog model fills each one.
   ctx.slots.inject('settings.models.footer', () => ctx.slots.register({
     name: 'settings.models.footer', id: 'model-roles', order: 40, locale: NS,
     inject: () => ({
       load: async (): Promise<ModelRolesView> => await readRoles(catalogService(ctx)),
-      select: async (role: ModelRoleView['role'], model: string | null): Promise<ModelRolesView> => {
-        const remote = catalogService(ctx)
-        valueOf(await remote.selectRole(role, model))
-        return await readRoles(remote)
-      },
       setAutoReview: async (enabled: boolean): Promise<ModelRolesView> => {
         const remote = catalogService(ctx)
         valueOf(await remote.setAutoReview(enabled))
@@ -70,10 +56,18 @@ export function apply(ctx: ClientContext): void {
     }),
   }, (props: ModelsFooterOwnerProps & {
     load: () => Promise<ModelRolesView>
-    select: (role: ModelRoleView['role'], model: string | null) => Promise<ModelRolesView>
     setAutoReview: (enabled: boolean) => Promise<ModelRolesView>
     t: TranslateNS<'gatewayStatus'>
-  }) => createElement(ModelRolesRow, { load: props.load, select: props.select, setAutoReview: props.setAutoReview, t: props.t })))
+  }) => createElement(ModelRolesRow, { load: props.load, setAutoReview: props.setAutoReview, t: props.t })))
+  // The deployment owns model configuration: the card validates a candidate key without storing it,
+  // and saves only after a fresh validation/catalog read succeeds.
+  ctx.slots.inject('settings.models.provider-card', () => ctx.slots.register({
+    name: 'settings.models.provider-card', key: 'llm-deepseek', locale: NS,
+    inject: () => ({
+      test: async (key: string) => valueOf(await catalogService(ctx).testLockedConfig({ key })),
+      save: async (key: string) => valueOf(await catalogService(ctx).saveLockedConfig({ key })),
+    }),
+  }, LockedKeyCard))
   // Images generated from chat render inline, with download, prompt copy, and regenerate.
   // 「拿去精修」 hands the images to the creative workbench's image-to-image page while that workbench is on.
   const creative = (): CreativeFace | undefined => ctx.get('suanliCreative') as CreativeFace | undefined
@@ -112,23 +106,6 @@ export function apply(ctx: ClientContext): void {
         }),
       }, BrandName)
     }))
-}
-
-/**
- * Refresh the catalog and flatten the transport envelope for the row.
- * @param remote - Host catalog namespace.
- * @returns the outcome the row renders.
- * @throws When the Host reported a transport failure.
- */
-async function refreshCatalog(
-  remote: ClientContext['remote']['suanliModels'],
-): Promise<CatalogSyncOutcome> {
-  const answer = await remote.refresh()
-  if (!answer.ok) throw new Error(answer.error.message)
-  const value = answer.value
-  return value.ok
-    ? { ok: true, count: value.count, changed: value.changed, classes: value.classes }
-    : { ok: false, reason: value.reason }
 }
 
 /**
