@@ -37,6 +37,7 @@ async function bench(declare = true) {
   await ctx.plugin(SlotRegistry).await()
   ctx.provide('locale', { register: () => () => {} } as never)
   ctx.provide('remote', {} as never)
+  ctx.provide('remote.workspaceFiles', {} as never)
   ctx.provide('remote.gatewayStatus', {
     read: async () => ({ ok: true, value: { state: 'connected', code: 'connected' } }),
     refresh: async () => ({ ok: true, value: { state: 'connected', code: 'connected' } }),
@@ -49,6 +50,7 @@ async function bench(declare = true) {
       'sidebar.brand.name': { kind: 'single' as const, scope: 'root' as const },
       'conversation.hero.brand.mark': { kind: 'single' as const, scope: 'root' as const },
       'settings.models.footer': { kind: 'list' as const, scope: 'root' as const },
+      'settings.models.provider-card': { kind: 'keyed' as const, scope: 'root' as const },
       'tool.call.toolview': { kind: 'keyed' as const, scope: 'session' as const },
     },
   } as never, () => null)
@@ -63,7 +65,7 @@ describe('product brand plugin', () => {
 
   it('declares the services it uses', () => {
     // The gateway namespace stays optional: a deployment without the row renders the light as not connected.
-    expect(inject).toEqual(['slots', 'locale', 'remote'])
+    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.workspaceFiles'])
   })
 
   it('fills every brand hole', async () => {
@@ -71,7 +73,8 @@ describe('product brand plugin', () => {
     await subject.ctx.plugin({ inject: [...inject], apply }).await()
     for (const hole of HOLES) expect(subject.slots.entries(hole)).toHaveLength(1)
     expect(subject.slots.entries(HERO_HOLE)).toHaveLength(1)
-    expect(subject.slots.entries(CATALOG_HOLE)).toHaveLength(2)
+    expect(subject.slots.entries(CATALOG_HOLE)).toHaveLength(1)
+    expect(subject.slots.entries('settings.models.provider-card')).toHaveLength(1)
     // The blank home keeps its frame slot free for other occupants.
     expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(0)
   })

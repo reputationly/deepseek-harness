@@ -60,8 +60,12 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
   const active = rows.find(r => r.id === activeId)?.id ?? rows[0]?.id
   const titleId = useId()
 
+  const requestClose = (): void => {
+    // Sections with an unsaved draft cancel this cancelable event; the panel stays open.
+    if (window.dispatchEvent(new CustomEvent('settings-close-request', { cancelable: true }))) onClose()
+  }
   const panel = useRef<HTMLDivElement>(null)
-  useModalLayer(panel, true, onClose)
+  useModalLayer(panel, true, requestClose)
 
   // Portalled beside #root like the Modal primitive: a covering surface mounted
   // inside the root would precede the columns' chrome in document order, so a
@@ -69,7 +73,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
   // Beside the root, base.css's `body > :not(#root)` rule subtracts it instead.
   return createPortal((
     <div className={css.overlay} role="presentation">
-      <div className={css.mask} aria-hidden="true" onClick={onClose} />
+      <div className={css.mask} aria-hidden="true" onClick={requestClose} />
       <div ref={panel} tabIndex={-1} data-shortcut-modal="settings" className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         {/* The four seats stay direct children of the panel and take their
             places from its grid: title and header share the first row, the
@@ -100,13 +104,13 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
         </nav>
         <div className={css.header}>
           <div className={css.actions}>{renderSlot('settings.action', {})}</div>
-          <button type="button" className={css.close} onClick={onClose}>
+          <button type="button" className={css.close} onClick={requestClose}>
             <IconCloseOutlineRegular size={14} />
             <span className={css.hiddenLabel}>{renderSlot('settings.close', {})}</span>
           </button>
         </div>
         <div className={css.options}>
-          {active !== undefined && renderSlot('settings.section', { close: onClose }, { only: active })}
+          {active !== undefined && renderSlot('settings.section', { close: requestClose }, { only: active })}
         </div>
       </div>
     </div>

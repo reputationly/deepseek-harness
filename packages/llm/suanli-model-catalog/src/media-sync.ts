@@ -74,6 +74,7 @@ export class MediaCatalogSync {
   private snapshot: MediaCatalogSnapshot
   private chat: Pick<MediaCatalogRecord, 'text' | 'defaults'> = { text: [], defaults: { chat: null, multimodal: null } }
   private pending: Promise<MediaCatalogSnapshot> | undefined
+  private invalidation = 0
 
   constructor(private readonly inputs: MediaCatalogSyncInputs) {
     this.snapshot = { status: 'loading', version: null, fetchedAt: null, entries: [] }
@@ -122,8 +123,41 @@ export class MediaCatalogSync {
     return this.snapshot
   }
 
+  /**
+   * Commit one already validated generation without another gateway read.
+   * @param record - the generation now in effect.
+   * @returns the snapshot after the commit.
+   */
+  async commit(record: MediaCatalogRecord): Promise<MediaCatalogSnapshot> {
+    this.invalidation += 1
+    const previous = this.snapshot
+    const fresh = record.version === null || record.version !== previous.version
+    if (fresh) {
+      try {
+        await this.inputs.store.write(record)
+      } catch (error) {
+        this.inputs.report(`model catalog: could not store the read catalog (${String(error)})`)
+      }
+    }
+    const key = await this.inputs.credential()
+    const status: MediaCatalogStatus = key === undefined || key === ''
+      ? 'signed-out'
+      : mediaEntries(record.entries).length === 0 ? 'empty' : 'ready'
+    this.snapshot = { status, version: record.version, fetchedAt: record.fetchedAt, entries: record.entries }
+    this.chat = { text: record.text, defaults: record.defaults }
+    if (previous.status !== status || previous.version !== record.version) this.inputs.changed()
+    try {
+      await this.inputs.committed(record)
+    } catch (error) {
+      // A profile that pins the chat models refuses the write; the media catalog stays in effect.
+      this.inputs.report(`model catalog: could not apply the chat models (${String(error)})`)
+    }
+    return this.snapshot
+  }
+
   /** Read one generation and commit it when it is usable. */
   private async read(): Promise<MediaCatalogSnapshot> {
+    const invalidation = this.invalidation
     let response: Response
     try {
       response = await this.inputs.send(new URL(this.inputs.catalogPath, this.inputs.origin).href, {
@@ -154,27 +188,7 @@ export class MediaCatalogSync {
     const record: MediaCatalogRecord = {
       version: decoded.version, fetchedAt: this.inputs.now(), entries: decoded.entries, text: decoded.text, defaults: decoded.defaults,
     }
-    const fresh = record.version === null || record.version !== previous.version
-    if (fresh) {
-      try {
-        await this.inputs.store.write(record)
-      } catch (error) {
-        this.inputs.report(`model catalog: could not store the read catalog (${String(error)})`)
-      }
-    }
-    const key = await this.inputs.credential()
-    const status: MediaCatalogStatus = key === undefined || key === ''
-      ? 'signed-out'
-      : mediaEntries(record.entries).length === 0 ? 'empty' : 'ready'
-    this.snapshot = { status, version: record.version, fetchedAt: record.fetchedAt, entries: record.entries }
-    this.chat = { text: record.text, defaults: record.defaults }
-    if (previous.status !== status || previous.version !== record.version) this.inputs.changed()
-    try {
-      await this.inputs.committed(record)
-    } catch (error) {
-      // A profile that pins the chat models refuses the write; the media catalog stays in effect.
-      this.inputs.report(`model catalog: could not apply the chat models (${String(error)})`)
-    }
-    return this.snapshot
+    if (invalidation !== this.invalidation) return this.snapshot
+    return await this.commit(record)
   }
 }

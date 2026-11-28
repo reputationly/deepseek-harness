@@ -76,6 +76,9 @@ export type ModelsSectionProps = Partial<InjectFace<ModelsSectionInjected>> & Pr
 
 type ModelsSectionFace = InjectFace<ModelsSectionInjected>
 
+/** Suanli deployment locks model configuration to the gateway catalog. */
+const LOCKED_MODEL_SETTINGS = process.env.DSH_CLIENT_TITLE === '蒜狸小助手' && 'dshDesktop' in globalThis
+
 /** Provider identity shared by row actions and confirmation copy. */
 export interface ProviderIdentity {
   /** Stable provider route id. */
@@ -437,7 +440,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
             return (
               <li key={row.entry.provider} className={styles['setupCard']}>
                 {error}
-                {renderProviderEditor({
+                {LOCKED_MODEL_SETTINGS ? null : renderProviderEditor({
                   target,
                   row,
                   namespace,
@@ -502,7 +505,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                 </span>
                 <span className={styles['rowActions']}>
                   {/* The account catalog comes from the account listing; its model overrides live in cordis.patch.yml. */}
-                  {row.entry.provider === 'deepseek-account'
+                  {LOCKED_MODEL_SETTINGS || row.entry.provider === 'deepseek-account'
                     ? null
                     : (
                       <button
@@ -523,7 +526,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                         {t('edit')}
                       </button>
                     )}
-                  {row.removable
+                  {!LOCKED_MODEL_SETTINGS && row.removable
                     ? (
                       <button
                         type="button"
@@ -549,7 +552,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                 { provider: row.entry, configured: row.configured, keyConfigured: keyConfiguredOf(row) },
                 { entryKey: row.entry.settingsNs },
               )}
-              {open
+              {open && !LOCKED_MODEL_SETTINGS
                 ? renderProviderEditor({
                   target,
                   row,
@@ -565,7 +568,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
           )
         })}
       </ul>
-      <div className={styles['addBlock']}>
+      {LOCKED_MODEL_SETTINGS ? null : <div className={styles['addBlock']}>
         {addOpen
           ? (
             <div className={styles['addCard']}>
@@ -716,7 +719,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
               </div>
             )
             : null}
-      </div>
+      </div>}
       {renderSlot('settings.models.footer', {})}
       <Modal
         open={deleteTarget !== undefined}

@@ -233,6 +233,8 @@ export interface HiloTextModel {
   readonly supportsVideo: boolean
   /** Whether the model accepts audio input. */
   readonly supportsAudio: boolean
+  /** Thinking effort the deployment assigns; `off` means thinking is disabled. */
+  readonly reasoningEffort?: string | undefined
 }
 
 /** Role defaults the Hilo catalog declares; `null` when it declares none. */
@@ -252,6 +254,8 @@ export interface ModelRoleCandidate {
   readonly model: string
   /** Name shown to the user. */
   readonly label: string
+  /** Thinking effort the deployment assigns, when the catalog declares one. */
+  readonly reasoningEffort?: string | undefined
 }
 
 /** Models one role can use and which one it uses now. */
@@ -264,6 +268,22 @@ export interface ModelRoleState {
   readonly selected: string | null
   /** Model used without a choice: the catalog default, else the first candidate; `null` when there is none. */
   readonly fallback: string | null
+}
+
+
+/** Why a locked key test/save did not produce a usable configuration. */
+export type LockedCatalogFailure = 'missing-key' | 'unauthorized' | 'unreachable' | 'invalid-catalog' | 'empty-catalog' | 'write-failed'
+
+/** Result of validating a gateway key and reading the locked catalog. */
+export interface LockedCatalogCheck {
+  /** Whether validation and catalog decoding succeeded. */
+  readonly ok: boolean
+  /** Failure reason when {@link ok} is false. */
+  readonly reason?: LockedCatalogFailure
+  /** Fixed roles decoded from the catalog. */
+  readonly roles?: readonly ModelRoleState[]
+  /** Whether the credential was durably saved. */
+  readonly saved?: boolean
 }
 
 /** Generation preferences the user sets once. */

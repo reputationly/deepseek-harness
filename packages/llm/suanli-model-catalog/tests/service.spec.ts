@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import SuanliModelCatalogService from '../src/index.ts'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { StoredSnapshot } from '../src/domain.ts'
-import { hilo, IMAGE, json } from './hilo-fixture.ts'
+import { hilo, IMAGE, json, TEXT } from './hilo-fixture.ts'
 
 /** A storage-domain facility holding one catalog generation, recording every catalog write. */
 function facility(initial?: StoredSnapshot) {
@@ -46,7 +46,7 @@ afterEach(async () => {
 /** Boot the real service against stubbed neighbours. */
 async function boot(options: {
   readonly credential?: string | undefined
-  readonly answer?: () => Promise<Response>
+  readonly answer?: (url: string) => Promise<Response>
   readonly stored?: StoredSnapshot
   readonly withStorage?: boolean
   readonly models?: readonly unknown[]
@@ -56,10 +56,13 @@ async function boot(options: {
   contexts.push(ctx)
   const storage = facility(options.stored)
   ctx.provide('loader', { await: async () => undefined })
+  let credential = options.credential === undefined ? 'sk-test' : options.credential
+  const credentialWrites: string[] = []
   ctx.provide('credentials', {
     resolve: async (ref: string) => ref === 'AURORA_API_KEY'
-      ? (options.credential === undefined ? { value: 'sk-test' } : options.credential === '' ? undefined : { value: options.credential })
+      ? (credential === '' ? undefined : { value: credential })
       : undefined,
+    set: async (ref: string, value: string) => { if (ref === 'AURORA_API_KEY') { credential = value; credentialWrites.push(value); ctx.emit('credentials/reference-updated', credentialRef('AURORA_API_KEY')) } },
   })
   const mutations: unknown[] = []
   let models = options.models
@@ -73,7 +76,7 @@ async function boot(options: {
   })
   ctx.provide('typert', {})
   if (options.withStorage !== false) ctx.provide('storageDomain', storage.service)
-  const send = vi.fn(async (_url: string, _init?: RequestInit) => await (options.answer ?? (async () => json(hilo())))())
+  const send = vi.fn(async (url: string, _init?: RequestInit) => await (options.answer ?? (async () => json(hilo())))(url))
   vi.stubGlobal('fetch', send)
   const updates: unknown[] = []
   ctx.on('llm/models-updated', (provider) => { updates.push(provider) })
@@ -84,7 +87,7 @@ async function boot(options: {
     announced.push(service?.media().entries.length ?? -1)
   })
   await ctx.plugin(SuanliModelCatalogService, { baseURL: 'https://gw.example/v1', apiKeyEnv: 'AURORA_API_KEY' })
-  return { ctx, storage, send, mutations, updates, announced }
+  return { ctx, storage, send, mutations, updates, announced, credentialWrites }
 }
 
 /** One stored generation carrying the fixture image entry. */
@@ -221,24 +224,60 @@ describe('SuanliModelCatalogService', () => {
     ])
   })
 
-  it('reports six roles and keeps a choice in the storage domain across a restart', async () => {
+  it('reports six fixed roles and keeps review preference in the storage domain', async () => {
     const first = await boot({ answer: async () => json(hilo({ image: [IMAGE, { ...IMAGE, platformModel: 'minimax-h3-image-enhanced' }] })) })
     await vi.waitFor(() => { expect(first.ctx.suanliModels.media().status).toBe('ready') })
     expect(first.ctx.suanliModels.roles().map(state => state.role)).toEqual(['chat', 'vision', 'image', 'video', 'music', 'speech'])
     const changed = vi.fn()
     first.ctx.on('suanli-model-catalog/roles-updated', changed)
-    await first.ctx.suanliModels.selectRole('image', 'minimax-h3-image-enhanced')
     await first.ctx.suanliModels.setAutoReview(false)
-    expect(changed).toHaveBeenCalledTimes(2)
-    expect(first.storage.domains.get('suanli_model_roles:choice')?.get('image')).toEqual({ model: 'minimax-h3-image-enhanced' })
-    // The choice lives outside settings.
-    expect(first.mutations.every(mutation => JSON.stringify(mutation).includes('"models"'))).toBe(true)
-    await expect(first.ctx.suanliModels.selectRole('image', 'not-listed')).rejects.toThrow(/not a image model/u)
-    await expect(first.ctx.suanliModels.selectRole('chat', 'deepseek-v4-1-flash')).rejects.toThrow(/takes no choice/u)
+    expect(changed).toHaveBeenCalledTimes(1)
+    // Locked mode ignores legacy role choices: gateway defaults fill every role.
     const image = first.ctx.suanliModels.roles().find(state => state.role === 'image')
-    expect(image).toMatchObject({ selected: 'minimax-h3-image-enhanced', fallback: 'minimax-h3-image' })
+    expect(image).toMatchObject({ selected: null, fallback: 'minimax-h3-image-enhanced' })
     expect(first.ctx.suanliModels.preferences()).toEqual({ autoReview: false })
     expect(first.ctx.suanliModels.roles().find(state => state.role === 'speech')).toMatchObject({ candidates: [], fallback: null })
+  })
+
+  it('validates a candidate key without storing it and decodes fixed roles with thinking efforts', async () => {
+    const text = TEXT.map((model, index) => ({ ...model, reasoningEffort: index === 0 ? 'off' : 'high' }))
+    const { ctx, send, credentialWrites } = await boot({
+      answer: async url => url.endsWith('/v1/models') ? json({ data: [] }) : json(hilo({ text })),
+    })
+    await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
+    const before = send.mock.calls.length
+    const result = await ctx.suanliModels.testLockedConfig({ key: 'sk-candidate' })
+    expect(result.ok).toBe(true)
+    expect(credentialWrites).toEqual([])
+    expect(result.roles?.find(role => role.role === 'chat')?.candidates[0]).toMatchObject({ reasoningEffort: 'off' })
+    expect(result.roles?.find(role => role.role === 'vision')?.candidates[1]).toMatchObject({ reasoningEffort: 'high' })
+    const validation = send.mock.calls.slice(before).map(([url]) => url)
+    expect(validation).toEqual(['https://gw.example/v1/models', 'https://gw.example/api/v1/models/catalog'])
+    const validationInit = send.mock.calls[before]?.[1]
+    expect(JSON.stringify(validationInit?.headers)).toContain('sk-candidate')
+    expect(JSON.stringify(validationInit?.headers)).not.toContain('x-api-key')
+    expect(validationInit?.redirect).toBe('manual')
+  })
+
+  it('saves only after validation succeeds and reports rejection without a write', async () => {
+    let rejected = false
+    const { ctx, credentialWrites, send } = await boot({
+      answer: async (url) => {
+        if (url.endsWith('/v1/models')) return json({ error: 'bad key' }, rejected ? 401 : 200)
+        return json(hilo())
+      },
+    })
+    await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
+    const beforeSave = send.mock.calls.length
+    await expect(ctx.suanliModels.saveLockedConfig({ key: 'sk-next' })).resolves.toMatchObject({ ok: true, saved: true })
+    expect(credentialWrites).toEqual(['sk-next'])
+    // Save commits the authenticated catalog it already validated instead of requiring another anonymous read.
+    expect(send.mock.calls.slice(beforeSave).map(([url]) => url)).toEqual(['https://gw.example/v1/models', 'https://gw.example/api/v1/models/catalog'])
+    expect(ctx.suanliModels.media().entries.length).toBeGreaterThan(0)
+    rejected = true
+    await expect(ctx.suanliModels.saveLockedConfig({ key: 'sk-bad' })).resolves.toEqual({ ok: false, reason: 'unauthorized' })
+    expect(credentialWrites).toEqual(['sk-next'])
+    await expect(ctx.suanliModels.testLockedConfig({ key: '' })).resolves.toMatchObject({ ok: false, reason: 'unauthorized' })
   })
 })
 
@@ -284,11 +323,10 @@ describe('SuanliModelCatalogService edges', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('keeps the catalog and role choices in memory when the storage domain cannot open', async () => {
+  it('keeps the catalog and fixed roles in memory when the storage domain cannot open', async () => {
     const { ctx, send } = await bootWith({ open: async () => { throw new Error('locked') } })
     await vi.waitFor(() => { expect(ctx.suanliModels.media().status).toBe('ready') })
     expect(send.mock.calls[0]?.[0]).toBe('https://gw.example/custom/catalog')
-    await ctx.suanliModels.selectRole('image', null)
     expect(ctx.suanliModels.roles().find(role => role.role === 'image')?.selected).toBeNull()
   })
 

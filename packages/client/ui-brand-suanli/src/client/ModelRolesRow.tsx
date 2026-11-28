@@ -1,6 +1,6 @@
 /** Settings rows that pick the model each role uses and whether generated media is reviewed. */
 import { useEffect, useState, type ReactNode } from 'react'
-import { Menu, Switch, IconChevronDownOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { GatewayStatusKey } from './locales.ts'
 import css from './ModelRolesRow.module.css'
@@ -8,7 +8,7 @@ import css from './ModelRolesRow.module.css'
 /** One role as this row renders it. */
 export interface ModelRoleView {
   readonly role: 'chat' | 'vision' | 'image' | 'video' | 'music' | 'speech'
-  readonly candidates: readonly { readonly model: string; readonly label: string }[]
+  readonly candidates: readonly { readonly model: string; readonly label: string; readonly reasoningEffort?: string | undefined }[]
   readonly selected: string | null
   readonly fallback: string | null
 }
@@ -23,8 +23,6 @@ export interface ModelRolesView {
 export interface ModelRolesRowProps {
   /** Read the roles and preferences. */
   readonly load: () => Promise<ModelRolesView>
-  /** Choose a role's model; `null` returns to the catalog default. */
-  readonly select: (role: ModelRoleView['role'], model: string | null) => Promise<ModelRolesView>
   /** Turn the review of generated media on or off. */
   readonly setAutoReview: (enabled: boolean) => Promise<ModelRolesView>
   readonly t: TranslateNS<'gatewayStatus'>
@@ -40,18 +38,14 @@ const ROLE_COPY = {
   speech: 'roles.speech',
 } as const satisfies Record<ModelRoleView['role'], GatewayStatusKey>
 
-/** Menu id of the catalog-default choice; no model id is empty. */
-const DEFAULT_ID = ''
-
 /**
  * Model role rows: one selector per role, then the review switch.
  * @param props - the Host operations and locale seat.
  * @returns the rows, or a status line while loading or after a failed read.
  */
-export function ModelRolesRow({ load, select, setAutoReview, t }: ModelRolesRowProps): ReactNode {
+export function ModelRolesRow({ load, setAutoReview, t }: ModelRolesRowProps): ReactNode {
   const [view, setView] = useState<ModelRolesView | undefined>(undefined)
   const [failed, setFailed] = useState(false)
-  const [open, setOpen] = useState<ModelRoleView['role'] | undefined>(undefined)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -88,32 +82,17 @@ export function ModelRolesRow({ load, select, setAutoReview, t }: ModelRolesRowP
           {view.roles.map((role) => {
             const name = t(ROLE_COPY[role.role])
             const current = role.selected ?? role.fallback
-            const value = current === null ? t('roles.unavailable') : labelOf(role, current)
-            const pickable = role.role !== 'chat' && role.candidates.length > 0
+            const currentCandidate = role.candidates.find(candidate => candidate.model === current)
+            const effort = currentCandidate?.reasoningEffort
+            const value = current === null
+              ? t('roles.unavailable')
+              : `${labelOf(role, current)}${(role.role === 'chat' || role.role === 'vision') && effort !== undefined ? ` · ${t('roles.thinking', { effort })}` : ''}`
             return (
               <div key={role.role} className={css.row}>
                 <div className={css.copy}>
                   <p className={css.name}>{name}</p>
-                  {role.role === 'chat' ? <p className={css.detail}>{t('roles.chat-hint')}</p> : null}
                 </div>
-                {pickable
-                  ? <Menu open={open === role.role} onClose={() => { setOpen(undefined) }} portal align="end"
-                    selectedId={role.selected ?? DEFAULT_ID}
-                    items={[
-                      { id: DEFAULT_ID, label: t('roles.default', { model: labelOf(role, role.fallback) }) },
-                      ...role.candidates.map(candidate => ({ id: candidate.model, label: candidate.label })),
-                    ]}
-                    onSelect={(id) => {
-                      setOpen(undefined)
-                      void run(async () => await select(role.role, id === DEFAULT_ID ? null : id))
-                    }}
-                    anchor={<button type="button" className={css.selector} disabled={busy}
-                      aria-label={name} aria-haspopup="menu" aria-expanded={open === role.role}
-                      onClick={() => { setOpen(open === role.role ? undefined : role.role) }}>
-                      <span className={css.value}>{value}</span>
-                      <IconChevronDownOutlineRegular className={css.chevron} />
-                    </button>} />
-                  : <span className={css.fixed}>{value}</span>}
+                <span className={css.fixed}>{value}</span>
               </div>
             )
           })}

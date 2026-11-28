@@ -3959,6 +3959,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the written path and size, or why nothing was written.',
       },
       {
+        signature: '@Remote async inspect(request: MediaInspectRequest): Promise<MediaInspectResult>',
+        description: 'Ask a vision model one question about generated files.',
+        parameters: [{ name: 'request', description: 'vision model, instruction, and the inlined files.' }],
+        returns: 'the answer text, or why there is none.',
+      },
+      {
+        signature: '@Remote async speak(request: MediaSpeakRequest, targetPath: string): Promise<MediaDownloadResult>',
+        description: 'Synthesize speech and write the audio to a path the caller owns.',
+        parameters: [{ name: 'request', description: 'speech model, text, and catalog parameters.' }, { name: 'targetPath', description: 'absolute path the caller owns.' }],
+        returns: 'the written path and size, or why nothing was written.',
+      },
+      {
         signature: '@Remote async download(taskId: string, operation: MediaOperation, targetPath: string): Promise<MediaDownloadResult>',
         description: 'Download a finished artifact to a path the caller owns.',
         parameters: [{ name: 'taskId', description: 'gateway task id.' }, { name: 'operation', description: 'operation that submitted it.' }, { name: 'targetPath', description: 'absolute path inside the caller\'s workspace.' }],
@@ -4008,11 +4020,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'one state per role: chat, vision, image, video, music, speech.',
       },
       {
-        signature: '@Remote async selectRole(role: ModelRole, model: string | null): Promise<readonly ModelRoleState[]>',
-        description: 'Choose the model one role uses.',
-        parameters: [{ name: 'role', description: 'a role other than chat, whose choice the conversation\'s model picker owns.' }, { name: 'model', description: 'a candidate of the role, or `null` to return to the catalog default.' }],
-        returns: 'the roles after the change.',
-        throws: ['When the role is chat or the model is not a candidate of the role.'],
+        signature: '@Remote async testLockedConfig(input: { key?: string }): Promise<LockedCatalogCheck>',
+        description: 'Validate a candidate gateway key and decode the fixed model catalog without storing the key.',
+        parameters: [{ name: 'input', description: 'candidate key; when absent or blank, the already stored credential is used.' }],
+        returns: 'the fixed roles when both validation and catalog decoding succeed.',
+      },
+      {
+        signature: '@Remote async saveLockedConfig(input: { key?: string }): Promise<LockedCatalogCheck>',
+        description: 'Validate a key and catalog first, then store the credential and refresh the running catalog.',
+        parameters: [{ name: 'input', description: 'candidate key; when absent or blank, the already stored credential is validated and kept.' }],
+        returns: 'the fixed roles after a successful save, or the failure before any write.',
       },
       {
         signature: '@Remote preferences(): MediaPreferences',
@@ -7728,6 +7745,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type LocalizedText = string | {\n    readonly en: string;\n    readonly [locale: string]: string;\n};',
   },
   {
+    name: 'LockedCatalogCheck',
+    declaration: 'export interface LockedCatalogCheck {\n    readonly ok: boolean;\n    readonly reason?: LockedCatalogFailure;\n    readonly roles?: readonly ModelRoleState[];\n    readonly saved?: boolean;\n}',
+  },
+  {
+    name: 'LockedCatalogFailure',
+    declaration: 'export type LockedCatalogFailure = \'missing-key\' | \'unauthorized\' | \'unreachable\' | \'invalid-catalog\' | \'empty-catalog\' | \'write-failed\';',
+  },
+  {
     name: 'LogExporterOptions',
     declaration: 'export type LogExporterOptions = Omit<OTLPExporterNodeConfigBase, \'selfObsMeterProvider\'> & {\n    url: string;\n};',
   },
@@ -7932,6 +7957,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface MediaGatewayEndpoint {\n    readonly baseURL: string;\n    readonly credential: string;\n}',
   },
   {
+    name: 'MediaInspectInput',
+    declaration: 'export interface MediaInspectInput {\n    readonly kind: \'image\' | \'video\';\n    readonly url: string;\n}',
+  },
+  {
+    name: 'MediaInspectRequest',
+    declaration: 'export interface MediaInspectRequest {\n    readonly model: string;\n    readonly instruction: string;\n    readonly media: readonly MediaInspectInput[];\n}',
+  },
+  {
+    name: 'MediaInspectResult',
+    declaration: 'export type MediaInspectResult = {\n    readonly ok: true;\n    readonly text: string;\n} | {\n    readonly ok: false;\n    readonly reason: MediaFailureReason;\n    readonly detail?: string;\n};',
+  },
+  {
     name: 'MediaOperation',
     declaration: 'export type MediaOperation = \'generate_image\' | \'generate_video\' | \'generate_music\';',
   },
@@ -7944,12 +7981,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface MediaReferenceRule {\n    readonly min: number;\n    readonly max: number;\n}',
   },
   {
+    name: 'MediaSpeakRequest',
+    declaration: 'export interface MediaSpeakRequest {\n    readonly model: string;\n    readonly input: string;\n    readonly params: Readonly<Record<string, string>>;\n}',
+  },
+  {
     name: 'MediaStatusResult',
     declaration: 'export type MediaStatusResult = {\n    readonly ok: true;\n    readonly status: MediaTaskStatus;\n} | {\n    readonly ok: false;\n    readonly reason: MediaFailureReason;\n    readonly detail?: string;\n};',
   },
   {
     name: 'MediaSubmitRequest',
-    declaration: 'export interface MediaSubmitRequest {\n    readonly operation: MediaOperation;\n    readonly model: string;\n    readonly prompt: string;\n    readonly taskType?: string;\n    readonly referenceImages?: readonly string[];\n    readonly params?: Readonly<Record<string, string | number | boolean>>;\n}',
+    declaration: 'export interface MediaSubmitRequest {\n    readonly operation: MediaOperation;\n    readonly model: string;\n    readonly prompt: string;\n    readonly taskType?: string;\n    readonly referenceImages?: readonly string[];\n    readonly sourceVideo?: string;\n    readonly params?: Readonly<Record<string, string | number | boolean>>;\n    readonly size?: string;\n}',
   },
   {
     name: 'MediaSubmitResult',
@@ -8117,7 +8158,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ModelRoleCandidate',
-    declaration: 'export interface ModelRoleCandidate {\n    readonly model: string;\n    readonly label: string;\n}',
+    declaration: 'export interface ModelRoleCandidate {\n    readonly model: string;\n    readonly label: string;\n    readonly reasoningEffort?: string | undefined;\n}',
   },
   {
     name: 'ModelRoleState',
