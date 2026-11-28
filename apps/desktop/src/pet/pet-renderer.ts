@@ -110,7 +110,7 @@ export function renderPetWindow(): void {
       panel.className='panel menu'
       panel.append(button('打个招呼',()=>{perform('waving');menu=false;render()}),button('跳一跳',()=>{perform('jumping');menu=false;render()}))
       if(state.notifications?.hidden)panel.append(button('恢复已关闭通知',()=>{menu=false;void run({ type:'restore' })}))
-      panel.append(button('打开主界面',()=>{menu=false;bridge.action('open');render()}))
+      panel.append(button('打开主界面',()=>{menu=false;bridge.action('reveal');render()}))
       if(state.activity.sessionId)panel.append(button('查看任务',()=>{menu=false;bridge.action('open');render()}))
       panel.append(button('宠物设置',()=>{menu=false;bridge.action('settings');render()}),button('收起宠物',()=>{ bridge.action('hide') }))
     } else {
@@ -140,7 +140,7 @@ export function renderPetWindow(): void {
   sprite.onpointermove=(event)=>{if(!dragging)return;const dx=event.screenX-dragging.x,dy=event.screenY-dragging.y;if(Math.hypot(event.screenX-dragging.startX,event.screenY-dragging.startY)>4)dragging.moved=true;if(dragging.moved){motion=dx<0?'running-left':'running-right';bridge.move(dx,dy)}dragging.x=event.screenX;dragging.y=event.screenY}
   sprite.onpointerup=()=>{if(!dragging)return;const moved=dragging.moved;dragging=undefined;motion='';if(!moved)perform('waving')}
   sprite.onpointercancel=()=>{dragging=undefined;motion=''}
-  sprite.ondblclick=()=>{ perform('jumping');bridge.action('open') }
+  sprite.ondblclick=()=>{ perform('jumping');bridge.action('reveal') }
   sprite.onkeydown=(event)=>{if(event.key==='Enter')perform('waving');if(event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10')){event.preventDefault();menu=true;render()}}
   document.addEventListener('keydown',(event)=>{if(event.key==='Escape'){menu=false;detail='';render()}})
   document.addEventListener('pointermove',(event)=>{
