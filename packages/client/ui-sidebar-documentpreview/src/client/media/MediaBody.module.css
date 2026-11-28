@@ -1,0 +1,42 @@
+.frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  padding: 12px;
+  font-family: var(--dsw-font, sans-serif);
+  white-space: normal;
+}
+
+.player {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(100vh - 160px);
+  margin: auto;
+  border-radius: var(--dsw-radius-md);
+  background: #000;
+}
+
+.audio {
+  max-width: 520px;
+  background: transparent;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 10px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: normal;
+}
