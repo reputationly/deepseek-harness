@@ -40,7 +40,7 @@ interface PendingCommand {
 const COMMAND_TIMEOUT_MS = 15_000
 const GAZE_INTERVAL_MS = 50
 const POSITION_SAVE_DELAY_MS = 250
-const PET_ACTIONS = ['hide', 'open', 'settings']
+const PET_ACTIONS = ['hide', 'open', 'reveal', 'settings']
 
 function isApplicationPage(contents: WebContents): boolean {
   const url = URL.parse(contents.getURL())

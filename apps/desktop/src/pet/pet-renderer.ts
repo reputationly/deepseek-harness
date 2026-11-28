@@ -25,7 +25,7 @@ export function renderPetWindow(): void {
     waving: [3, [140,140,140,280]], jumping: [4, [140,140,140,140,280]], failed: [5,[140,140,140,140,140,140,140,240]],
     waiting: [6,[150,150,150,150,150,260]], running: [7,[120,120,120,120,120,220]], review: [8,[150,150,150,150,150,280]],
   }
-  const en: Record<string, string> = { '会话':'Conversations','关闭通知':'Dismiss notification','关闭本轮提醒，任务继续运行':'Dismiss this turn; the task keeps running','查看并处理':'View and respond','打开会话回复':'Open conversation to reply','停止当前轮次':'Stop current turn','最新优先':'Newest first','待处理优先':'Needs attention first','打个招呼':'Wave','跳一跳':'Jump','查看任务':'View task','宠物设置':'Pet settings','收起宠物':'Hide pet','恢复已关闭通知':'Restore dismissed notifications','拒绝':'Reject','仅允许一次':'Allow once','提交回答':'Submit answer','输入回答或补充说明':'Enter an answer or additional details','工具审批':'Tool approval','此工具需要你的批准。':'This tool needs your approval.','请打开会话处理此请求。':'Open the conversation to handle this request.','正在工作':'Working','等待你处理':'Waiting for you','任务出错了':'Task failed','已完成，待你查看':'Completed, ready for review' }
+  const en: Record<string, string> = { '会话':'Conversations','关闭通知':'Dismiss notification','关闭本轮提醒，任务继续运行':'Dismiss this turn; the task keeps running','查看并处理':'View and respond','打开会话回复':'Open conversation to reply','停止当前轮次':'Stop current turn','最新优先':'Newest first','待处理优先':'Needs attention first','打个招呼':'Wave','跳一跳':'Jump','查看任务':'View task','打开主界面':'Open main window','宠物设置':'Pet settings','收起宠物':'Hide pet','恢复已关闭通知':'Restore dismissed notifications','拒绝':'Reject','仅允许一次':'Allow once','提交回答':'Submit answer','输入回答或补充说明':'Enter an answer or additional details','工具审批':'Tool approval','此工具需要你的批准。':'This tool needs your approval.','请打开会话处理此请求。':'Open the conversation to handle this request.','正在工作':'Working','等待你处理':'Waiting for you','任务出错了':'Task failed','已完成，待你查看':'Completed, ready for review' }
   const t = (text: string) => /^zh/i.test(state?.language ?? 'zh') ? text : en[text] ?? text
   const element = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = '') => { const node = document.createElement(tag); node.className = className; node.textContent = text; return node }
   const sprite = element('button', 'pet'); sprite.type = 'button'
@@ -110,6 +110,7 @@ export function renderPetWindow(): void {
       panel.className='panel menu'
       panel.append(button('打个招呼',()=>{perform('waving');menu=false;render()}),button('跳一跳',()=>{perform('jumping');menu=false;render()}))
       if(state.notifications?.hidden)panel.append(button('恢复已关闭通知',()=>{menu=false;void run({ type:'restore' })}))
+      panel.append(button('打开主界面',()=>{menu=false;bridge.action('reveal');render()}))
       if(state.activity.sessionId)panel.append(button('查看任务',()=>{menu=false;bridge.action('open');render()}))
       panel.append(button('宠物设置',()=>{menu=false;bridge.action('settings');render()}),button('收起宠物',()=>{ bridge.action('hide') }))
     } else {
@@ -139,7 +140,7 @@ export function renderPetWindow(): void {
   sprite.onpointermove=(event)=>{if(!dragging)return;const dx=event.screenX-dragging.x,dy=event.screenY-dragging.y;if(Math.hypot(event.screenX-dragging.startX,event.screenY-dragging.startY)>4)dragging.moved=true;if(dragging.moved){motion=dx<0?'running-left':'running-right';bridge.move(dx,dy)}dragging.x=event.screenX;dragging.y=event.screenY}
   sprite.onpointerup=()=>{if(!dragging)return;const moved=dragging.moved;dragging=undefined;motion='';if(!moved)perform('waving')}
   sprite.onpointercancel=()=>{dragging=undefined;motion=''}
-  sprite.ondblclick=()=>{ perform('jumping') }
+  sprite.ondblclick=()=>{ perform('jumping');bridge.action('reveal') }
   sprite.onkeydown=(event)=>{if(event.key==='Enter')perform('waving');if(event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10')){event.preventDefault();menu=true;render()}}
   document.addEventListener('keydown',(event)=>{if(event.key==='Escape'){menu=false;detail='';render()}})
   document.addEventListener('pointermove',(event)=>{

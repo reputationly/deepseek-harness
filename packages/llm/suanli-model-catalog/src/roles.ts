@@ -48,7 +48,11 @@ export function deriveRoles(
       role,
       candidates,
       selected: has(chosen) ? chosen : null,
-      fallback: has(preferred) ? preferred : candidates[0]?.model ?? null,
+      fallback: has(preferred)
+        ? preferred
+        : role === 'image'
+          ? candidates.find(candidate => candidate.model.endsWith('-enhanced'))?.model ?? candidates[0]?.model ?? null
+          : candidates[0]?.model ?? null,
     }
   }
   return MODEL_ROLES.map((role) => {

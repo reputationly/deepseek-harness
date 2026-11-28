@@ -21,8 +21,7 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
       '@michengai/dsh-codex-pet',
       // The 创作 workbench reads the gateway's media catalog and stays switchable from the plugin manager.
       '@q253595422/dsh-imagegen-video',
-      // Suanli selects voice input and session search by default; both stay switchable from the plugin manager.
-      '@deepseek-ai/dsh-experimental-voice-input-bundle',
+      // Suanli selects session search by default; voice input stays available from the plugin manager.
       '@deepseek-ai/dsh-experimental-session-search',
     ],
   },

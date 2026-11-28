@@ -164,7 +164,6 @@ describe('desktop external plugin profile', () => {
       '@michengai/dsh-im-connect',
       '@michengai/dsh-codex-pet',
       '@q253595422/dsh-imagegen-video',
-      '@deepseek-ai/dsh-experimental-voice-input-bundle',
       '@deepseek-ai/dsh-experimental-session-search',
     ]
     const shipped = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', ...adopted]
