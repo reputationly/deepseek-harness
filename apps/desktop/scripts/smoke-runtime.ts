@@ -13,6 +13,16 @@ import { createPluginProfile } from '../src/project-manager.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
+const OFFICE_SMOKE_TIMEOUT_MS = 120_000
+const OFFICE_OPERATIONS_TIMEOUT_MS = 420_000
+const OFFICE_SMOKE_PROFILE_PATCH = `- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 0
+- id: office-kit
+  config:
+    timeoutMs: ${OFFICE_SMOKE_TIMEOUT_MS}
+`
 
 /**
  * Require each bundled Office skill to be listed and loaded with a nonempty body.
@@ -180,7 +190,9 @@ export function apply(ctx) {
     manifest.dependencies = { ...manifest.dependencies, [pluginName]: `file:${plugin}` }
     manifest.dsh.profile.bundles.push(pluginName)
     writeFileSync(join(profile, 'package.json'), JSON.stringify(manifest))
-    writeFileSync(join(profile, 'cordis.patch.yml'), '- id: webserver\n  config:\n    host: 127.0.0.1\n    port: 0\n')
+    // Hosted Intel macOS runners can exceed the product's 60-second deadline even for the tiny xlsx fixture.
+    // The smoke profile validates output correctness rather than interactive latency, so only it uses a longer deadline.
+    writeFileSync(join(profile, 'cordis.patch.yml'), OFFICE_SMOKE_PROFILE_PATCH)
     const ready = await Promise.race([host.start(), new Promise<never>((_, reject) => {
       timer = setTimeout(() => { reject(new Error('desktop runtime: Host readiness exceeded 120 seconds')) }, 120_000)
     })])
@@ -219,7 +231,7 @@ export function apply(ctx) {
     }
     for (const { extension } of inputs) {
       const operations = await fetch(new URL(`/desktop-smoke-office-operations/${extension}`, ready.url), {
-        headers: { cookie }, signal: AbortSignal.timeout(240_000),
+        headers: { cookie }, signal: AbortSignal.timeout(OFFICE_OPERATIONS_TIMEOUT_MS),
       })
       if (!operations.ok) throw new Error(`desktop runtime: ${extension} Office operations failed: ${await operations.text()}`)
       const result = await operations.json() as { images: string[]; converted: string; recalculated: string | null }
