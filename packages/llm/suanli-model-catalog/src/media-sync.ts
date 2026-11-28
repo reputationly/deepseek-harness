@@ -122,6 +122,37 @@ export class MediaCatalogSync {
     return this.snapshot
   }
 
+  /**
+   * Commit one already validated generation without another gateway read.
+   * @param record - the generation now in effect.
+   * @returns the snapshot after the commit.
+   */
+  async commit(record: MediaCatalogRecord): Promise<MediaCatalogSnapshot> {
+    const previous = this.snapshot
+    const fresh = record.version === null || record.version !== previous.version
+    if (fresh) {
+      try {
+        await this.inputs.store.write(record)
+      } catch (error) {
+        this.inputs.report(`model catalog: could not store the read catalog (${String(error)})`)
+      }
+    }
+    const key = await this.inputs.credential()
+    const status: MediaCatalogStatus = key === undefined || key === ''
+      ? 'signed-out'
+      : mediaEntries(record.entries).length === 0 ? 'empty' : 'ready'
+    this.snapshot = { status, version: record.version, fetchedAt: record.fetchedAt, entries: record.entries }
+    this.chat = { text: record.text, defaults: record.defaults }
+    if (previous.status !== status || previous.version !== record.version) this.inputs.changed()
+    try {
+      await this.inputs.committed(record)
+    } catch (error) {
+      // A profile that pins the chat models refuses the write; the media catalog stays in effect.
+      this.inputs.report(`model catalog: could not apply the chat models (${String(error)})`)
+    }
+    return this.snapshot
+  }
+
   /** Read one generation and commit it when it is usable. */
   private async read(): Promise<MediaCatalogSnapshot> {
     let response: Response
@@ -154,27 +185,6 @@ export class MediaCatalogSync {
     const record: MediaCatalogRecord = {
       version: decoded.version, fetchedAt: this.inputs.now(), entries: decoded.entries, text: decoded.text, defaults: decoded.defaults,
     }
-    const fresh = record.version === null || record.version !== previous.version
-    if (fresh) {
-      try {
-        await this.inputs.store.write(record)
-      } catch (error) {
-        this.inputs.report(`model catalog: could not store the read catalog (${String(error)})`)
-      }
-    }
-    const key = await this.inputs.credential()
-    const status: MediaCatalogStatus = key === undefined || key === ''
-      ? 'signed-out'
-      : mediaEntries(record.entries).length === 0 ? 'empty' : 'ready'
-    this.snapshot = { status, version: record.version, fetchedAt: record.fetchedAt, entries: record.entries }
-    this.chat = { text: record.text, defaults: record.defaults }
-    if (previous.status !== status || previous.version !== record.version) this.inputs.changed()
-    try {
-      await this.inputs.committed(record)
-    } catch (error) {
-      // A profile that pins the chat models refuses the write; the media catalog stays in effect.
-      this.inputs.report(`model catalog: could not apply the chat models (${String(error)})`)
-    }
-    return this.snapshot
+    return await this.commit(record)
   }
 }

@@ -28,10 +28,10 @@ import { domainCatalogStore, mediaCatalogDomain, memoryCatalogStore } from './do
 import { asGatewayCapability } from './media.ts'
 import { MediaCatalogSync, type MediaCatalogRecord, type MediaCatalogStore } from './media-sync.ts'
 import { decodeHiloCatalog } from './hilo.ts'
-import { deriveRoles, domainRoleStore, memoryRoleStore, modelRolesDomain, MODEL_ROLES, type RoleStore } from './roles.ts'
+import { deriveRoles, domainRoleStore, memoryRoleStore, modelRolesDomain, type RoleStore } from './roles.ts'
 import type {
   CatalogEntry, CatalogSyncResult, ClassMembers, GatewayCapability, MediaCatalogSnapshot, MediaGatewayEndpoint,
-  LockedCatalogCheck, MediaPreferences, ModelRole, ModelRoleState, ModelSyncResult,
+  LockedCatalogCheck, MediaPreferences, ModelRoleState, ModelSyncResult,
 } from './types.ts'
 import { mergeCatalog } from './sync.ts'
 import { DEFAULT_CATALOG_PATH, DEFAULT_CATALOG_TIMEOUT_MS } from './defaults.ts'
@@ -186,26 +186,7 @@ export class SuanliModelCatalogService extends TypertRemoteService {
   @Remote
   roles(): readonly ModelRoleState[] {
     const chat = this.chat()
-    return deriveRoles(this.media().entries, chat.text, chat.defaults, this.roleStore.choices())
-  }
-
-  /**
-   * Choose the model one role uses.
-   * @param role - a role other than chat, whose choice the conversation's model picker owns.
-   * @param model - a candidate of the role, or `null` to return to the catalog default.
-   * @returns the roles after the change.
-   * @throws When the role is chat or the model is not a candidate of the role.
-   */
-  @Remote
-  async selectRole(role: ModelRole, model: string | null): Promise<readonly ModelRoleState[]> {
-    if (!MODEL_ROLES.includes(role) || role === 'chat') throw new Error(`role ${role} takes no choice here`)
-    const listed = this.roles().some(state => state.role === role && state.candidates.some(candidate => candidate.model === model))
-    if (model !== null && !listed) {
-      throw new Error(`model ${model} is not a ${role} model of the catalog`)
-    }
-    await this.roleStore.choose(role, model)
-    this.ctx.emit('suanli-model-catalog/roles-updated')
-    return this.roles()
+    return deriveRoles(this.media().entries, chat.text, chat.defaults, {})
   }
 
   /**
@@ -217,7 +198,7 @@ export class SuanliModelCatalogService extends TypertRemoteService {
   async testLockedConfig(input: { key?: string }): Promise<LockedCatalogCheck> {
     const key = await this.keyForCheck(input.key)
     if (key === undefined) return { ok: false, reason: 'missing-key' }
-    return await this.readLockedConfig(key)
+    return (await this.readLockedConfig(key)).check
   }
 
   /**
@@ -230,8 +211,9 @@ export class SuanliModelCatalogService extends TypertRemoteService {
     const candidate = input.key?.trim()
     const key = await this.keyForCheck(input.key)
     if (key === undefined) return { ok: false, reason: 'missing-key' }
-    const checked = await this.readLockedConfig(key)
-    if (!checked.ok) return checked
+    const { check, record } = await this.readLockedConfig(key)
+    if (!check.ok || record === undefined) return check
+    if (this.mediaSync === undefined) return { ok: false, reason: 'write-failed' }
     if (candidate !== undefined && candidate !== '') {
       try {
         await this.ctx.credentials.set(this.ref, candidate)
@@ -239,8 +221,8 @@ export class SuanliModelCatalogService extends TypertRemoteService {
         return { ok: false, reason: 'write-failed' }
       }
     }
-    await this.refreshMedia()
-    return { ...checked, saved: true }
+    await this.mediaSync.commit(record)
+    return { ...check, saved: true }
   }
 
   /** Resolve the key a locked check uses without exposing it to callers. */
@@ -251,35 +233,38 @@ export class SuanliModelCatalogService extends TypertRemoteService {
   }
 
   /** Validate one key against the OpenAI-compatible listing, then decode the locked catalog. */
-  private async readLockedConfig(key: string): Promise<LockedCatalogCheck> {
-    const headers = { accept: 'application/json', authorization: `Bearer ${key}`, 'x-api-key': key }
+  private async readLockedConfig(key: string): Promise<{ check: LockedCatalogCheck; record?: MediaCatalogRecord }> {
+    const headers = { accept: 'application/json', authorization: `Bearer ${key}` }
     let listing: Response
     try {
-      listing = await this.send(new URL('/v1/models', this.origin).href, { headers, signal: AbortSignal.timeout(this.timeoutMs) })
+      listing = await this.send(new URL('/v1/models', this.origin).href, { headers, signal: AbortSignal.timeout(this.timeoutMs), redirect: 'manual' })
     } catch {
-      return { ok: false, reason: 'unreachable' }
+      return { check: { ok: false, reason: 'unreachable' } }
     }
-    if (listing.status === 401 || listing.status === 403) return { ok: false, reason: 'unauthorized' }
-    if (!listing.ok) return { ok: false, reason: 'unreachable' }
+    if (listing.status === 401 || listing.status === 403) return { check: { ok: false, reason: 'unauthorized' } }
+    if (!listing.ok) return { check: { ok: false, reason: 'unreachable' } }
 
     let response: Response
     try {
-      response = await this.send(new URL(this.catalogPath, this.origin).href, { headers, signal: AbortSignal.timeout(this.timeoutMs) })
+      response = await this.send(new URL(this.catalogPath, this.origin).href, { headers, signal: AbortSignal.timeout(this.timeoutMs), redirect: 'manual' })
     } catch {
-      return { ok: false, reason: 'unreachable' }
+      return { check: { ok: false, reason: 'unreachable' } }
     }
-    if (response.status === 401 || response.status === 403) return { ok: false, reason: 'unauthorized' }
-    if (!response.ok) return { ok: false, reason: 'unreachable' }
+    if (response.status === 401 || response.status === 403) return { check: { ok: false, reason: 'unauthorized' } }
+    if (!response.ok) return { check: { ok: false, reason: 'unreachable' } }
     let payload: unknown
     try {
       payload = await response.json()
     } catch {
-      return { ok: false, reason: 'invalid-catalog' }
+      return { check: { ok: false, reason: 'invalid-catalog' } }
     }
     const decoded = decodeHiloCatalog(payload)
-    if (decoded === undefined) return { ok: false, reason: 'invalid-catalog' }
-    if (decoded.entries.length === 0 && decoded.text.length === 0) return { ok: false, reason: 'empty-catalog' }
-    return { ok: true, roles: deriveRoles(decoded.entries, decoded.text, decoded.defaults, {}) }
+    if (decoded === undefined) return { check: { ok: false, reason: 'invalid-catalog' } }
+    if (decoded.entries.length === 0 && decoded.text.length === 0) return { check: { ok: false, reason: 'empty-catalog' } }
+    return {
+      check: { ok: true, roles: deriveRoles(decoded.entries, decoded.text, decoded.defaults, {}) },
+      record: { version: decoded.version, fetchedAt: Date.now(), entries: decoded.entries, text: decoded.text, defaults: decoded.defaults },
+    }
   }
 
   /**

@@ -77,7 +77,7 @@ export type ModelsSectionProps = Partial<InjectFace<ModelsSectionInjected>> & Pr
 type ModelsSectionFace = InjectFace<ModelsSectionInjected>
 
 /** Suanli deployment locks model configuration to the gateway catalog. */
-const LOCKED_MODEL_SETTINGS = process.env.DSH_CLIENT_TITLE === '蒜狸小助手'
+const LOCKED_MODEL_SETTINGS = process.env.DSH_CLIENT_TITLE === '蒜狸小助手' && 'dshDesktop' in globalThis
 
 /** Provider identity shared by row actions and confirmation copy. */
 export interface ProviderIdentity {
