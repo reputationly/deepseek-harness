@@ -67,6 +67,7 @@ export interface MediaValue {
   readonly modelLabel: string
   readonly parameters: { key: string; value: string }[]
   readonly media: { path: string; mediaType: string }[]
+  readonly continuation?: true
   readonly review?: { verdict: 'match' | 'partial' | 'mismatch'; reason: string }
 }
 
@@ -172,6 +173,7 @@ export function outputOf() {
             properties: { key: { type: 'string', required: true }, value: { type: 'string', required: true } },
           },
         },
+        continuation: { type: 'boolean' },
         media: {
           type: 'array', required: true,
           items: {
@@ -190,6 +192,9 @@ export function outputOf() {
           model: value.model,
           parameters: Object.fromEntries(value.parameters.map(entry => [entry.key, entry.value])),
           files: value.media.map(item => item.path),
+          ...value.continuation === true
+            ? { continuation: 'The saved file already includes the source clip; duration_seconds is its final total length. Do not concatenate it again.' }
+            : {},
           ...value.review !== undefined ? { review: value.review } : {},
         }),
     }],
@@ -293,6 +298,7 @@ async function generate(
     status: 'generated',
     parameters: Object.entries(settled).filter(([key]) => key !== 'lyrics').map(([key, value]) => ({ key, value })),
     media: [{ path, mediaType }],
+    ...chosen.sourceVideo !== undefined ? { continuation: true as const } : {},
     ...reviewed !== undefined ? { review: reviewed } : {},
   }
 }

@@ -259,9 +259,11 @@ describe('generate_video', () => {
   it('continues a workspace clip on the model that offers continuation', async () => {
     const { submit, run, cwd } = await boot()
     await writeFile(join(cwd, 'clip.mp4'), MP4)
-    await run('generate_video', {
+    const result = await run('generate_video', {
       prompt: '接着跑', aspect_ratio: '16:9', resolution: '768P', duration_seconds: 10, with_audio: true, source_video: 'clip.mp4',
     })
+    expect(textOf(result)).toContain('already includes the source clip')
+    expect(textOf(result)).toContain('Do not concatenate it again')
     const request = submit.mock.calls[0]?.[0] as { model?: string; taskType?: string; sourceVideo?: string } | undefined
     expect(request).toMatchObject({ model: 'minimax-h3-ext', taskType: 'continuation', params: { resolution: '768P' } })
     expect(request?.sourceVideo).toMatch(/^data:video\/mp4;base64,/u)
