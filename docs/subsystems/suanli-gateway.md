@@ -82,6 +82,21 @@ Host service backing the generated `ctx.remote.suanliMedia` namespace.
 @Remote async saveArtifact(url: string, targetPath: string): Promise<MediaDownloadResult>
 
 /**
+ * Ask a vision model one question about generated files.
+ * @param request - vision model, instruction, and the inlined files.
+ * @returns the answer text, or why there is none.
+ */
+@Remote async inspect(request: MediaInspectRequest): Promise<MediaInspectResult>
+
+/**
+ * Synthesize speech and write the audio to a path the caller owns.
+ * @param request - speech model, text, and catalog parameters.
+ * @param targetPath - absolute path the caller owns.
+ * @returns the written path and size, or why nothing was written.
+ */
+@Remote async speak(request: MediaSpeakRequest, targetPath: string): Promise<MediaDownloadResult>
+
+/**
  * Download a finished artifact to a path the caller owns.
  * @param taskId - gateway task id.
  * @param operation - operation that submitted it.
@@ -137,13 +152,18 @@ Host service backing the generated `ctx.remote.suanliModels` namespace.
 @Remote roles(): readonly ModelRoleState[]
 
 /**
- * Choose the model one role uses.
- * @param role - a role other than chat, whose choice the conversation's model picker owns.
- * @param model - a candidate of the role, or `null` to return to the catalog default.
- * @returns the roles after the change.
- * @throws When the role is chat or the model is not a candidate of the role.
+ * Validate a candidate gateway key and decode the fixed model catalog without storing the key.
+ * @param input - candidate key; when absent or blank, the already stored credential is used.
+ * @returns the fixed roles when both validation and catalog decoding succeed.
  */
-@Remote async selectRole(role: ModelRole, model: string | null): Promise<readonly ModelRoleState[]>
+@Remote async testLockedConfig(input: { key?: string }): Promise<LockedCatalogCheck>
+
+/**
+ * Validate a key and catalog first, then store the credential and refresh the running catalog.
+ * @param input - candidate key; when absent or blank, the already stored credential is validated and kept.
+ * @returns the fixed roles after a successful save, or the failure before any write.
+ */
+@Remote async saveLockedConfig(input: { key?: string }): Promise<LockedCatalogCheck>
 
 /**
  * Read the generation preferences.
